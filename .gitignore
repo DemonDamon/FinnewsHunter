@@ -1,1 +1,7 @@
 /.idea/
+
+# Exclude cloned third-party repositories (directories only)
+thirdparty/*/
+
+# But include markdown files in thirdparty
+!thirdparty/*.md
