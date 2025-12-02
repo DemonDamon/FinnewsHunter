@@ -4,6 +4,8 @@
 
 基于 [AgenticX](https://github.com/DemonDamon/AgenticX) 框架构建的企业级金融新闻分析系统，融合实时新闻流、深度量化分析和多智能体辩论机制。
 
+FinnewsHunter 不再局限于传统的文本分类，而是部署多智能体战队（NewsAnalyst, Researcher 等），实时监控新浪财经、每经网、金融界、证券时报等多源财经资讯。利用大模型进行深度解读、情感分析与市场影响评估，并结合知识图谱挖掘潜在的投资机会与风险，为量化交易提供决策级别的阿尔法信号。
+
 ---
 
 ## 🎯 项目特色
@@ -352,7 +354,7 @@ class RiskAnalystAgent(Agent):
 
 如果你觉得这个项目对你有帮助，欢迎给个 Star ⭐️！
 
-[![Star History Chart](https://api.star-history.com/svg?repos=DemonDamon/Listed-company-news-crawl-and-text-analysis&type=Date)](https://star-history.com/#DemonDamon/Listed-company-news-crawl-and-text-analysis&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=DemonDamon/Listed-company-news-crawl-and-text-analysis&type=Date)](https://star-history.com/#DemonDamon/FinnewsHunter&Date)
 
 ---
 
