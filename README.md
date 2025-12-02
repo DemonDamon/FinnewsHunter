@@ -26,8 +26,6 @@
 - **M2/M3 基础设施层**: Crawler Service + LLM Service + Embedding
 - **M7-M11 存储与学习层**: PostgreSQL + Milvus + Redis + ACE Framework
 
-详细架构设计见 [planning.md](../planning.md)
-
 ---
 
 ## 🚀 快速开始
