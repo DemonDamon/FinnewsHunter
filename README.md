@@ -354,7 +354,7 @@ class RiskAnalystAgent(Agent):
 
 如果你觉得这个项目对你有帮助，欢迎给个 Star ⭐️！
 
-[![Star History Chart](https://api.star-history.com/svg?repos=DemonDamon/Listed-company-news-crawl-and-text-analysis&type=Date)](https://star-history.com/#DemonDamon/FinnewsHunter&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=DemonDamon/FinnewsHunter&type=Date)](https://star-history.com/#DemonDamon/FinnewsHunter&Date)
 
 ---
 
