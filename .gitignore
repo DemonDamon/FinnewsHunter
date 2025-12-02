@@ -1,7 +1,22 @@
-/.idea/
+# Development documentation (local only, not for Git)
+.dev-docs/
 
-# Exclude cloned third-party repositories (directories only)
-thirdparty/*/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
 
-# But include markdown files in thirdparty
-!thirdparty/*.md
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+node_modules/
+**/node_modules/
