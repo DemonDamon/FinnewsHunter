@@ -1,16 +1,16 @@
 """
-新闻数据模型
+新闻数据模型 - Phase 2 索引优化
 """
 from datetime import datetime
 from typing import List, Optional
-from sqlalchemy import Column, Integer, String, Text, DateTime, Float, ARRAY
+from sqlalchemy import Column, Integer, String, Text, DateTime, Float, ARRAY, Index
 from sqlalchemy.orm import relationship
 
 from .database import Base
 
 
 class News(Base):
-    """新闻表模型"""
+    """新闻表模型 - Phase 2 优化版"""
     
     __tablename__ = "news"
     
@@ -43,6 +43,14 @@ class News(Base):
     
     # 关系
     analyses = relationship("Analysis", back_populates="news", cascade="all, delete-orphan")
+    
+    # Phase 2: 复合索引优化（提升常见查询性能）
+    __table_args__ = (
+        # 按来源+时间查询（最常用）
+        Index('idx_source_publish_time', 'source', 'publish_time'),
+        # 按情感+时间筛选
+        Index('idx_sentiment_publish_time', 'sentiment_score', 'publish_time'),
+    )
     
     def __repr__(self):
         return f"<News(id={self.id}, title='{self.title[:30]}...', source='{self.source}')>"

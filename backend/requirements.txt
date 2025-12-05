@@ -39,5 +39,5 @@ httpx>=0.25.0
 tenacity>=8.2.0  # 重试机制
 
 # ===== AgenticX 框架 =====
-# 开发环境通过本地路径安装：pip install -e ../../../../agenticx
-# 生产环境可以改为：agenticx>=0.1.8
+agenticx==0.1.9  # Docker 容器中使用 PyPI 版本
+# 本地开发可以用：pip install -e ../../../../agenticx

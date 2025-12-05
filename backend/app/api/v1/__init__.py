@@ -2,7 +2,8 @@
 API v1 模块
 """
 from fastapi import APIRouter
-from . import news, analysis, tasks
+from . import analysis, tasks
+from . import news_v2 as news  # Phase 2: 使用升级版 API
 
 # 创建主路由器
 api_router = APIRouter()

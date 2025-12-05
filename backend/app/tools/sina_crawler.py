@@ -16,10 +16,11 @@ logger = logging.getLogger(__name__)
 class SinaCrawlerTool(BaseCrawler):
     """
     新浪财经新闻爬虫
-    爬取 http://roll.finance.sina.com.cn/finance/zq1/ssgs/index_页码.shtml
+    爬取最新滚动新闻页面
     """
     
-    BASE_URL = "http://roll.finance.sina.com.cn/finance/zq1/ssgs/index_{}.shtml"
+    # 新浪财经最新滚动新闻页面（2024年后的新URL）
+    BASE_URL = "https://finance.sina.com.cn/roll/c/56592.shtml"  # 暂不支持翻页，只爬首页
     SOURCE_NAME = "sina"
     
     def __init__(self):
@@ -58,12 +59,12 @@ class SinaCrawlerTool(BaseCrawler):
         爬取单页新闻列表
         
         Args:
-            page: 页码（页码1通常是最新新闻）
+            page: 页码（目前只支持首页，忽略此参数）
             
         Returns:
             新闻列表
         """
-        url = self.BASE_URL.format(page)
+        url = self.BASE_URL  # 新URL不支持翻页，只爬首页
         logger.info(f"Fetching page: {url}")
         response = self._fetch_page(url)
         

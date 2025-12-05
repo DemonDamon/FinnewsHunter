@@ -1,14 +1,16 @@
 """
-Celery 爬取任务
+Celery 爬取任务 - Phase 2: 实时监控升级版
 """
 import logging
+import json
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Dict, Any
 from sqlalchemy import select, create_engine
 from sqlalchemy.orm import Session
 
 from ..core.celery_app import celery_app
 from ..core.config import settings
+from ..core.redis_client import redis_client
 from ..models.crawl_task import CrawlTask, CrawlMode, TaskStatus
 from ..models.news import News
 from ..tools import SinaCrawlerTool
@@ -23,55 +25,94 @@ def get_sync_db_session():
 
 
 @celery_app.task(bind=True, name="app.tasks.crawl_tasks.realtime_crawl_task")
-def realtime_crawl_task(self, source: str = "sina"):
+def realtime_crawl_task(self, source: str = "sina", force_refresh: bool = False):
     """
-    实时爬取任务（每5分钟执行一次）
+    实时爬取任务 (Phase 2 升级版)
+    
+    核心改进：
+    1. Redis 缓存检查（避免频繁爬取）
+    2. 智能时间过滤（基于配置的 NEWS_RETENTION_HOURS）
+    3. 只爬取最新一页
     
     Args:
         source: 新闻源（sina, jrj等）
+        force_refresh: 是否强制刷新（跳过缓存）
     """
     db = get_sync_db_session()
     task_record = None
+    cache_key = f"news:{source}:latest"
+    cache_time_key = f"{cache_key}:timestamp"
     
     try:
-        # 1. 创建任务记录
+        # ===== Phase 2.1: 检查 Redis 缓存 =====
+        if not force_refresh and redis_client.is_available():
+            cache_metadata = redis_client.get_cache_metadata(cache_key)
+            
+            if cache_metadata:
+                age_seconds = cache_metadata['age_seconds']
+                interval = (settings.CRAWL_INTERVAL_SINA 
+                           if source == "sina" 
+                           else settings.CRAWL_INTERVAL_JRJ)
+                
+                # 如果缓存时间 < 爬取间隔，使用缓存
+                if age_seconds < interval:
+                    logger.info(
+                        f"[{source}] 使用缓存数据 (age: {age_seconds:.0f}s < {interval}s)"
+                    )
+                    return {
+                        "status": "cached",
+                        "source": source,
+                        "cache_age": age_seconds,
+                        "message": f"缓存数据仍然有效，距上次爬取 {age_seconds:.0f} 秒"
+                    }
+        
+        # ===== 1. 创建任务记录 =====
         task_record = CrawlTask(
             celery_task_id=self.request.id,
             mode=CrawlMode.REALTIME,
             status=TaskStatus.RUNNING,
             source=source,
-            config={"page_limit": 1, "time_window": 3600},  # 只爬1页，1小时内的新闻
+            config={
+                "page_limit": 1, 
+                "retention_hours": settings.NEWS_RETENTION_HOURS,
+                "force_refresh": force_refresh
+            },
             started_at=datetime.utcnow(),
         )
         db.add(task_record)
         db.commit()
         db.refresh(task_record)
         
-        logger.info(f"[Task {task_record.id}] 开始实时爬取: {source}")
+        logger.info(f"[Task {task_record.id}] 🚀 开始实时爬取: {source}")
         
-        # 2. 创建爬虫
+        # ===== 2. 创建爬虫 =====
         if source == "sina":
             crawler = SinaCrawlerTool()
         else:
             raise ValueError(f"不支持的新闻源: {source}")
         
-        # 3. 执行爬取（只爬第一页）
+        # ===== 3. 执行爬取（只爬第一页） =====
         start_time = datetime.utcnow()
         news_list = crawler.crawl(start_page=1, end_page=1)
         
-        logger.info(f"[Task {task_record.id}] 爬取到 {len(news_list)} 条新闻")
+        logger.info(f"[Task {task_record.id}] 📰 爬取到 {len(news_list)} 条新闻")
         
-        # 4. 时间过滤（只要最近1小时的）
-        one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+        # ===== Phase 2.2: 智能时间过滤 =====
+        cutoff_time = datetime.utcnow() - timedelta(hours=settings.NEWS_RETENTION_HOURS)
         recent_news = [
             news for news in news_list
-            if news.publish_time and news.publish_time > one_hour_ago
+            if news.publish_time and news.publish_time > cutoff_time
         ] if news_list else []
         
-        logger.info(f"[Task {task_record.id}] 过滤后剩余 {len(recent_news)} 条新闻")
+        logger.info(
+            f"[Task {task_record.id}] ⏱️  过滤后剩余 {len(recent_news)} 条新闻 "
+            f"(保留 {settings.NEWS_RETENTION_HOURS} 小时内)"
+        )
         
-        # 5. 去重并保存
+        # ===== 4. 去重并保存 =====
         saved_count = 0
+        duplicate_count = 0
+        
         for news_item in recent_news:
             # 检查URL是否已存在
             existing = db.execute(
@@ -79,10 +120,11 @@ def realtime_crawl_task(self, source: str = "sina"):
             ).scalar_one_or_none()
             
             if existing:
-                logger.debug(f"[Task {task_record.id}] 新闻已存在: {news_item.url}")
+                duplicate_count += 1
+                logger.debug(f"[Task {task_record.id}] ⏭️  跳过重复新闻: {news_item.title[:30]}...")
                 continue
             
-            # 创建新记录
+            # 创建新记录（移除 summary 字段）
             news = News(
                 title=news_item.title,
                 content=news_item.content,
@@ -92,7 +134,6 @@ def realtime_crawl_task(self, source: str = "sina"):
                 author=news_item.author,
                 keywords=news_item.keywords,
                 stock_codes=news_item.stock_codes,
-                summary=news_item.summary,
             )
             
             db.add(news)
@@ -100,7 +141,32 @@ def realtime_crawl_task(self, source: str = "sina"):
         
         db.commit()
         
-        # 6. 更新任务状态
+        logger.info(
+            f"[Task {task_record.id}] 💾 保存 {saved_count} 条新新闻 "
+            f"(重复: {duplicate_count})"
+        )
+        
+        # ===== Phase 2.3: 更新 Redis 缓存 =====
+        if redis_client.is_available() and recent_news:
+            # 将新闻列表序列化后存入缓存
+            cache_data = [
+                {
+                    "title": n.title,
+                    "url": n.url,
+                    "publish_time": n.publish_time.isoformat() if n.publish_time else None,
+                    "source": n.source,
+                }
+                for n in recent_news
+            ]
+            success = redis_client.set_with_metadata(
+                cache_key, 
+                cache_data, 
+                ttl=settings.CACHE_TTL
+            )
+            if success:
+                logger.info(f"[Task {task_record.id}] 💾 Redis 缓存已更新 (TTL: {settings.CACHE_TTL}s)")
+        
+        # ===== 5. 更新任务状态 =====
         end_time = datetime.utcnow()
         execution_time = (end_time - start_time).total_seconds()
         
@@ -113,22 +179,27 @@ def realtime_crawl_task(self, source: str = "sina"):
             "total_crawled": len(news_list),
             "filtered": len(recent_news),
             "saved": saved_count,
-            "duplicates": len(recent_news) - saved_count,
+            "duplicates": duplicate_count,
+            "retention_hours": settings.NEWS_RETENTION_HOURS,
         }
         db.commit()
         
         logger.info(
-            f"[Task {task_record.id}] 完成! "
-            f"爬取: {len(news_list)}, 过滤: {len(recent_news)}, 保存: {saved_count}, "
+            f"[Task {task_record.id}] ✅ 完成! "
+            f"爬取: {len(news_list)} → 过滤: {len(recent_news)} → 保存: {saved_count}, "
             f"耗时: {execution_time:.2f}s"
         )
         
         return {
             "task_id": task_record.id,
             "status": "completed",
-            "crawled": len(recent_news),
+            "source": source,
+            "crawled": len(news_list),
+            "filtered": len(recent_news),
             "saved": saved_count,
+            "duplicates": duplicate_count,
             "execution_time": execution_time,
+            "timestamp": datetime.utcnow().isoformat(),
         }
         
     except Exception as e:

@@ -55,10 +55,11 @@ celery_app.conf.update(
 )
 
 # 任务路由（可选，用于任务分发）
-celery_app.conf.task_routes = {
-    "app.tasks.crawl_tasks.*": {"queue": "crawl"},
-    "app.tasks.analysis_tasks.*": {"queue": "analysis"},
-}
+# 注释掉自定义路由，使用默认的 celery 队列
+# celery_app.conf.task_routes = {
+#     "app.tasks.crawl_tasks.*": {"queue": "crawl"},
+#     "app.tasks.analysis_tasks.*": {"queue": "analysis"},
+# }
 
 
 if __name__ == "__main__":
