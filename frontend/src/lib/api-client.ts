@@ -40,16 +40,42 @@ apiClient.interceptors.response.use(
 )
 
 /**
- * 新闻相关 API
+ * 新闻相关 API - Phase 2 升级版
  */
 export const newsApi = {
   /**
-   * 获取新闻列表
+   * Phase 2: 获取最新新闻（智能缓存 + 自动刷新）
+   */
+  getLatestNews: async (params?: {
+    source?: string
+    limit?: number
+    force_refresh?: boolean
+  }): Promise<News[]> => {
+    const response = await apiClient.get<any>('/news/latest', { params })
+    // Phase 2 API 返回 { success, data: News[], ... }
+    // 兼容处理：如果返回的是对象，提取 data 字段；否则直接返回
+    if (response.data && typeof response.data === 'object' && 'data' in response.data) {
+      return response.data.data
+    }
+    return response.data
+  },
+
+  /**
+   * Phase 2: 强制刷新新闻
+   */
+  forceRefresh: async (params: { source: string }): Promise<{ success: boolean; message: string }> => {
+    const response = await apiClient.post('/news/refresh', null, { params })
+    return response.data
+  },
+
+  /**
+   * 获取新闻列表（带筛选）
    */
   getNewsList: async (params?: {
     skip?: number
     limit?: number
     source?: string
+    sentiment?: string
   }): Promise<News[]> => {
     const response = await apiClient.get<News[]>('/news/', { params })
     return response.data
@@ -64,9 +90,10 @@ export const newsApi = {
   },
 
   /**
-   * 触发爬取
+   * 【已废弃】触发爬取
    */
   crawlNews: async (data: CrawlRequest): Promise<CrawlResponse> => {
+    console.warn('⚠️ crawlNews API 已废弃，请使用 forceRefresh')
     const response = await apiClient.post<CrawlResponse>('/news/crawl', data)
     return response.data
   },
