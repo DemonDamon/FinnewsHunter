@@ -101,6 +101,64 @@ services:
     networks:
       - finnews_network
 
+  celery-worker:
+    image: python:3.11
+    container_name: finnews_celery_worker
+    working_dir: /app
+    command: >
+      sh -c "
+        pip install --no-cache-dir -r requirements.txt &&
+        celery -A app.core.celery_app worker --loglevel=info
+      "
+    volumes:
+      - ../backend:/app
+    environment:
+      - POSTGRES_USER=finnews
+      - POSTGRES_PASSWORD=finnews_dev_password
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=finnews_db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - finnews_network
+    restart: unless-stopped
+
+  celery-beat:
+    image: python:3.11
+    container_name: finnews_celery_beat
+    working_dir: /app
+    command: >
+      sh -c "
+        pip install --no-cache-dir -r requirements.txt &&
+        celery -A app.core.celery_app beat --loglevel=info
+      "
+    volumes:
+      - ../backend:/app
+    environment:
+      - POSTGRES_USER=finnews
+      - POSTGRES_PASSWORD=finnews_dev_password
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=finnews_db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - finnews_network
+    restart: unless-stopped
+
 volumes:
   postgres_data:
     driver: local
