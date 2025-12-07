@@ -21,6 +21,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+# ========== 爬虫源配置 ==========
+
+AVAILABLE_SOURCES = {
+    "sina": {"name": "新浪财经", "url": "https://finance.sina.com.cn/"},
+    "tencent": {"name": "腾讯财经", "url": "https://finance.qq.com/"},
+    "jwview": {"name": "金融界", "url": "http://www.jrj.com.cn/"},
+    "eeo": {"name": "经济观察网", "url": "https://www.eeo.com.cn/jg/jinrong/zhengquan/"},
+    "caijing": {"name": "财经网", "url": "https://finance.caijing.com.cn/"},
+    "jingji21": {"name": "21经济网", "url": "https://www.21jingji.com/channel/capital/"},
+    "nbd": {"name": "每日经济新闻", "url": "https://www.nbd.com.cn/columns/3/"},
+    "yicai": {"name": "第一财经", "url": "https://www.yicai.com/news/gushi/"},
+    "163": {"name": "网易财经", "url": "https://money.163.com/"},
+    "eastmoney": {"name": "东方财富", "url": "https://stock.eastmoney.com/"},
+}
+
+
 # ========== Pydantic Models ==========
 
 class NewsResponse(BaseModel):
@@ -59,10 +75,35 @@ class ForceRefreshResponse(BaseModel):
 
 # ========== API Endpoints ==========
 
+@router.get("/sources", summary="获取所有可用的爬虫源")
+async def get_available_sources():
+    """
+    获取所有可用的新闻爬虫源
+    
+    返回所有已配置的新闻源列表，包括：
+    - 源标识（source key）
+    - 显示名称
+    - 目标URL
+    """
+    return {
+        "success": True,
+        "data": [
+            {
+                "key": key,
+                "name": info["name"],
+                "url": info["url"]
+            }
+            for key, info in AVAILABLE_SOURCES.items()
+        ],
+        "total": len(AVAILABLE_SOURCES),
+        "message": f"返回 {len(AVAILABLE_SOURCES)} 个可用新闻源"
+    }
+
+
 @router.get("/latest", response_model=LatestNewsResponse, summary="获取最新新闻（智能缓存）")
 async def get_latest_news(
-    source: str = Query("sina", description="新闻源"),
-    limit: int = Query(50, le=100, description="返回数量"),
+    source: Optional[str] = Query(None, description="新闻源（不传则返回所有来源）"),
+    limit: int = Query(50, le=200, description="返回数量"),
     force_refresh: bool = Query(False, description="是否强制刷新（跳过缓存）"),
     db: AsyncSession = Depends(get_db)
 ):
@@ -74,6 +115,10 @@ async def get_latest_news(
     2. force_refresh=true 时触发异步爬取任务
     3. 前端通过 TanStack Query 自动轮询此接口（3分钟间隔）
     
+    **新增功能**：
+    - source参数可选，不传则返回所有来源的新闻
+    - limit上限提升至200
+    
     **优势**：
     - 无需手动输入页码，自动展示最新内容
     - 后台 Celery 定时爬取，前端只负责展示
@@ -81,7 +126,7 @@ async def get_latest_news(
     """
     try:
         # 1. 如果强制刷新，触发 Celery 任务（异步）
-        if force_refresh:
+        if force_refresh and source:
             logger.info(f"触发强制刷新: {source}")
             task = realtime_crawl_task.delay(source=source, force_refresh=True)
             logger.info(f"Celery Task ID: {task.id}")
@@ -90,14 +135,15 @@ async def get_latest_news(
         # 2. 从数据库查询最新新闻
         cutoff_time = datetime.utcnow() - timedelta(hours=settings.NEWS_RETENTION_HOURS)
         
+        # 构建查询条件
+        conditions = [News.publish_time >= cutoff_time]
+        if source:
+            # 如果指定了来源，只查询该来源
+            conditions.append(News.source == source)
+        
         query = (
             select(News)
-            .where(
-                and_(
-                    News.source == source,
-                    News.publish_time >= cutoff_time
-                )
-            )
+            .where(and_(*conditions))
             .order_by(desc(News.publish_time))
             .limit(limit)
         )
@@ -106,9 +152,11 @@ async def get_latest_news(
         news_list = result.scalars().all()
         
         # 3. 检查 Redis 缓存元数据（用于显示"最后更新时间"）
-        cache_key = f"news:{source}:latest"
-        cache_metadata = redis_client.get_cache_metadata(cache_key)
+        cache_key = f"news:{source if source else 'all'}:latest"
+        cache_metadata = redis_client.get_cache_metadata(cache_key) if source else None
         cache_age = cache_metadata['age_seconds'] if cache_metadata else None
+        
+        source_desc = f"来源 {source}" if source else "所有来源"
         
         return LatestNewsResponse(
             success=True,
@@ -116,7 +164,7 @@ async def get_latest_news(
             total=len(news_list),
             from_cache=False,  # 数据来自数据库，不是 Redis
             cache_age=cache_age,
-            message=f"返回 {len(news_list)} 条最新新闻（最近 {settings.NEWS_RETENTION_HOURS} 小时）"
+            message=f"返回 {len(news_list)} 条最新新闻（{source_desc}，最近 {settings.NEWS_RETENTION_HOURS} 小时）"
         )
         
     except Exception as e:
