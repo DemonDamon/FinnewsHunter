@@ -19,4 +19,4 @@ ENV/
 # OS
 .DS_Store
 node_modules/
-**/node_modules/
+**/node_modules/backend/celerybeat-schedule*
