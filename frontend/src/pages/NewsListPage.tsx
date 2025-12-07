@@ -11,21 +11,40 @@ import type { News } from '@/types/api'
 
 type FilterType = 'all' | 'pending' | 'positive' | 'negative' | 'neutral'
 
+// 新闻源配置
+const NEWS_SOURCES = [
+  { key: 'all', name: '全部来源', icon: '📰' },
+  { key: 'sina', name: '新浪财经', icon: '🌐' },
+  { key: 'tencent', name: '腾讯财经', icon: '🐧' },
+  { key: 'jwview', name: '金融界', icon: '💰' },
+  { key: 'eeo', name: '经济观察网', icon: '📊' },
+  { key: 'caijing', name: '财经网', icon: '📈' },
+  { key: 'jingji21', name: '21经济网', icon: '📉' },
+  { key: 'nbd', name: '每日经济新闻', icon: '📰' },
+  { key: 'yicai', name: '第一财经', icon: '🎯' },
+  { key: '163', name: '网易财经', icon: '📧' },
+  { key: 'eastmoney', name: '东方财富', icon: '💎' },
+]
+
 export default function NewsListPage() {
   const queryClient = useQueryClient()
   const [expandedStocks, setExpandedStocks] = useState<Set<number>>(new Set())
   const [gridCols, setGridCols] = useState(3)
   const [activeFilter, setActiveFilter] = useState<FilterType>('all')
+  const [activeSource, setActiveSource] = useState<string>('all') // 新增：来源筛选
   const [lastUpdateTime, setLastUpdateTime] = useState<string>('')
   const [analyzingNewsId, setAnalyzingNewsId] = useState<number | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false) // 手动管理刷新状态
 
-  // Phase 2: 自动轮询最新新闻（3分钟刷新）
+  // Phase 2: 自动轮询最新新闻（1分钟刷新）
   const { data: newsList, isLoading, refetch, dataUpdatedAt } = useQuery({
-    queryKey: ['news', 'latest'],
-    queryFn: () => newsApi.getLatestNews({ source: 'sina', limit: 50 }),
-    staleTime: 3 * 60 * 1000,  // 3分钟内数据视为新鲜
-    refetchInterval: 3 * 60 * 1000,  // 每3分钟自动刷新
+    queryKey: ['news', 'latest', activeSource],
+    queryFn: () => newsApi.getLatestNews({ 
+      source: activeSource === 'all' ? undefined : activeSource, 
+      limit: 200  // 增加限制以显示更多新闻
+    }),
+    staleTime: 1 * 60 * 1000,  // 1分钟内数据视为新鲜
+    refetchInterval: 1 * 60 * 1000,  // 每1分钟自动刷新
     refetchIntervalInBackground: true,  // 后台也刷新
   })
 
@@ -236,8 +255,32 @@ export default function NewsListPage() {
               </p>
             </div>
             
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col gap-3 w-full md:w-auto">
+              {/* 来源筛选器 */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium text-slate-700 mr-2">📰 新闻源：</span>
+                <div className="flex flex-wrap items-center gap-1.5 bg-blue-50 p-1 rounded-lg border border-blue-200">
+                  {NEWS_SOURCES.map(source => (
+                    <Button
+                      key={source.key}
+                      variant={activeSource === source.key ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => setActiveSource(source.key)}
+                      className={activeSource === source.key 
+                        ? 'bg-white text-blue-600 shadow-sm hover:bg-white/90 text-xs' 
+                        : 'text-slate-600 hover:text-blue-600 text-xs'
+                      }
+                    >
+                      <span className="mr-1">{source.icon}</span>
+                      {source.name}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              
               {/* 状态筛选器 */}
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-slate-700 mr-2">📊 情感：</span>
               <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-1 rounded-lg border border-slate-200">
                 <Button
                   variant={activeFilter === 'all' ? 'default' : 'ghost'}
@@ -284,6 +327,7 @@ export default function NewsListPage() {
                   中性
                 </Button>
               </div>
+              </div>
               
               {/* 立即刷新按钮 */}
               <Button
@@ -300,6 +344,38 @@ export default function NewsListPage() {
           </div>
         </CardHeader>
       </Card>
+
+      {/* 新闻统计 */}
+      {!isLoading && filteredNews && filteredNews.length > 0 && (
+        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold text-blue-600">{filteredNews.length}</span>
+                  <span className="text-sm text-gray-600">条新闻</span>
+                </div>
+                {activeSource === 'all' && filteredNews && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">来源：</span>
+                    <div className="flex flex-wrap gap-1">
+                      {Array.from(new Set(filteredNews.map(n => n.source))).map(source => (
+                        <Badge key={source} variant="outline" className="text-xs">
+                          <span className="mr-0.5">{NEWS_SOURCES.find(s => s.key === source)?.icon}</span>
+                          {NEWS_SOURCES.find(s => s.key === source)?.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="text-xs text-gray-500">
+                {activeFilter !== 'all' && `已筛选：${activeFilter === 'pending' ? '待分析' : activeFilter === 'positive' ? '利好' : activeFilter === 'negative' ? '利空' : '中性'}`}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 新闻列表 */}
       <div 
@@ -330,8 +406,8 @@ export default function NewsListPage() {
                   </div>
                   <span>•</span>
                   <div className="flex items-center gap-1">
-                    <Newspaper className="w-3 h-3" />
-                    <span>{news.source}</span>
+                    <span>{NEWS_SOURCES.find(s => s.key === news.source)?.icon || '📰'}</span>
+                    <span>{NEWS_SOURCES.find(s => s.key === news.source)?.name || news.source}</span>
                   </div>
                 </div>
               </CardHeader>
