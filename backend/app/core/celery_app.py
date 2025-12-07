@@ -39,18 +39,66 @@ celery_app.conf.update(
     
     # Beat 调度配置
     beat_schedule={
-        # 每5分钟爬取新浪财经
-        "crawl-sina-every-5min": {
+        # 每1分钟爬取新浪财经
+        "crawl-sina-every-1min": {
             "task": "app.tasks.crawl_tasks.realtime_crawl_task",
-            "schedule": crontab(minute="*/5"),  # 每5分钟
+            "schedule": crontab(minute="*/1"),
             "args": ("sina",),
         },
-        # 可以添加更多定时任务
-        # "crawl-jrj-every-15min": {
-        #     "task": "app.tasks.crawl_tasks.realtime_crawl_task",
-        #     "schedule": crontab(minute="*/15"),
-        #     "args": ("jrj",),
-        # },
+        # 每1分钟爬取腾讯财经
+        "crawl-tencent-every-1min": {
+            "task": "app.tasks.crawl_tasks.realtime_crawl_task",
+            "schedule": crontab(minute="*/1"),
+            "args": ("tencent",),
+        },
+        # 每1分钟爬取中新经纬
+        "crawl-jwview-every-1min": {
+            "task": "app.tasks.crawl_tasks.realtime_crawl_task",
+            "schedule": crontab(minute="*/1"),
+            "args": ("jwview",),
+        },
+        # 每1分钟爬取经济观察网
+        "crawl-eeo-every-1min": {
+            "task": "app.tasks.crawl_tasks.realtime_crawl_task",
+            "schedule": crontab(minute="*/1"),
+            "args": ("eeo",),
+        },
+        # 每1分钟爬取财经网
+        "crawl-caijing-every-1min": {
+            "task": "app.tasks.crawl_tasks.realtime_crawl_task",
+            "schedule": crontab(minute="*/1"),
+            "args": ("caijing",),
+        },
+        # 每1分钟爬取21经济网
+        "crawl-jingji21-every-1min": {
+            "task": "app.tasks.crawl_tasks.realtime_crawl_task",
+            "schedule": crontab(minute="*/1"),
+            "args": ("jingji21",),
+        },
+        # 每1分钟爬取每日经济新闻
+        "crawl-nbd-every-1min": {
+            "task": "app.tasks.crawl_tasks.realtime_crawl_task",
+            "schedule": crontab(minute="*/1"),
+            "args": ("nbd",),
+        },
+        # 每1分钟爬取第一财经
+        "crawl-yicai-every-1min": {
+            "task": "app.tasks.crawl_tasks.realtime_crawl_task",
+            "schedule": crontab(minute="*/1"),
+            "args": ("yicai",),
+        },
+        # 每1分钟爬取网易财经
+        "crawl-163-every-1min": {
+            "task": "app.tasks.crawl_tasks.realtime_crawl_task",
+            "schedule": crontab(minute="*/1"),
+            "args": ("163",),
+        },
+        # 每1分钟爬取东方财富
+        "crawl-eastmoney-every-1min": {
+            "task": "app.tasks.crawl_tasks.realtime_crawl_task",
+            "schedule": crontab(minute="*/1"),
+            "args": ("eastmoney",),
+        },
     },
 )
 

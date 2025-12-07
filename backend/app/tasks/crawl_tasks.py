@@ -1,5 +1,5 @@
 """
-Celery 爬取任务 - Phase 2: 实时监控升级版
+Celery 爬取任务 - Phase 2: 实时监控升级版 + 多源支持
 """
 import logging
 import json
@@ -13,9 +13,50 @@ from ..core.config import settings
 from ..core.redis_client import redis_client
 from ..models.crawl_task import CrawlTask, CrawlMode, TaskStatus
 from ..models.news import News
-from ..tools import SinaCrawlerTool
+from ..tools import (
+    SinaCrawlerTool,
+    TencentCrawlerTool,
+    JwviewCrawlerTool,
+    EeoCrawlerTool,
+    CaijingCrawlerTool,
+    Jingji21CrawlerTool,
+    NbdCrawlerTool,
+    YicaiCrawlerTool,
+    Netease163CrawlerTool,
+    EastmoneyCrawlerTool,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def get_crawler_tool(source: str):
+    """
+    爬虫工厂函数
+    
+    Args:
+        source: 新闻源名称
+        
+    Returns:
+        对应的爬虫实例
+    """
+    crawlers = {
+        "sina": SinaCrawlerTool,
+        "tencent": TencentCrawlerTool,
+        "jwview": JwviewCrawlerTool,
+        "eeo": EeoCrawlerTool,
+        "caijing": CaijingCrawlerTool,
+        "jingji21": Jingji21CrawlerTool,
+        "nbd": NbdCrawlerTool,
+        "yicai": YicaiCrawlerTool,
+        "163": Netease163CrawlerTool,
+        "eastmoney": EastmoneyCrawlerTool,
+    }
+    
+    crawler_class = crawlers.get(source)
+    if not crawler_class:
+        raise ValueError(f"Unknown news source: {source}")
+    
+    return crawler_class()
 
 
 def get_sync_db_session():
@@ -50,9 +91,20 @@ def realtime_crawl_task(self, source: str = "sina", force_refresh: bool = False)
             
             if cache_metadata:
                 age_seconds = cache_metadata['age_seconds']
-                interval = (settings.CRAWL_INTERVAL_SINA 
-                           if source == "sina" 
-                           else settings.CRAWL_INTERVAL_JRJ)
+                # 根据不同源获取对应的爬取间隔
+                interval_map = {
+                    "sina": settings.CRAWL_INTERVAL_SINA,
+                    "tencent": settings.CRAWL_INTERVAL_TENCENT,
+                    "jwview": settings.CRAWL_INTERVAL_JWVIEW,
+                    "eeo": settings.CRAWL_INTERVAL_EEO,
+                    "caijing": settings.CRAWL_INTERVAL_CAIJING,
+                    "jingji21": settings.CRAWL_INTERVAL_JINGJI21,
+                    "nbd": 60,  # 每日经济新闻
+                    "yicai": 60,  # 第一财经
+                    "163": 60,  # 网易财经
+                    "eastmoney": 60,  # 东方财富
+                }
+                interval = interval_map.get(source, 60)  # 默认60秒
                 
                 # 如果缓存时间 < 爬取间隔，使用缓存
                 if age_seconds < interval:
@@ -85,11 +137,12 @@ def realtime_crawl_task(self, source: str = "sina", force_refresh: bool = False)
         
         logger.info(f"[Task {task_record.id}] 🚀 开始实时爬取: {source}")
         
-        # ===== 2. 创建爬虫 =====
-        if source == "sina":
-            crawler = SinaCrawlerTool()
-        else:
-            raise ValueError(f"不支持的新闻源: {source}")
+        # ===== 2. 创建爬虫（使用工厂函数） =====
+        try:
+            crawler = get_crawler_tool(source)
+        except ValueError as e:
+            logger.error(f"[Task {task_record.id}] ❌ {e}")
+            raise
         
         # ===== 3. 执行爬取（只爬第一页） =====
         start_time = datetime.utcnow()
