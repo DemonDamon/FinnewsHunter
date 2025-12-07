@@ -37,6 +37,7 @@ FinnewsHunter 不再局限于传统的文本分类，而是部署多智能体战
 - Python 3.11+
 - Docker & Docker Compose
 - (可选) OpenAI API Key 或本地 LLM
+- Node.js 18+ (前端开发)
 
 ### 1. 安装 AgenticX
 
@@ -45,83 +46,510 @@ cd /Users/damon/myWork/AgenticX
 pip install -e .
 ```
 
-### 2. 安装依赖
+### 2. 安装后端依赖
 
 ```bash
-cd examples/agenticx-for-finance/FinnewsHunter/backend
+cd FinnewsHunter/backend
 pip install -r requirements.txt
 ```
 
 ### 3. 配置环境变量
 
 ```bash
+cd FinnewsHunter/backend
 cp env.example .env
 # 编辑 .env 文件，填入 OPENAI_API_KEY 等配置
 ```
 
-### 4. 启动服务
+### 4. 启动基础服务（PostgreSQL、Redis、Milvus）
 
 ```bash
-# 方式 1: 使用启动脚本（推荐）
-chmod +x start.sh
-./start.sh
+cd FinnewsHunter
+docker compose -f deploy/docker-compose.dev.yml up -d postgres redis milvus-etcd milvus-minio milvus-standalone
+```
 
-# 方式 2: 手动启动
-cd ../deploy
-docker-compose -f docker-compose.dev.yml up -d
-cd ../backend
-python -m app.core.database  # 初始化数据库
+### 5. 初始化数据库
+
+```bash
+cd FinnewsHunter/backend
+python init_db.py
+```
+
+### 6. 启动后端API服务
+
+```bash
+cd FinnewsHunter/backend
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 5. 访问应用
+### 7. 启动Celery Worker和Beat（自动爬取）
 
+```bash
+# 新开一个终端
+cd FinnewsHunter
+docker compose -f deploy/docker-compose.dev.yml up -d celery-worker celery-beat
+```
+
+### 8. 启动前端服务
+
+```bash
+# 新开一个终端
+cd FinnewsHunter/frontend
+npm install  # 首次需要安装依赖
+npm run dev
+```
+
+### 9. 访问应用
+
+- **前端界面**: http://localhost:3000
 - **后端 API**: http://localhost:8000
 - **API 文档**: http://localhost:8000/docs
-- **前端界面**: 直接打开 `frontend/index.html`
+
+---
+
+## 🔄 服务管理
+
+### 查看所有服务状态
+
+```bash
+cd FinnewsHunter
+docker compose -f deploy/docker-compose.dev.yml ps
+```
+
+### 重启所有服务
+
+```bash
+cd FinnewsHunter
+
+# 重启Docker服务（基础设施 + Celery）
+docker compose -f deploy/docker-compose.dev.yml restart
+
+# 如果后端API是独立启动的，需要手动重启
+# Ctrl+C 停止后端进程，然后重新运行：
+cd backend
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### 重启特定服务
+
+```bash
+cd FinnewsHunter
+
+# 只重启Celery（应用代码更改后）
+docker compose -f deploy/docker-compose.dev.yml restart celery-worker celery-beat
+
+# 只重启数据库
+docker compose -f deploy/docker-compose.dev.yml restart postgres
+
+# 只重启Redis
+docker compose -f deploy/docker-compose.dev.yml restart redis
+```
+
+### 停止所有服务
+
+```bash
+cd FinnewsHunter
+docker compose -f deploy/docker-compose.dev.yml down
+```
+
+### 查看日志
+
+```bash
+cd FinnewsHunter
+
+# 查看Celery Worker日志
+docker compose -f deploy/docker-compose.dev.yml logs -f celery-worker
+
+# 查看Celery Beat日志（定时任务调度）
+docker compose -f deploy/docker-compose.dev.yml logs -f celery-beat
+
+# 查看PostgreSQL日志
+docker compose -f deploy/docker-compose.dev.yml logs -f postgres
+
+# 查看所有服务日志
+docker compose -f deploy/docker-compose.dev.yml logs -f
+```
+
+---
+
+## 🗑️ 重置数据库
+
+### 方式1：使用一键重置脚本（推荐）⭐
+
+```bash
+cd FinnewsHunter
+
+# 执行重置脚本
+./reset_all_data.sh
+
+# 输入 yes 确认
+```
+
+**脚本会自动完成：**
+1. ✅ 清空PostgreSQL中的所有新闻和任务数据
+2. ✅ 清空Redis缓存
+3. ✅ 重置数据库自增ID（从1重新开始）
+4. ✅ 清空Celery调度文件
+5. ✅ 自动重启Celery服务
+
+**执行后等待：**
+- 5-10分钟系统会自动重新爬取数据
+- 访问前端查看新数据
+
+---
+
+### 方式2：手动重置（高级）
+
+#### 步骤1：清空PostgreSQL数据
+
+```bash
+# 进入PostgreSQL容器
+docker exec -it finnews_postgres psql -U finnews -d finnews_db
+```
+
+在PostgreSQL命令行中执行：
+
+```sql
+-- 清空新闻表
+DELETE FROM news;
+
+-- 清空任务表
+DELETE FROM crawl_tasks;
+
+-- 清空分析表
+DELETE FROM analyses;
+
+-- 重置自增ID
+ALTER SEQUENCE news_id_seq RESTART WITH 1;
+ALTER SEQUENCE crawl_tasks_id_seq RESTART WITH 1;
+ALTER SEQUENCE analyses_id_seq RESTART WITH 1;
+
+-- 验证结果（应该都是0）
+SELECT 'news表', COUNT(*) FROM news;
+SELECT 'crawl_tasks表', COUNT(*) FROM crawl_tasks;
+SELECT 'analyses表', COUNT(*) FROM analyses;
+
+-- 退出
+\q
+```
+
+#### 步骤2：清空Redis缓存
+
+```bash
+cd FinnewsHunter
+docker exec finnews_redis redis-cli FLUSHDB
+```
+
+#### 步骤3：清空Celery调度文件
+
+```bash
+cd FinnewsHunter/backend
+rm -f celerybeat-schedule*
+```
+
+#### 步骤4：重启Celery服务
+
+```bash
+cd FinnewsHunter
+docker compose -f deploy/docker-compose.dev.yml restart celery-worker celery-beat
+```
+
+#### 步骤5：验证数据已清空
+
+```bash
+# 检查新闻数量（应该是0）
+docker exec finnews_postgres psql -U finnews -d finnews_db -c "SELECT COUNT(*) FROM news;"
+
+# 检查Redis（应该是0或很小）
+docker exec finnews_redis redis-cli DBSIZE
+
+# 查看Celery是否开始爬取
+docker compose -f deploy/docker-compose.dev.yml logs -f celery-beat
+# 应该看到每分钟触发10个爬取任务
+```
+
+---
+
+### 方式3：使用Python脚本重置
+
+```bash
+cd FinnewsHunter/backend
+python reset_database.py
+# 输入 yes 确认
+```
+
+---
+
+### 方式4：快速手动清理（一行命令）🔥
+
+**适用场景：** 当重置脚本不工作时，使用此方法最快速
+
+```bash
+cd FinnewsHunter
+
+# 步骤1：清空数据库表
+docker exec finnews_postgres psql -U finnews -d finnews_db -c "DELETE FROM news; DELETE FROM crawl_tasks; DELETE FROM analyses;"
+
+# 步骤2：重置自增ID
+docker exec finnews_postgres psql -U finnews -d finnews_db -c "ALTER SEQUENCE news_id_seq RESTART WITH 1; ALTER SEQUENCE crawl_tasks_id_seq RESTART WITH 1; ALTER SEQUENCE analyses_id_seq RESTART WITH 1;"
+
+# 步骤3：清空Redis缓存
+docker exec finnews_redis redis-cli FLUSHDB
+
+# 步骤4：清空Celery调度文件
+rm -f backend/celerybeat-schedule*
+
+# 步骤5：重启Celery服务
+docker compose -f deploy/docker-compose.dev.yml restart celery-worker celery-beat
+
+# 步骤6：验证是否清空（应该显示0）
+docker exec finnews_postgres psql -U finnews -d finnews_db -c "SELECT COUNT(*) FROM news;"
+```
+
+**执行后立即刷新浏览器：**
+- Mac: `Command + Shift + R`
+- Windows: `Ctrl + Shift + R`
+
+---
+
+### 🖥️ 清除前端缓存（重要！）
+
+**数据清空后，前端可能仍显示旧数据，这是因为浏览器缓存。**
+
+#### 方法1：硬刷新浏览器（推荐）⭐
+
+**Mac系统：**
+```
+按 Command + Shift + R
+或 Command + Option + R
+```
+
+**Windows/Linux系统：**
+```
+按 Ctrl + Shift + R
+或 Ctrl + F5
+```
+
+#### 方法2：开发者工具清空缓存
+
+1. 按 `F12` 打开开发者工具
+2. 右键点击刷新按钮（地址栏旁边）
+3. 选择 **"清空缓存并硬性重新加载"**
+
+#### 方法3：清除浏览器缓存
+
+1. **Chrome/Edge:**
+   - `Command + Shift + Delete` (Mac) 或 `Ctrl + Shift + Delete` (Windows)
+   - 勾选"缓存的图片和文件"
+   - 时间范围选择"全部"
+   - 点击"清除数据"
+
+2. **刷新页面后，再次硬刷新**
+   - 确保React Query缓存也被清除
+
+#### 方法4：重启前端开发服务器（最彻底）
+
+```bash
+# 在前端终端按 Ctrl+C 停止服务
+# 然后重新启动
+cd FinnewsHunter/frontend
+npm run dev
+```
+
+---
+
+## 📊 重置后的数据恢复时间线
+
+| 时间 | 事件 | 预期结果 |
+|------|------|----------|
+| 0分钟 | 执行重置脚本 | 数据库清空，Redis清空 |
+| 1分钟 | Celery Beat开始调度 | 10个爬取任务被触发 |
+| 2-5分钟 | 第一批新闻保存 | 数据库开始有数据 |
+| 5-10分钟 | 所有源都有数据 | 前端可看到100+条新闻 |
+| 30分钟 | 数据持续增长 | 500+条新闻 |
+| 1小时 | 稳定运行 | 1000-2000条新闻 |
+
+**注意：**
+- 重置后需要等待5-10分钟才能看到新数据
+- **前端必须硬刷新**（Command+Shift+R / Ctrl+Shift+R）清除缓存
+- 不要频繁重置，会影响系统稳定性
+
+**重置后立即硬刷新前端的步骤：**
+1. 执行重置命令
+2. **立即**在浏览器按 `Command + Shift + R` (Mac) 或 `Ctrl + Shift + R` (Windows)
+3. 等待5-10分钟后再次刷新查看新数据
+
+---
+
+## ⚠️ 爬虫状态检查
+
+### 查看哪些源正常工作
+
+```bash
+cd FinnewsHunter
+
+# 查看各源的新闻数量
+docker exec finnews_postgres psql -U finnews -d finnews_db -c "
+SELECT source, COUNT(*) as count 
+FROM news 
+WHERE created_at > NOW() - INTERVAL '1 hour'
+GROUP BY source 
+ORDER BY count DESC;
+"
+
+# 查看最近的爬取任务状态
+docker exec finnews_postgres psql -U finnews -d finnews_db -c "
+SELECT source, 
+       crawled_count, 
+       saved_count, 
+       status,
+       error_message 
+FROM crawl_tasks 
+WHERE created_at > NOW() - INTERVAL '10 minutes'
+ORDER BY created_at DESC 
+LIMIT 20;
+"
+```
+
+### 查看爬取错误
+
+```bash
+cd FinnewsHunter
+
+# 查看ERROR日志
+docker compose -f deploy/docker-compose.dev.yml logs celery-worker | grep ERROR
+
+# 查看特定源的问题
+docker compose -f deploy/docker-compose.dev.yml logs celery-worker | grep "jwview"
+```
 
 ---
 
 ## 📚 使用指南
 
-### 步骤 1: 爬取新闻
+### 自动爬取模式（推荐）⭐
+
+**系统已配置10个新闻源的自动爬取：**
+
+1. 🌐 新浪财经
+2. 🐧 腾讯财经
+3. 💰 金融界
+4. 📊 经济观察网
+5. 📈 财经网
+6. 📉 21经济网
+7. 📰 每日经济新闻
+8. 🎯 第一财经
+9. 📧 网易财经
+10. 💎 东方财富
+
+**工作方式：**
+- ✅ Celery Beat 每1分钟自动触发所有源的爬取
+- ✅ 自动去重（URL级别）
+- ✅ 智能时间筛选（保留24小时内新闻）
+- ✅ 股票关键词筛选
+- ✅ 无需手动操作
+
+**查看爬取进度：**
+
+```bash
+# 查看Celery Beat调度日志
+cd FinnewsHunter
+docker compose -f deploy/docker-compose.dev.yml logs -f celery-beat
+
+# 查看Celery Worker执行日志
+docker compose -f deploy/docker-compose.dev.yml logs -f celery-worker
+```
+
+---
+
+### 手动刷新（立即获取最新）
 
 **方式 1: 通过前端**
-1. 打开 `frontend/index.html`
-2. 输入页码范围（如 1-3）
-3. 点击"📰 爬取新闻"
+1. 访问 http://localhost:3000/news
+2. 点击右上角"🔄 立即刷新"按钮
+3. 系统会立即触发爬取，约2分钟后数据更新
 
 **方式 2: 通过 API**
 ```bash
-curl -X POST http://localhost:8000/api/v1/news/crawl \
-  -H "Content-Type: application/json" \
-  -d '{
-    "source": "sina",
-    "start_page": 1,
-    "end_page": 2
-  }'
+# 强制刷新新浪财经
+curl -X POST "http://localhost:8000/api/v1/news/refresh?source=sina"
+
+# 强制刷新所有源（需要逐个调用）
+for source in sina tencent jwview eeo caijing jingji21 nbd yicai 163 eastmoney; do
+  curl -X POST "http://localhost:8000/api/v1/news/refresh?source=$source"
+  sleep 1
+done
 ```
 
-### 步骤 2: 查看新闻列表
+---
+
+### 查看新闻列表
+
+**方式 1: 通过前端（推荐）**
+- 访问 http://localhost:3000
+- 首页：查看来源统计和最新新闻
+- 新闻流：按来源和情感筛选新闻
+
+**方式 2: 通过 API**
 
 ```bash
-curl http://localhost:8000/api/v1/news/?limit=10
+# 获取所有来源的最新新闻（200条）
+curl "http://localhost:8000/api/v1/news/latest?limit=200"
+
+# 获取特定来源的新闻
+curl "http://localhost:8000/api/v1/news/latest?source=sina&limit=50"
+
+# 按情感筛选（使用旧接口）
+curl "http://localhost:8000/api/v1/news/?sentiment=positive&limit=20"
+
+# 获取所有可用的新闻源列表
+curl "http://localhost:8000/api/v1/news/sources"
 ```
 
-### 步骤 3: 分析新闻
+---
+
+### 分析新闻
 
 **方式 1: 通过前端**
-- 在新闻卡片上点击"📊 分析"按钮
+- 在新闻卡片上点击"✨ 分析"按钮
+- 等待3-5秒查看分析结果
 
 **方式 2: 通过 API**
 ```bash
+# 分析指定ID的新闻
 curl -X POST http://localhost:8000/api/v1/analysis/news/1
+
+# 查看分析结果
+curl http://localhost:8000/api/v1/analysis/1
 ```
 
-### 步骤 4: 查看分析结果
+---
+
+### 按来源筛选查看
+
+**前端操作：**
+
+1. **首页（Dashboard）**
+   - 查看"新闻来源统计"卡片
+   - 点击任意来源按钮筛选
+   - 显示该来源的新闻数量和列表
+
+2. **新闻流页面**
+   - 顶部有10个来源筛选按钮
+   - 点击切换查看不同来源
+   - 支持来源+情感双重筛选
+
+**API操作：**
 
 ```bash
-curl http://localhost:8000/api/v1/analysis/1
+# 查看新浪财经的新闻
+curl "http://localhost:8000/api/v1/news/latest?source=sina&limit=50"
+
+# 查看每日经济新闻
+curl "http://localhost:8000/api/v1/news/latest?source=nbd&limit=50"
+
+# 查看所有来源
+curl "http://localhost:8000/api/v1/news/latest?limit=200"
 ```
 
 ---
@@ -206,41 +634,287 @@ FinnewsHunter/
 
 ### 问题 1: 数据库连接失败
 
+**症状：** 后端启动报错 `could not connect to database`
+
+**解决方法：**
+
 ```bash
+cd FinnewsHunter
+
 # 检查 PostgreSQL 是否启动
 docker ps | grep postgres
 
 # 查看日志
-docker logs finnews_postgres
+docker compose -f deploy/docker-compose.dev.yml logs postgres
 
 # 重启容器
-docker-compose -f deploy/docker-compose.dev.yml restart postgres
+docker compose -f deploy/docker-compose.dev.yml restart postgres
+
+# 等待30秒后重试后端启动
 ```
 
-### 问题 2: LLM 调用失败
+---
 
-检查 `.env` 文件中的 API Key 配置：
+### 问题 2: Celery任务不执行
+
+**症状：** 前端显示新闻数量为0，没有自动爬取
+
+**排查步骤：**
+
 ```bash
-# 确保设置了 OPENAI_API_KEY
-grep OPENAI_API_KEY backend/.env
+cd FinnewsHunter
+
+# 1. 检查Celery Worker是否运行
+docker ps | grep celery
+
+# 2. 查看Celery Beat日志（应该看到每分钟触发任务）
+docker compose -f deploy/docker-compose.dev.yml logs celery-beat --tail=100
+
+# 3. 查看Celery Worker日志（查看任务执行情况）
+docker compose -f deploy/docker-compose.dev.yml logs celery-worker --tail=100
+
+# 4. 检查Redis连接
+docker exec finnews_redis redis-cli PING
+# 应该返回 PONG
+
+# 5. 重启Celery服务
+docker compose -f deploy/docker-compose.dev.yml restart celery-worker celery-beat
 ```
 
-### 问题 3: Milvus 连接失败
+---
+
+### 问题 3: 爬取失败（404错误）
+
+**症状：** Celery日志显示 `404 Client Error: Not Found`
+
+**原因：** 新闻网站URL已变更
+
+**解决方法：**
 
 ```bash
+# 1. 手动访问URL验证是否可用
+curl -I https://finance.caijing.com.cn/
+
+# 2. 如果URL变更，更新对应爬虫的配置
+# 编辑 backend/app/tools/{source}_crawler.py
+# 更新 BASE_URL 和 STOCK_URL
+
+# 3. 清理Python缓存
+cd FinnewsHunter/backend
+find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+
+# 4. 重启Celery
+cd ..
+docker compose -f deploy/docker-compose.dev.yml restart celery-worker celery-beat
+```
+
+---
+
+### 问题 4: 只有新浪财经有数据
+
+**症状：** 其他9个来源没有新闻
+
+**可能原因：**
+1. Celery Beat配置不完整
+2. 爬虫代码有错误
+3. 网站URL不正确
+
+**解决方法：**
+
+```bash
+cd FinnewsHunter
+
+# 1. 检查Celery Beat配置
+docker compose -f deploy/docker-compose.dev.yml logs celery-beat | grep "crawl-"
+# 应该看到10个定时任务（crawl-sina, crawl-tencent, ..., crawl-eastmoney）
+
+# 2. 手动测试单个源的爬取
+docker exec -it finnews_celery_worker python -c "
+from app.tools import get_crawler_tool
+crawler = get_crawler_tool('nbd')  # 测试每日经济新闻
+news = crawler.crawl()
+print(f'爬取到 {len(news)} 条新闻')
+"
+
+# 3. 查看数据库中各源的数据量
+docker exec finnews_postgres psql -U finnews -d finnews_db -c "
+SELECT source, COUNT(*) as count 
+FROM news 
+GROUP BY source 
+ORDER BY count DESC;
+"
+
+# 4. 如果某个源一直失败，查看详细错误
+docker compose -f deploy/docker-compose.dev.yml logs celery-worker | grep "ERROR"
+```
+
+---
+
+### 问题 5: LLM 调用失败
+
+**症状：** 分析功能不工作
+
+**解决方法：**
+
+```bash
+# 检查环境变量
+cd FinnewsHunter/backend
+grep OPENAI_API_KEY .env
+
+# 如果使用阿里云百炼
+grep DASHSCOPE_API_KEY .env
+```
+
+---
+
+### 问题 6: 前端显示空白或CORS错误
+
+**症状：** 前端无法加载数据，浏览器Console显示CORS错误
+
+**解决方法：**
+
+```bash
+# 1. 检查后端CORS配置
+cd FinnewsHunter/backend
+grep BACKEND_CORS_ORIGINS .env
+# 应该包含 http://localhost:3000
+
+# 2. 检查前端API地址配置
+cd ../frontend
+cat .env
+# VITE_API_URL 应该是 http://localhost:8000
+
+# 3. 硬刷新浏览器
+# Chrome/Edge: Ctrl+Shift+R (Windows) 或 Cmd+Shift+R (Mac)
+
+# 4. 重启前端开发服务器
+npm run dev
+```
+
+---
+
+### 问题 7: Milvus 连接失败
+
+**症状：** 向量搜索功能不工作
+
+**解决方法：**
+
+```bash
+cd FinnewsHunter
+
 # Milvus 需要较长启动时间（约 60 秒）
-docker logs finnews_milvus
+docker compose -f deploy/docker-compose.dev.yml logs milvus-standalone
 
-# 等待健康检查通过
-docker inspect finnews_milvus | grep Health
+# 检查健康状态
+docker inspect finnews_milvus | grep -A 10 Health
+
+# 重启Milvus相关服务
+docker compose -f deploy/docker-compose.dev.yml restart milvus-etcd milvus-minio milvus-standalone
 ```
 
-### 问题 4: 前端 CORS 错误
+---
 
-确保后端 `core/config.py` 中的 CORS 配置包含前端地址：
-```python
-BACKEND_CORS_ORIGINS = ["http://localhost:3000", "http://localhost:8000"]
+### 问题 8: 数据统计不准确
+
+**症状：** 首页显示的新闻数和实际不符
+
+**解决方法：**
+
+```bash
+# 使用重置脚本清空数据重新开始
+cd FinnewsHunter
+./reset_all_data.sh
 ```
+
+---
+
+### 常用调试命令
+
+```bash
+cd FinnewsHunter
+
+# 查看所有容器状态
+docker compose -f deploy/docker-compose.dev.yml ps
+
+# 查看某个服务的完整日志
+docker compose -f deploy/docker-compose.dev.yml logs celery-worker --tail=500
+
+# 进入容器调试
+docker exec -it finnews_celery_worker bash
+
+# 查看数据库连接
+docker exec finnews_postgres psql -U finnews -d finnews_db -c "\conninfo"
+
+# 查看Redis连接
+docker exec finnews_redis redis-cli INFO
+
+# 测试网络连通性
+docker exec finnews_celery_worker ping -c 3 postgres
+```
+
+---
+
+## ⚡ 快速参考（常用命令）
+
+### 项目目录
+
+```bash
+cd FinnewsHunter
+```
+
+### 一键操作
+
+```bash
+# 启动所有服务
+docker compose -f deploy/docker-compose.dev.yml up -d
+
+# 停止所有服务
+docker compose -f deploy/docker-compose.dev.yml down
+
+# 重启Celery（代码更新后）
+docker compose -f deploy/docker-compose.dev.yml restart celery-worker celery-beat
+
+# 清空所有数据重新开始
+./reset_all_data.sh
+```
+
+### 查看状态
+
+```bash
+# 服务状态
+docker compose -f deploy/docker-compose.dev.yml ps
+
+# 新闻数量
+docker exec finnews_postgres psql -U finnews -d finnews_db -c "SELECT source, COUNT(*) FROM news GROUP BY source;"
+
+# 任务数量
+docker exec finnews_postgres psql -U finnews -d finnews_db -c "SELECT status, COUNT(*) FROM crawl_tasks GROUP BY status;"
+
+# Redis缓存
+docker exec finnews_redis redis-cli DBSIZE
+```
+
+### 查看日志
+
+```bash
+# Celery Beat（定时调度）
+docker compose -f deploy/docker-compose.dev.yml logs -f celery-beat
+
+# Celery Worker（任务执行）
+docker compose -f deploy/docker-compose.dev.yml logs -f celery-worker
+
+# PostgreSQL
+docker compose -f deploy/docker-compose.dev.yml logs -f postgres
+
+# 所有服务
+docker compose -f deploy/docker-compose.dev.yml logs -f
+```
+
+### 直接访问
+
+- **前端**: http://localhost:3000
+- **后端API**: http://localhost:8000
+- **API文档**: http://localhost:8000/docs
 
 ---
 

@@ -95,9 +95,14 @@ class Settings(BaseSettings):
     CRAWLER_MAX_RETRIES: int = Field(default=3)
     CRAWLER_DELAY: float = Field(default=1.0)  # 请求间隔（秒）
     
-    # Phase 2: 实时爬取与缓存配置
+    # Phase 2: 实时爬取与缓存配置（多源支持）
     CACHE_TTL: int = Field(default=1800, description="缓存过期时间（秒），默认30分钟")
-    CRAWL_INTERVAL_SINA: int = Field(default=300, description="新浪财经爬取间隔（秒），默认5分钟")
+    CRAWL_INTERVAL_SINA: int = Field(default=60, description="新浪财经爬取间隔（秒），默认60秒")
+    CRAWL_INTERVAL_TENCENT: int = Field(default=60, description="腾讯财经爬取间隔（秒），默认60秒")
+    CRAWL_INTERVAL_JWVIEW: int = Field(default=60, description="中新经纬爬取间隔（秒），默认60秒")
+    CRAWL_INTERVAL_EEO: int = Field(default=60, description="经济观察网爬取间隔（秒），默认60秒")
+    CRAWL_INTERVAL_CAIJING: int = Field(default=60, description="财经网爬取间隔（秒），默认60秒")
+    CRAWL_INTERVAL_JINGJI21: int = Field(default=60, description="21经济网爬取间隔（秒），默认60秒")
     CRAWL_INTERVAL_JRJ: int = Field(default=600, description="金融界爬取间隔（秒），默认10分钟")
     NEWS_RETENTION_HOURS: int = Field(default=72000, description="新闻保留时间（小时），临时设置为72000小时（约8年）以包含所有爬取的新闻")
     FRONTEND_REFETCH_INTERVAL: int = Field(default=180, description="前端自动刷新间隔（秒），默认3分钟")
