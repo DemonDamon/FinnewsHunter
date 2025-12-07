@@ -52,6 +52,22 @@ class BaseCrawler(BaseTool):
     继承自 AgenticX BaseTool
     """
     
+    # 股票相关URL关键词
+    STOCK_URL_KEYWORDS = [
+        '/stock/', '/gupiao/', '/securities/', '/zhengquan/', 
+        '/a-shares/', '/ashares/', '/equity/', '/shares/',
+        '/market/', '/listed/', '/ipo/'
+    ]
+    
+    # 股票相关标题关键词
+    STOCK_TITLE_KEYWORDS = [
+        '股票', 'A股', 'a股', '上市', '个股', '涨停', '跌停', 
+        'IPO', 'ipo', '新股', '配股', '增发', '重组', '并购',
+        '股东', '董事', '证券', '港股', '科创板', '创业板',
+        '主板', '中小板', '北交所', '沪市', '深市', '股价',
+        '股份', '停牌', '复牌', '退市', '借壳'
+    ]
+    
     def __init__(self, name: str = "base_crawler", description: str = "Base crawler for financial news"):
         # 创建 ToolMetadata
         metadata = ToolMetadata(
@@ -140,6 +156,54 @@ class BaseCrawler(BaseTool):
         # 移除多余空格和换行
         text = ' '.join(text.split())
         return text.strip()
+    
+    def _is_stock_related_by_url(self, url: str) -> bool:
+        """
+        根据URL路径判断是否为股票相关新闻
+        
+        Args:
+            url: 新闻URL
+            
+        Returns:
+            是否为股票相关
+        """
+        url_lower = url.lower()
+        return any(keyword in url_lower for keyword in self.STOCK_URL_KEYWORDS)
+    
+    def _is_stock_related_by_title(self, title: str) -> bool:
+        """
+        根据标题关键词判断是否为股票相关新闻
+        
+        Args:
+            title: 新闻标题
+            
+        Returns:
+            是否为股票相关
+        """
+        return any(keyword in title for keyword in self.STOCK_TITLE_KEYWORDS)
+    
+    def _filter_stock_news(self, news_list: List[NewsItem]) -> List[NewsItem]:
+        """
+        筛选股票相关新闻
+        组合URL路径和标题关键词两种策略
+        
+        Args:
+            news_list: 原始新闻列表
+            
+        Returns:
+            股票相关新闻列表
+        """
+        filtered_news = []
+        for news in news_list:
+            # URL匹配 或 标题匹配
+            if self._is_stock_related_by_url(news.url) or self._is_stock_related_by_title(news.title):
+                filtered_news.append(news)
+                logger.debug(f"Stock news matched: {news.title[:50]}...")
+            else:
+                logger.debug(f"Filtered out: {news.title[:50]}...")
+        
+        logger.info(f"Stock filter: {len(news_list)} -> {len(filtered_news)} items")
+        return filtered_news
     
     def crawl(self, start_page: int = 1, end_page: int = 1) -> List[NewsItem]:
         """
