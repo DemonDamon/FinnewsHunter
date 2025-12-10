@@ -34,7 +34,9 @@ class AnalysisService:
     async def analyze_news(
         self,
         news_id: int,
-        db: AsyncSession
+        db: AsyncSession,
+        llm_provider: Optional[str] = None,
+        llm_model: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         分析指定新闻
@@ -42,11 +44,24 @@ class AnalysisService:
         Args:
             news_id: 新闻ID
             db: 数据库会话
+            llm_provider: 模型厂商（可选：bailian, openai, deepseek, kimi）
+            llm_model: 模型名称（可选）
             
         Returns:
             分析结果
         """
         start_time = time.time()
+        
+        # 如果指定了自定义模型，创建临时的智能体
+        if llm_provider and llm_model:
+            from ..services.llm_service import create_custom_llm_provider
+            from ..agents.news_analyst import NewsAnalystAgent
+            
+            logger.info(f"Using custom model: {llm_provider}/{llm_model}")
+            custom_llm = create_custom_llm_provider(llm_provider, llm_model)
+            analyst = NewsAnalystAgent(llm_provider=custom_llm)
+        else:
+            analyst = self.news_analyst
         
         try:
             # 1. 查询新闻
@@ -66,7 +81,7 @@ class AnalysisService:
             # 2. 执行智能体分析
             # 注意：由于 agent.analyze_news 是同步方法，需要在线程池中运行以避免阻塞异步事件循环
             analysis_result = await run_in_threadpool(
-                self.news_analyst.analyze_news,
+                analyst.analyze_news,  # 使用 analyst（可能是自定义的或默认的）
                 news_title=news.title,
                 news_content=news.content,
                 news_url=news.url,
@@ -90,7 +105,7 @@ class AnalysisService:
                 confidence=structured_data.get("confidence"),
                 structured_data=structured_data,
                 execution_time=time.time() - start_time,
-                llm_model=self.news_analyst._llm_provider.model if hasattr(self.news_analyst, '_llm_provider') and hasattr(self.news_analyst._llm_provider, 'model') else None,
+                llm_model=f"{llm_provider}/{llm_model}" if llm_provider and llm_model else (analyst._llm_provider.model if hasattr(analyst, '_llm_provider') and hasattr(analyst._llm_provider, 'model') else None),
             )
             
             db.add(analysis)
@@ -177,18 +192,22 @@ class AnalysisService:
         db: AsyncSession
     ) -> list:
         """
-        获取指定新闻的所有分析结果
+        获取指定新闻的所有分析结果（按时间倒序，最新的在前）
         
         Args:
             news_id: 新闻ID
             db: 数据库会话
             
         Returns:
-            分析结果列表
+            分析结果列表（最新的在前）
         """
         try:
+            from sqlalchemy import desc
+            
             result = await db.execute(
-                select(Analysis).where(Analysis.news_id == news_id)
+                select(Analysis)
+                .where(Analysis.news_id == news_id)
+                .order_by(desc(Analysis.created_at))  # 按创建时间倒序，最新的在前
             )
             analyses = result.scalars().all()
             

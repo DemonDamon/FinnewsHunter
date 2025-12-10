@@ -3,7 +3,7 @@
 """
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Body
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,7 +18,8 @@ router = APIRouter()
 # Pydantic 模型
 class AnalysisRequest(BaseModel):
     """分析请求模型"""
-    news_id: int = Field(..., description="新闻ID")
+    provider: Optional[str] = Field(default=None, description="LLM提供商 (bailian/openai/deepseek/kimi/zhipu)")
+    model: Optional[str] = Field(default=None, description="模型名称")
 
 
 class AnalysisResponse(BaseModel):
@@ -68,13 +69,16 @@ async def run_analysis_task(news_id: int, db: AsyncSession):
 @router.post("/news/{news_id}", response_model=AnalysisResponse)
 async def analyze_news(
     news_id: int,
-    background_tasks: BackgroundTasks,
+    request: Optional[AnalysisRequest] = Body(None),
+    background_tasks: BackgroundTasks = None,
     db: AsyncSession = Depends(get_db)
 ):
     """
     触发新闻分析任务
     
     - **news_id**: 新闻ID
+    - **provider**: LLM提供商（可选）
+    - **model**: 模型名称（可选）
     
     Returns:
         分析任务状态
@@ -82,9 +86,23 @@ async def analyze_news(
     try:
         analysis_service = get_analysis_service()
         
+        # 准备LLM provider参数
+        llm_provider = None
+        llm_model = None
+        if request:
+            llm_provider = request.provider
+            llm_model = request.model
+            if llm_provider or llm_model:
+                logger.info(f"Using custom LLM config: provider={llm_provider}, model={llm_model}")
+        
         # 执行分析（同步，便于快速验证MVP）
         # 在生产环境中，应该使用后台任务
-        result = await analysis_service.analyze_news(news_id, db)
+        result = await analysis_service.analyze_news(
+            news_id, 
+            db, 
+            llm_provider=llm_provider,
+            llm_model=llm_model
+        )
         
         if result.get("success"):
             return AnalysisResponse(
@@ -105,7 +123,7 @@ async def analyze_news(
             )
     
     except Exception as e:
-        logger.error(f"Failed to analyze news {news_id}: {e}")
+        logger.error(f"Failed to analyze news {news_id}: {e}", exc_info=True)
         return AnalysisResponse(
             success=False,
             news_id=news_id,
