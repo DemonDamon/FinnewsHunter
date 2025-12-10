@@ -12,7 +12,9 @@ FinnewsHunter 不再局限于传统的文本分类，而是部署多智能体战
 
 - ✅ **AgenticX 原生**: 深度集成 AgenticX 框架，使用 Agent、Tool、Workflow 等核心抽象
 - ✅ **智能体驱动**: NewsAnalyst 智能体自动分析新闻情感和市场影响
+- ✅ **多厂商 LLM 支持**: 支持百炼、OpenAI、DeepSeek、Kimi、智谱 5 大厂商，前端一键切换
 - ✅ **完整技术栈**: FastAPI + PostgreSQL + Milvus + Redis + React
+- ✅ **实时搜索**: 支持标题、内容、股票代码多维度搜索，关键词高亮
 - ✅ **生产就绪**: Docker Compose 一键部署，日志、监控完备
 
 ---
@@ -58,7 +60,32 @@ pip install -r requirements.txt
 ```bash
 cd FinnewsHunter/backend
 cp env.example .env
-# 编辑 .env 文件，填入 OPENAI_API_KEY 等配置
+# 编辑 .env 文件，填入 LLM API Key 等配置
+```
+
+**多厂商 LLM 配置说明：**
+
+系统支持 5 个 LLM 厂商，至少配置一个即可使用：
+
+| 厂商 | 环境变量 | 获取地址 |
+|------|----------|----------|
+| 百炼（阿里云） | `DASHSCOPE_API_KEY` | https://dashscope.console.aliyun.com/ |
+| OpenAI | `OPENAI_API_KEY` | https://platform.openai.com/api-keys |
+| DeepSeek | `DEEPSEEK_API_KEY` | https://platform.deepseek.com/ |
+| Kimi（Moonshot） | `MOONSHOT_API_KEY` | https://platform.moonshot.cn/ |
+| 智谱 | `ZHIPU_API_KEY` | https://open.bigmodel.cn/ |
+
+**示例配置（推荐百炼）：**
+
+```bash
+# 百炼（阿里云）- 推荐，国内访问快
+DASHSCOPE_API_KEY=sk-your-dashscope-key
+DASHSCOPE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+BAILIAN_MODELS=qwen-plus,qwen-max,qwen-turbo
+
+# 可选：其他厂商
+OPENAI_API_KEY=sk-your-openai-key
+DEEPSEEK_API_KEY=sk-your-deepseek-key
 ```
 
 ### 4. 启动基础服务（PostgreSQL、Redis、Milvus）
@@ -513,15 +540,72 @@ curl "http://localhost:8000/api/v1/news/sources"
 **方式 1: 通过前端**
 - 在新闻卡片上点击"✨ 分析"按钮
 - 等待3-5秒查看分析结果
+- 点击新闻卡片打开详情抽屉，查看完整分析内容
 
 **方式 2: 通过 API**
 ```bash
-# 分析指定ID的新闻
+# 分析指定ID的新闻（使用默认模型）
 curl -X POST http://localhost:8000/api/v1/analysis/news/1
+
+# 分析新闻（指定模型）
+curl -X POST http://localhost:8000/api/v1/analysis/news/1 \
+  -H "Content-Type: application/json" \
+  -d '{"provider": "bailian", "model": "qwen-max"}'
 
 # 查看分析结果
 curl http://localhost:8000/api/v1/analysis/1
 ```
+
+---
+
+### 切换 LLM 模型
+
+**前端操作：**
+1. 点击右上角的模型选择器（显示当前模型名称）
+2. 在下拉菜单中选择不同的厂商和模型
+3. 选择后自动保存，后续分析将使用新模型
+
+**支持的模型：**
+- 🔥 **百炼**: qwen-plus, qwen-max, qwen-turbo, qwen-long
+- 🤖 **OpenAI**: gpt-4, gpt-4-turbo, gpt-3.5-turbo
+- 🧠 **DeepSeek**: deepseek-chat, deepseek-coder
+- 🌙 **Kimi**: moonshot-v1-8k, moonshot-v1-32k, moonshot-v1-128k
+- 🔮 **智谱**: glm-4, glm-4-plus, glm-4-air
+
+**API 获取可用模型列表：**
+```bash
+curl http://localhost:8000/api/v1/llm/config
+```
+
+---
+
+### 搜索新闻
+
+**前端操作：**
+1. 在顶部搜索框输入关键词
+2. 支持搜索：标题、内容、股票代码、来源
+3. 匹配的关键词会高亮显示
+4. 搜索带有 300ms 防抖，输入停止后自动搜索
+
+**搜索示例：**
+- 搜索股票代码：`600519`（贵州茅台）
+- 搜索关键词：`新能源`、`半导体`
+- 搜索来源：`sina`、`eastmoney`
+
+---
+
+### 查看新闻详情
+
+**前端操作：**
+1. 点击任意新闻卡片
+2. 右侧滑出详情抽屉，展示：
+   - 📰 新闻标题和来源
+   - 📊 情感评分（利好/利空/中性）
+   - 📈 关联股票代码
+   - 📝 完整新闻内容
+   - 🤖 AI 分析结果（Markdown 格式）
+   - 🔗 原文链接
+3. 点击"复制分析内容"可复制 Markdown 格式的分析报告
 
 ---
 
@@ -561,19 +645,33 @@ FinnewsHunter/
 ├── backend/                    # 后端服务
 │   ├── app/
 │   │   ├── agents/            # 智能体定义（NewsAnalyst）
-│   │   ├── api/               # FastAPI 路由
+│   │   ├── api/v1/            # FastAPI 路由
+│   │   │   ├── analysis.py    # 分析 API
+│   │   │   ├── llm_config.py  # LLM 配置 API（新增）
+│   │   │   └── news_v2.py     # 新闻 API
 │   │   ├── core/              # 核心配置（config, database）
 │   │   ├── models/            # SQLAlchemy 数据模型
-│   │   ├── services/          # 业务服务（LLM, Embedding, Analysis）
+│   │   ├── services/          # 业务服务
+│   │   │   ├── llm_service.py # LLM 服务（支持多厂商）
+│   │   │   └── analysis_service.py
 │   │   ├── storage/           # 存储封装（Milvus）
 │   │   └── tools/             # AgenticX 工具（Crawler, Cleaner）
-│   ├── requirements.txt       # Python 依赖
-│   └── start.sh              # 启动脚本
+│   ├── env.example            # 环境变量模板
+│   └── requirements.txt       # Python 依赖
+├── frontend/                  # React 前端
+│   └── src/
+│       ├── components/        # 组件
+│       │   ├── ModelSelector.tsx    # LLM 模型选择器（新增）
+│       │   ├── NewsDetailDrawer.tsx # 新闻详情抽屉（新增）
+│       │   └── HighlightText.tsx    # 关键词高亮（新增）
+│       ├── context/           # React Context
+│       ├── hooks/             # 自定义 Hooks
+│       │   └── useDebounce.ts # 防抖 Hook（新增）
+│       ├── layout/            # 布局组件
+│       └── pages/             # 页面组件
 ├── deploy/                    # 部署配置
 │   └── docker-compose.dev.yml # Docker Compose 配置
-├── frontend/                  # 前端界面（MVP）
-│   └── index.html            # 简化版前端
-└── legacy_v1/                # 原始代码（已迁移）
+└── .dev-docs/                 # 开发文档
 ```
 
 ---
@@ -583,9 +681,12 @@ FinnewsHunter/
 ### MVP 验收标准
 
 - [x] 新闻爬取成功并存入 PostgreSQL
-- [ ] NewsAnalyst 调用 LLM 完成分析
-- [ ] 分析结果包含情感评分
-- [ ] 前端能够展示新闻和分析结果
+- [x] NewsAnalyst 调用 LLM 完成分析
+- [x] 分析结果包含情感评分
+- [x] 前端能够展示新闻和分析结果
+- [x] 支持多厂商 LLM 动态切换
+- [x] 新闻详情展示完整分析内容
+- [x] 实时搜索和筛选功能
 
 ### 测试流程
 
@@ -752,17 +853,32 @@ docker compose -f deploy/docker-compose.dev.yml logs celery-worker | grep "ERROR
 
 ### 问题 5: LLM 调用失败
 
-**症状：** 分析功能不工作
+**症状：** 分析功能不工作，报错 `LLM Provider NOT provided`
 
 **解决方法：**
 
 ```bash
-# 检查环境变量
 cd FinnewsHunter/backend
-grep OPENAI_API_KEY .env
 
-# 如果使用阿里云百炼
-grep DASHSCOPE_API_KEY .env
+# 1. 检查 API Key 是否配置
+grep -E "DASHSCOPE_API_KEY|OPENAI_API_KEY|DEEPSEEK_API_KEY" .env
+
+# 2. 检查 Base URL 是否正确（百炼必须配置）
+grep DASHSCOPE_BASE_URL .env
+# 应该是: https://dashscope.aliyuncs.com/compatible-mode/v1
+
+# 3. 验证 LLM 配置 API 是否正常
+curl http://localhost:8000/api/v1/llm/config | jq '.providers[].has_api_key'
+# 至少有一个返回 true
+
+# 4. 如果使用百炼，确保配置完整
+cat >> .env << EOF
+DASHSCOPE_API_KEY=sk-your-key
+DASHSCOPE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+BAILIAN_MODELS=qwen-plus,qwen-max
+EOF
+
+# 5. 重启后端服务
 ```
 
 ---
@@ -984,11 +1100,20 @@ class RiskAnalystAgent(Agent):
 ### Phase 1: MVP（已完成） ✅
 - [x] 项目基础设施
 - [x] 数据库模型
-- [x] 爬虫工具重构
+- [x] 爬虫工具重构（10个新闻源）
 - [x] LLM 服务集成
 - [x] NewsAnalyst 智能体
 - [x] FastAPI 路由
-- [x] 简化版前端
+- [x] React + TypeScript 前端
+
+### Phase 1.5: 多厂商 LLM 支持（已完成） ✅
+- [x] 支持 5 大 LLM 厂商（百炼、OpenAI、DeepSeek、Kimi、智谱）
+- [x] 前端动态模型切换
+- [x] LLM 配置 API（`/api/v1/llm/config`）
+- [x] 新闻详情抽屉（完整内容 + AI 分析）
+- [x] 实时搜索功能（多维度 + 关键词高亮）
+- [x] Markdown 渲染（支持表格、代码块）
+- [x] 一键复制分析报告
 
 ### Phase 2: 多智能体协作（计划中）
 - [ ] BullResearcher & BearResearcher 智能体
