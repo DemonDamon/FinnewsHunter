@@ -112,9 +112,17 @@ export const newsApi = {
 export const analysisApi = {
   /**
    * 触发新闻分析
+   * @param newsId - 新闻ID
+   * @param config - 可选的LLM配置 (provider和model)
    */
-  analyzeNews: async (newsId: number): Promise<AnalysisResponse> => {
-    const response = await apiClient.post<AnalysisResponse>(`/analysis/news/${newsId}`)
+  analyzeNews: async (
+    newsId: number, 
+    config?: { provider?: string; model?: string }
+  ): Promise<AnalysisResponse> => {
+    const response = await apiClient.post<AnalysisResponse>(
+      `/analysis/news/${newsId}`,
+      config || {}
+    )
     return response.data
   },
 
@@ -131,6 +139,42 @@ export const analysisApi = {
    */
   getNewsAnalyses: async (newsId: number): Promise<Analysis[]> => {
     const response = await apiClient.get<Analysis[]>(`/analysis/news/${newsId}/all`)
+    return response.data
+  },
+}
+
+/**
+ * LLM 配置相关类型
+ */
+export interface ModelInfo {
+  value: string
+  label: string
+  description: string
+}
+
+export interface ProviderInfo {
+  value: string
+  label: string
+  icon: string
+  models: ModelInfo[]
+  has_api_key: boolean
+}
+
+export interface LLMConfigResponse {
+  default_provider: string
+  default_model: string
+  providers: ProviderInfo[]
+}
+
+/**
+ * LLM 配置相关 API
+ */
+export const llmApi = {
+  /**
+   * 获取 LLM 配置（可用厂商和模型列表）
+   */
+  getConfig: async (): Promise<LLMConfigResponse> => {
+    const response = await apiClient.get<LLMConfigResponse>('/llm/config')
     return response.data
   },
 }
