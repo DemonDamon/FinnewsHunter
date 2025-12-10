@@ -68,18 +68,58 @@ class Settings(BaseSettings):
     MILVUS_DIM: int = Field(default=1536)  # OpenAI embedding dimension
     
     # LLM 配置
-    LLM_PROVIDER: str = Field(default="openai")  # openai, ollama, anthropic
-    LLM_MODEL: str = Field(default="gpt-3.5-turbo")
+    LLM_PROVIDER: str = Field(default="bailian")  # 默认提供商
+    LLM_MODEL: str = Field(default="qwen-plus")
     LLM_TEMPERATURE: float = Field(default=0.7)
     LLM_MAX_TOKENS: int = Field(default=2000)
     LLM_TIMEOUT: int = Field(default=180)  # LLM 调用超时时间（秒），百炼建议180秒
-    OPENAI_API_KEY: Optional[str] = Field(default=None)
-    ANTHROPIC_API_KEY: Optional[str] = Field(default=None)
+    
+    # 各厂商 API Key 配置
+    DASHSCOPE_API_KEY: Optional[str] = Field(default=None, description="阿里云百炼 API Key")
+    DASHSCOPE_BASE_URL: str = Field(
+        default="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        description="阿里云百炼 Base URL"
+    )
+    BAILIAN_API_KEY: Optional[str] = Field(default=None, description="百炼 API Key（与DASHSCOPE相同）")
+    OPENAI_API_KEY: Optional[str] = Field(default=None, description="OpenAI API Key")
+    DEEPSEEK_API_KEY: Optional[str] = Field(default=None, description="DeepSeek API Key")
+    MOONSHOT_API_KEY: Optional[str] = Field(default=None, description="Moonshot (Kimi) API Key")
+    ZHIPU_API_KEY: Optional[str] = Field(default=None, description="智谱 API Key")
+    ANTHROPIC_API_KEY: Optional[str] = Field(default=None, description="Anthropic API Key")
+    
+    # 各厂商可用模型列表（逗号分隔）
+    BAILIAN_MODELS: str = Field(
+        default="qwen-plus,qwen-max,qwen-turbo,qwen-long",
+        description="百炼可用模型（逗号分隔）"
+    )
+    OPENAI_MODELS: str = Field(
+        default="gpt-4,gpt-4-turbo,gpt-3.5-turbo",
+        description="OpenAI可用模型（逗号分隔）"
+    )
+    DEEPSEEK_MODELS: str = Field(
+        default="deepseek-chat",
+        description="DeepSeek可用模型（逗号分隔）"
+    )
+    MOONSHOT_MODELS: str = Field(
+        default="moonshot-v1-8k,moonshot-v1-32k,moonshot-v1-128k",
+        description="Moonshot可用模型（逗号分隔）"
+    )
+    ZHIPU_MODELS: str = Field(
+        default="glm-4,glm-4-plus,glm-4-air,glm-3-turbo",
+        description="智谱可用模型（逗号分隔）"
+    )
     
     # Base URL 配置（用于第三方 API 转发）
-    OPENAI_BASE_URL: Optional[str] = Field(default=None)
-    ANTHROPIC_BASE_URL: Optional[str] = Field(default=None)
-    QWEN_BASE_URL: Optional[str] = Field(default=None)
+    OPENAI_BASE_URL: Optional[str] = Field(default=None, description="OpenAI Base URL")
+    DEEPSEEK_BASE_URL: Optional[str] = Field(default="https://api.deepseek.com/v1", description="DeepSeek Base URL")
+    MOONSHOT_BASE_URL: Optional[str] = Field(default="https://api.moonshot.cn/v1", description="Moonshot Base URL")
+    ZHIPU_BASE_URL: Optional[str] = Field(default="https://open.bigmodel.cn/api/paas/v4", description="智谱 Base URL")
+    ANTHROPIC_BASE_URL: Optional[str] = Field(default=None, description="Anthropic Base URL")
+    QWEN_BASE_URL: Optional[str] = Field(default=None, description="Qwen Base URL (deprecated)")
+    BAILIAN_ACCESS_KEY_ID: Optional[str] = Field(default=None, description="百炼 Access Key ID")
+    BAILIAN_ACCESS_KEY_SECRET: Optional[str] = Field(default=None, description="百炼 Access Key Secret")
+    BAILIAN_AGENT_CODE: Optional[str] = Field(default=None, description="百炼 Agent Code")
+    BAILIAN_REGION_ID: str = Field(default="cn-beijing", description="百炼 Region ID")
     
     # Embedding 配置
     EMBEDDING_PROVIDER: str = Field(default="openai")  # openai, huggingface
