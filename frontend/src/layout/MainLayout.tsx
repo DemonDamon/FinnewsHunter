@@ -1,6 +1,8 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { Home, Newspaper, TrendingUp, Activity, Settings, Search } from 'lucide-react'
+import { Home, Newspaper, TrendingUp, Activity, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import ModelSelector from '@/components/ModelSelector'
+import { NewsToolbarProvider, useNewsToolbar } from '@/context/NewsToolbarContext'
 
 const navigation = [
   { name: '首页', href: '/', icon: Home },
@@ -11,7 +13,18 @@ const navigation = [
 ]
 
 export default function MainLayout() {
+  return (
+    <NewsToolbarProvider>
+      <MainLayoutInner />
+    </NewsToolbarProvider>
+  )
+}
+
+function MainLayoutInner() {
   const location = useLocation()
+  const { content } = useNewsToolbar()
+  const isNewsPage =
+    location.pathname === '/news' || location.pathname.startsWith('/news/')
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -60,22 +73,20 @@ export default function MainLayout() {
       {/* 主内容区 */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* 顶部栏 */}
-        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6">
-          <div className="flex-1 max-w-2xl">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="搜索新闻、股票代码..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 gap-4">
+          {/* 左侧：搜索框或标题 */}
+          <div className="flex-1 max-w-xl">
+            {isNewsPage ? (
+              content.left || <h1 className="text-xl font-semibold text-gray-900">实时新闻流</h1>
+            ) : (
+              <h1 className="text-xl font-semibold text-gray-900">FinnewsHunter</h1>
+            )}
           </div>
           
+          {/* 右侧：工具栏 */}
           <div className="flex items-center gap-4">
-            <div className="text-sm text-gray-600">
-              <span className="font-medium">LLM:</span> qwen-plus
-            </div>
+            <ModelSelector />
+            {isNewsPage && content.right}
           </div>
         </header>
 

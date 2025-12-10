@@ -6,8 +6,12 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { newsApi, analysisApi } from '@/lib/api-client'
 import { formatRelativeTime } from '@/lib/utils'
-import { Download, RefreshCw, Sparkles, Calendar, Newspaper, TrendingUp, RefreshCcw, ChevronDown, ChevronUp, Filter, CheckCircle2, XCircle, MinusCircle, HelpCircle } from 'lucide-react'
-import type { News } from '@/types/api'
+import { RefreshCw, Sparkles, Calendar, Newspaper, TrendingUp, RefreshCcw, ChevronDown, ChevronUp, CheckCircle2, XCircle, MinusCircle, HelpCircle, Search, X } from 'lucide-react'
+import NewsDetailDrawer from '@/components/NewsDetailDrawer'
+import { useNewsToolbar } from '@/context/NewsToolbarContext'
+import { useDebounce } from '@/hooks/useDebounce'
+import HighlightText from '@/components/HighlightText'
+import { useModelConfig } from '@/components/ModelSelector'
 
 type FilterType = 'all' | 'pending' | 'positive' | 'negative' | 'neutral'
 
@@ -32,12 +36,29 @@ export default function NewsListPage() {
   const [gridCols, setGridCols] = useState(3)
   const [activeFilter, setActiveFilter] = useState<FilterType>('all')
   const [activeSource, setActiveSource] = useState<string>('all') // 新增：来源筛选
-  const [lastUpdateTime, setLastUpdateTime] = useState<string>('')
   const [analyzingNewsId, setAnalyzingNewsId] = useState<number | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false) // 手动管理刷新状态
+  const [selectedNewsId, setSelectedNewsId] = useState<number | null>(null)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('') // 搜索关键词
+  const debouncedSearchQuery = useDebounce(searchQuery, 300) // 防抖处理
+  const { setContent } = useNewsToolbar()
+  const modelConfig = useModelConfig() // 获取当前选中的模型配置
+
+  // 监听自定义事件，用于从相关新闻跳转
+  useEffect(() => {
+    const handleNewsSelect = (e: CustomEvent<number>) => {
+      setSelectedNewsId(e.detail)
+      setDrawerOpen(true)
+    }
+    window.addEventListener('news-select', handleNewsSelect as EventListener)
+    return () => {
+      window.removeEventListener('news-select', handleNewsSelect as EventListener)
+    }
+  }, [])
 
   // Phase 2: 自动轮询最新新闻（1分钟刷新）
-  const { data: newsList, isLoading, refetch, dataUpdatedAt } = useQuery({
+  const { data: newsList, isLoading } = useQuery({
     queryKey: ['news', 'latest', activeSource],
     queryFn: () => newsApi.getLatestNews({ 
       source: activeSource === 'all' ? undefined : activeSource, 
@@ -48,13 +69,7 @@ export default function NewsListPage() {
     refetchIntervalInBackground: true,  // 后台也刷新
   })
 
-  // 更新最后刷新时间
-  useEffect(() => {
-    if (dataUpdatedAt) {
-      const date = new Date(dataUpdatedAt)
-      setLastUpdateTime(date.toLocaleTimeString('zh-CN'))
-    }
-  }, [dataUpdatedAt])
+  // 这里保留 dataUpdatedAt，后续可以用于全局最后刷新时间展示
 
   // Phase 2: 强制刷新 mutation
   const refreshMutation = useMutation({
@@ -82,7 +97,7 @@ export default function NewsListPage() {
 
   // 分析新闻 mutation
   const analyzeMutation = useMutation({
-    mutationFn: analysisApi.analyzeNews,
+    mutationFn: (newsId: number) => analysisApi.analyzeNews(newsId, modelConfig),
     onSuccess: (data) => {
       setAnalyzingNewsId(null)
       if (data.success) {
@@ -107,6 +122,57 @@ export default function NewsListPage() {
     setIsRefreshing(true) // 立即设置刷新状态，阻止后续点击
     refreshMutation.mutate({ source: 'sina' })
   }
+
+  // 将搜索框 + 刷新按钮挂到顶部工具栏
+  useEffect(() => {
+    const searchBox = (
+      <div className="relative w-full">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          placeholder="搜索新闻、股票代码..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.currentTarget.blur()
+            }
+          }}
+          className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 h-10"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+            aria-label="清除搜索"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+    )
+
+    const refreshButton = (
+      <Button
+        onClick={handleForceRefresh}
+        disabled={isRefreshing}
+        variant="outline"
+        size="sm"
+        className="h-10 rounded-lg border-gray-300 shadow-sm"
+      >
+        <RefreshCw
+          className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`}
+        />
+        {isRefreshing ? '爬取中...(约2分钟)' : '立即刷新'}
+      </Button>
+    )
+
+    setContent({ left: searchBox, right: refreshButton })
+
+    return () => {
+      setContent({ left: null, right: null })
+    }
+  }, [searchQuery, isRefreshing, setContent])
 
   const handleAnalyze = (newsId: number) => {
     setAnalyzingNewsId(newsId)
@@ -186,25 +252,46 @@ export default function NewsListPage() {
     )
   }
 
-  // 筛选新闻
+  // 筛选新闻（情感 + 搜索）
   const filteredNews = useMemo(() => {
     if (!newsList) return []
     
+    const query = debouncedSearchQuery.toLowerCase().trim()
+    
     return newsList.filter(news => {
+      // 1. 情感筛选
+      let sentimentMatch = true
       switch (activeFilter) {
         case 'pending':
-          return news.sentiment_score === null
+          sentimentMatch = news.sentiment_score === null
+          break
         case 'positive':
-          return news.sentiment_score !== null && news.sentiment_score > 0.1
+          sentimentMatch = news.sentiment_score !== null && news.sentiment_score > 0.1
+          break
         case 'negative':
-          return news.sentiment_score !== null && news.sentiment_score < -0.1
+          sentimentMatch = news.sentiment_score !== null && news.sentiment_score < -0.1
+          break
         case 'neutral':
-          return news.sentiment_score !== null && news.sentiment_score >= -0.1 && news.sentiment_score <= 0.1
+          sentimentMatch = news.sentiment_score !== null && news.sentiment_score >= -0.1 && news.sentiment_score <= 0.1
+          break
         default:
-          return true
+          sentimentMatch = true
       }
+      
+      // 2. 搜索匹配（如果没有搜索词，则自动通过）
+      if (!query) return sentimentMatch
+      
+      const titleMatch = news.title.toLowerCase().includes(query)
+      const contentMatch = news.content.toLowerCase().includes(query)
+      const codeMatch = news.stock_codes?.some(code => code.toLowerCase().includes(query)) || false
+      const sourceMatch = NEWS_SOURCES.find(s => s.key === news.source)?.name.toLowerCase().includes(query) || false
+      
+      const searchMatch = titleMatch || contentMatch || codeMatch || sourceMatch
+      
+      // 3. 返回交集
+      return sentimentMatch && searchMatch
     })
-  }, [newsList, activeFilter])
+  }, [newsList, activeFilter, debouncedSearchQuery])
 
   // 获取卡片样式类
   const getCardStyle = (sentiment: number | null) => {
@@ -244,49 +331,41 @@ export default function NewsListPage() {
 
   return (
     <div className="p-6 space-y-6">
-      {/* 操作栏 - Phase 2 简化版 */}
+      {/* 筛选栏：新闻源 + 情感筛选 */}
       <Card className="border-gray-200 shadow-sm">
         <CardHeader className="pb-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex flex-col gap-1">
-              <CardTitle className="text-xl font-semibold">实时新闻流</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                自动更新 · 最后刷新：{lastUpdateTime || '加载中...'}
-              </p>
+          <div className="flex flex-wrap items-center gap-3">
+            {/* 新闻源筛选 */}
+            <div className="flex flex-wrap items-center gap-1.5 bg-blue-50 p-1 rounded-lg border border-blue-200">
+              {NEWS_SOURCES.map((source) => (
+                <Button
+                  key={source.key}
+                  variant={activeSource === source.key ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setActiveSource(source.key)}
+                  className={
+                    activeSource === source.key
+                      ? 'bg-white text-blue-600 shadow-sm hover:bg-white/90 text-xs'
+                      : 'text-slate-600 hover:text-blue-600 text-xs'
+                  }
+                >
+                  <span className="mr-1">{source.icon}</span>
+                  {source.name}
+                </Button>
+              ))}
             </div>
             
-            <div className="flex flex-col gap-3 w-full md:w-auto">
-              {/* 来源筛选器 */}
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium text-slate-700 mr-2">📰 新闻源：</span>
-                <div className="flex flex-wrap items-center gap-1.5 bg-blue-50 p-1 rounded-lg border border-blue-200">
-                  {NEWS_SOURCES.map(source => (
-                    <Button
-                      key={source.key}
-                      variant={activeSource === source.key ? 'default' : 'ghost'}
-                      size="sm"
-                      onClick={() => setActiveSource(source.key)}
-                      className={activeSource === source.key 
-                        ? 'bg-white text-blue-600 shadow-sm hover:bg-white/90 text-xs' 
-                        : 'text-slate-600 hover:text-blue-600 text-xs'
-                      }
-                    >
-                      <span className="mr-1">{source.icon}</span>
-                      {source.name}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-              
-              {/* 状态筛选器 */}
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-medium text-slate-700 mr-2">📊 情感：</span>
-              <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-1 rounded-lg border border-slate-200">
+            {/* 情感筛选 */}
+            <div className="flex flex-wrap items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-200">
                 <Button
                   variant={activeFilter === 'all' ? 'default' : 'ghost'}
                   size="sm"
                   onClick={() => setActiveFilter('all')}
-                  className={activeFilter === 'all' ? 'bg-white text-primary shadow-sm hover:bg-white/90' : 'text-slate-600 hover:text-slate-900'}
+                className={`h-8 ${
+                  activeFilter === 'all'
+                    ? 'bg-white text-primary shadow-sm hover:bg-white/90'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
                 >
                   全部
                 </Button>
@@ -294,7 +373,11 @@ export default function NewsListPage() {
                   variant={activeFilter === 'pending' ? 'default' : 'ghost'}
                   size="sm"
                   onClick={() => setActiveFilter('pending')}
-                  className={activeFilter === 'pending' ? 'bg-white text-orange-600 shadow-sm hover:bg-white/90' : 'text-slate-600 hover:text-orange-600'}
+                className={`h-8 ${
+                  activeFilter === 'pending'
+                    ? 'bg-white text-orange-600 shadow-sm hover:bg-white/90'
+                    : 'text-slate-600 hover:text-orange-600'
+                }`}
                 >
                   <HelpCircle className="w-3.5 h-3.5 mr-1.5" />
                   待分析
@@ -303,7 +386,11 @@ export default function NewsListPage() {
                   variant={activeFilter === 'positive' ? 'default' : 'ghost'}
                   size="sm"
                   onClick={() => setActiveFilter('positive')}
-                  className={activeFilter === 'positive' ? 'bg-white text-emerald-600 shadow-sm hover:bg-white/90' : 'text-slate-600 hover:text-emerald-600'}
+                className={`h-8 ${
+                  activeFilter === 'positive'
+                    ? 'bg-white text-emerald-600 shadow-sm hover:bg-white/90'
+                    : 'text-slate-600 hover:text-emerald-600'
+                }`}
                 >
                   <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
                   利好
@@ -312,7 +399,11 @@ export default function NewsListPage() {
                   variant={activeFilter === 'negative' ? 'default' : 'ghost'}
                   size="sm"
                   onClick={() => setActiveFilter('negative')}
-                  className={activeFilter === 'negative' ? 'bg-white text-rose-600 shadow-sm hover:bg-white/90' : 'text-slate-600 hover:text-rose-600'}
+                className={`h-8 ${
+                  activeFilter === 'negative'
+                    ? 'bg-white text-rose-600 shadow-sm hover:bg-white/90'
+                    : 'text-slate-600 hover:text-rose-600'
+                }`}
                 >
                   <XCircle className="w-3.5 h-3.5 mr-1.5" />
                   利空
@@ -321,24 +412,14 @@ export default function NewsListPage() {
                   variant={activeFilter === 'neutral' ? 'default' : 'ghost'}
                   size="sm"
                   onClick={() => setActiveFilter('neutral')}
-                  className={activeFilter === 'neutral' ? 'bg-white text-slate-600 shadow-sm hover:bg-white/90' : 'text-slate-600 hover:text-slate-900'}
+                className={`h-8 ${
+                  activeFilter === 'neutral'
+                    ? 'bg-white text-slate-600 shadow-sm hover:bg-white/90'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
                 >
                   <MinusCircle className="w-3.5 h-3.5 mr-1.5" />
                   中性
-                </Button>
-              </div>
-              </div>
-              
-              {/* 立即刷新按钮 */}
-              <Button
-                onClick={handleForceRefresh}
-                disabled={isRefreshing}
-                variant="outline"
-                size="sm"
-                className="shadow-sm"
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-                {isRefreshing ? '爬取中...(约2分钟)' : '立即刷新'}
               </Button>
             </div>
           </div>
@@ -369,8 +450,17 @@ export default function NewsListPage() {
                   </div>
                 )}
               </div>
-              <div className="text-xs text-gray-500">
-                {activeFilter !== 'all' && `已筛选：${activeFilter === 'pending' ? '待分析' : activeFilter === 'positive' ? '利好' : activeFilter === 'negative' ? '利空' : '中性'}`}
+              <div className="text-xs text-gray-500 flex flex-wrap gap-2">
+                {debouncedSearchQuery && (
+                  <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                    🔍 "{debouncedSearchQuery}"
+                  </span>
+                )}
+                {activeFilter !== 'all' && (
+                  <span>
+                    已筛选：{activeFilter === 'pending' ? '待分析' : activeFilter === 'positive' ? '利好' : activeFilter === 'negative' ? '利空' : '中性'}
+                  </span>
+                )}
               </div>
             </div>
           </CardContent>
@@ -393,11 +483,19 @@ export default function NewsListPage() {
           filteredNews.map((news) => (
             <Card 
               key={news.id} 
-              className={getCardStyle(news.sentiment_score)}
+              className={`${getCardStyle(news.sentiment_score)} cursor-pointer hover:shadow-lg transition-shadow`}
+              onClick={(e) => {
+                // 阻止按钮点击事件冒泡
+                if ((e.target as HTMLElement).closest('button')) {
+                  return
+                }
+                setSelectedNewsId(news.id)
+                setDrawerOpen(true)
+              }}
             >
               <CardHeader className="pb-2 flex-shrink-0">
                 <CardTitle className="text-base leading-tight font-semibold text-gray-900 line-clamp-2 mb-1.5 min-h-[44px]">
-                  {news.title}
+                  <HighlightText text={news.title} highlight={debouncedSearchQuery} />
                 </CardTitle>
                 <div className="flex items-center gap-2 text-xs text-gray-500">
                   <div className="flex items-center gap-1">
@@ -413,7 +511,7 @@ export default function NewsListPage() {
               </CardHeader>
               
               <CardContent className="flex-1 flex flex-col pb-3 pt-2 overflow-hidden">
-                <p 
+                <div 
                   className="text-sm text-gray-600 mb-3 leading-relaxed flex-shrink-0"
                   style={{
                     display: '-webkit-box',
@@ -425,8 +523,8 @@ export default function NewsListPage() {
                     overflow: 'hidden'
                   }}
                 >
-                  {news.content}
-                </p>
+                  <HighlightText text={news.content} highlight={debouncedSearchQuery} />
+                </div>
                 
                 <div className="mt-auto space-y-2">
                   {news.stock_codes && news.stock_codes.length > 0 && (
@@ -506,13 +604,39 @@ export default function NewsListPage() {
         ) : (
           <div className="col-span-full text-center py-16">
             <div className="text-gray-400 mb-2">
+              {debouncedSearchQuery ? (
+                <Search className="w-16 h-16 mx-auto opacity-50" />
+              ) : (
               <Newspaper className="w-16 h-16 mx-auto opacity-50" />
+              )}
             </div>
+            {debouncedSearchQuery ? (
+              <>
+                <p className="text-gray-500 text-lg">没有找到与 "{debouncedSearchQuery}" 相关的新闻</p>
+                <p className="text-gray-400 text-sm mt-1">试试其他关键词，如股票代码或公司名称</p>
+              </>
+            ) : (
+              <>
             <p className="text-gray-500 text-lg">暂无新闻</p>
             <p className="text-gray-400 text-sm mt-1">请先爬取新闻</p>
+              </>
+            )}
           </div>
         )}
       </div>
+
+      {/* 新闻详情抽屉 */}
+      <NewsDetailDrawer
+        newsId={selectedNewsId}
+        open={drawerOpen}
+        onOpenChange={(open) => {
+          setDrawerOpen(open)
+          if (!open) {
+            // 延迟清除newsId，避免关闭动画时闪烁
+            setTimeout(() => setSelectedNewsId(null), 300)
+          }
+        }}
+      />
     </div>
   )
 }
