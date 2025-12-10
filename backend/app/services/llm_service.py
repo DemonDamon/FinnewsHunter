@@ -45,8 +45,16 @@ class LLMService:
         # 设置API密钥
         if api_key:
             self.api_key = api_key
+        elif self.provider_name == "bailian":
+            self.api_key = settings.DASHSCOPE_API_KEY or settings.BAILIAN_API_KEY
         elif self.provider_name == "openai":
             self.api_key = settings.OPENAI_API_KEY
+        elif self.provider_name == "deepseek":
+            self.api_key = settings.DEEPSEEK_API_KEY
+        elif self.provider_name == "kimi":
+            self.api_key = settings.MOONSHOT_API_KEY
+        elif self.provider_name == "zhipu":
+            self.api_key = settings.ZHIPU_API_KEY
         elif self.provider_name == "anthropic":
             self.api_key = settings.ANTHROPIC_API_KEY
         else:
@@ -55,8 +63,16 @@ class LLMService:
         # 设置 Base URL（用于第三方 API 转发）
         if base_url:
             self.base_url = base_url
+        elif self.provider_name == "bailian":
+            self.base_url = settings.DASHSCOPE_BASE_URL
         elif self.provider_name == "openai":
             self.base_url = settings.OPENAI_BASE_URL
+        elif self.provider_name == "deepseek":
+            self.base_url = settings.DEEPSEEK_BASE_URL or "https://api.deepseek.com/v1"
+        elif self.provider_name == "kimi":
+            self.base_url = settings.MOONSHOT_BASE_URL or "https://api.moonshot.cn/v1"
+        elif self.provider_name == "zhipu":
+            self.base_url = settings.ZHIPU_BASE_URL or "https://open.bigmodel.cn/api/paas/v4"
         elif self.provider_name == "anthropic":
             self.base_url = settings.ANTHROPIC_BASE_URL
         else:
@@ -265,4 +281,135 @@ def get_llm_service() -> LLMService:
     if _llm_service is None:
         _llm_service = LLMService()
     return _llm_service
+
+
+def create_custom_llm_provider(
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
+) -> Union[LiteLLMProvider, BailianProvider]:
+    """
+    动态创建自定义 LLM provider（用于模型切换）
+    
+    Args:
+        provider: 厂商名称（bailian, openai, deepseek, kimi, zhipu）
+        model: 模型名称
+        temperature: 温度参数
+        max_tokens: 最大token数
+        api_key: API Key（可选，优先从settings读取）
+        base_url: Base URL（可选，优先从settings读取）
+    
+    Returns:
+        LLM provider 实例
+    
+    Examples:
+        >>> llm = create_custom_llm_provider('bailian', 'qwen-max')
+        >>> llm = create_custom_llm_provider('openai', 'gpt-4')
+        >>> llm = create_custom_llm_provider('zhipu', 'glm-4')
+    """
+    _provider = provider or settings.LLM_PROVIDER
+    _model = model or settings.LLM_MODEL
+    _temperature = temperature if temperature is not None else settings.LLM_TEMPERATURE
+    _max_tokens = max_tokens if max_tokens is not None else settings.LLM_MAX_TOKENS
+    
+    logger.info(f"Creating custom LLM provider: {_provider}/{_model}")
+    
+    try:
+        if _provider == 'bailian':
+            # 使用阿里云百炼（通过 OpenAI 兼容接口）
+            _api_key = api_key or settings.DASHSCOPE_API_KEY or settings.BAILIAN_API_KEY
+            if not _api_key:
+                raise ValueError("DASHSCOPE_API_KEY or BAILIAN_API_KEY is required for bailian provider")
+            
+            _base_url = base_url or settings.DASHSCOPE_BASE_URL
+            return BailianProvider(
+                model=_model,
+                api_key=_api_key,
+                base_url=_base_url,
+                access_key_id=settings.BAILIAN_ACCESS_KEY_ID,
+                access_key_secret=settings.BAILIAN_ACCESS_KEY_SECRET,
+                agent_code=settings.BAILIAN_AGENT_CODE,
+                region_id=settings.BAILIAN_REGION_ID,
+                temperature=_temperature,
+                max_tokens=_max_tokens
+            )
+        
+        elif _provider == 'openai':
+            # 使用 OpenAI
+            _api_key = api_key or settings.OPENAI_API_KEY
+            if not _api_key:
+                raise ValueError("OPENAI_API_KEY is required for openai provider")
+            
+            _base_url = base_url or settings.OPENAI_BASE_URL
+            return LiteLLMProvider(
+                provider="openai",
+                model=_model,
+                api_key=_api_key,
+                base_url=_base_url,
+                temperature=_temperature,
+                max_tokens=_max_tokens
+            )
+        
+        elif _provider == 'deepseek':
+            # 使用 DeepSeek（通过 OpenAI 兼容接口）
+            _api_key = api_key or settings.DEEPSEEK_API_KEY
+            if not _api_key:
+                raise ValueError("DEEPSEEK_API_KEY is required for deepseek provider")
+            
+            _base_url = base_url or settings.DEEPSEEK_BASE_URL or 'https://api.deepseek.com/v1'
+            return LiteLLMProvider(
+                provider="openai",
+                model=_model,
+                api_key=_api_key,
+                base_url=_base_url,
+                temperature=_temperature,
+                max_tokens=_max_tokens
+            )
+        
+        elif _provider == 'kimi':
+            # 使用 Kimi (Moonshot)
+            _api_key = api_key or settings.MOONSHOT_API_KEY
+            if not _api_key:
+                raise ValueError("MOONSHOT_API_KEY is required for kimi provider")
+            
+            _base_url = base_url or settings.MOONSHOT_BASE_URL or 'https://api.moonshot.cn/v1'
+            return LiteLLMProvider(
+                provider="openai",
+                model=_model,
+                api_key=_api_key,
+                base_url=_base_url,
+                temperature=_temperature,
+                max_tokens=_max_tokens
+            )
+        
+        elif _provider == 'zhipu':
+            # 使用智谱 AI
+            _api_key = api_key or settings.ZHIPU_API_KEY
+            if not _api_key:
+                raise ValueError("ZHIPU_API_KEY is required for zhipu provider")
+            
+            _base_url = base_url or settings.ZHIPU_BASE_URL or 'https://open.bigmodel.cn/api/paas/v4'
+            return LiteLLMProvider(
+                provider="openai",
+                model=_model,
+                api_key=_api_key,
+                base_url=_base_url,
+                temperature=_temperature,
+                max_tokens=_max_tokens
+            )
+        
+        else:
+            logger.warning(f"Unsupported provider: {_provider}, falling back to default")
+            return get_llm_provider()
+    
+    except ValueError as e:
+        logger.error(f"Configuration error: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create custom LLM provider: {e}", exc_info=True)
+        # 降级到默认 provider
+        return get_llm_provider()
 
