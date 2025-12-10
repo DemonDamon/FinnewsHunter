@@ -4,8 +4,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { newsApi, taskApi } from '@/lib/api-client'
 import { TrendingUp, Newspaper, Activity, Clock } from 'lucide-react'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { formatRelativeTime } from '@/lib/utils'
+import NewsDetailDrawer from '@/components/NewsDetailDrawer'
 
 // 新闻源配置
 const NEWS_SOURCES = [
@@ -24,6 +25,20 @@ const NEWS_SOURCES = [
 
 export default function Dashboard() {
   const [selectedSource, setSelectedSource] = useState<string>('all')
+  const [selectedNewsId, setSelectedNewsId] = useState<number | null>(null)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+
+  // 监听自定义事件，用于从相关新闻跳转
+  useEffect(() => {
+    const handleNewsSelect = (e: CustomEvent<number>) => {
+      setSelectedNewsId(e.detail)
+      setDrawerOpen(true)
+    }
+    window.addEventListener('news-select', handleNewsSelect as EventListener)
+    return () => {
+      window.removeEventListener('news-select', handleNewsSelect as EventListener)
+    }
+  }, [])
 
   const { data: newsList } = useQuery({
     queryKey: ['news', 'dashboard', selectedSource],
@@ -187,7 +202,14 @@ export default function Dashboard() {
           {newsList && newsList.length > 0 ? (
             <div className="space-y-3 max-h-[600px] overflow-y-auto">
               {newsList.slice(0, 20).map((news) => (
-                <div key={news.id} className="flex items-start gap-4 p-4 hover:bg-gray-50 rounded-lg transition-colors border border-gray-100">
+                <div 
+                  key={news.id} 
+                  className="flex items-start gap-4 p-4 hover:bg-gray-50 rounded-lg transition-colors border border-gray-100 cursor-pointer"
+                  onClick={() => {
+                    setSelectedNewsId(news.id)
+                    setDrawerOpen(true)
+                  }}
+                >
                   <div className="flex-1">
                     <h3 className="font-medium leading-tight">{news.title}</h3>
                     <p className="text-sm text-gray-600 mt-1 line-clamp-2">
@@ -226,6 +248,19 @@ export default function Dashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* 新闻详情抽屉 */}
+      <NewsDetailDrawer
+        newsId={selectedNewsId}
+        open={drawerOpen}
+        onOpenChange={(open) => {
+          setDrawerOpen(open)
+          if (!open) {
+            // 延迟清除newsId，避免关闭动画时闪烁
+            setTimeout(() => setSelectedNewsId(null), 300)
+          }
+        }}
+      />
     </div>
   )
 }
