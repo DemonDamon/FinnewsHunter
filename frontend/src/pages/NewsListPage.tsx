@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
@@ -14,6 +14,58 @@ import HighlightText from '@/components/HighlightText'
 import { useModelConfig } from '@/components/ModelSelector'
 
 type FilterType = 'all' | 'pending' | 'positive' | 'negative' | 'neutral'
+
+// 独立的搜索框组件，自己管理内部状态，避免每次输入都重新挂载
+function SearchBox({ onSearch }: { onSearch: (query: string) => void }) {
+  const [localQuery, setLocalQuery] = useState('')
+  const isComposingRef = useRef(false)
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setLocalQuery(value)
+    // 非组合输入状态下，直接更新搜索词
+    if (!isComposingRef.current) {
+      onSearch(value)
+    }
+  }
+
+  const handleCompositionEnd = (e: React.CompositionEvent<HTMLInputElement>) => {
+    isComposingRef.current = false
+    // 组合输入结束后，更新搜索词
+    onSearch(e.currentTarget.value)
+  }
+
+  const handleClear = () => {
+    setLocalQuery('')
+    onSearch('')
+  }
+
+  return (
+    <div className="relative w-full">
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+      <input
+        type="text"
+        placeholder="搜索新闻、股票代码..."
+        value={localQuery}
+        onCompositionStart={() => {
+          isComposingRef.current = true
+        }}
+        onCompositionEnd={handleCompositionEnd}
+        onChange={handleChange}
+        className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 h-10"
+      />
+      {localQuery && (
+        <button
+          onClick={handleClear}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+          aria-label="清除搜索"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      )}
+    </div>
+  )
+}
 
 // 新闻源配置
 const NEWS_SOURCES = [
@@ -42,6 +94,11 @@ export default function NewsListPage() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('') // 搜索关键词
   const debouncedSearchQuery = useDebounce(searchQuery, 300) // 防抖处理
+  
+  // 使用 useCallback 确保 onSearch 引用稳定，避免 SearchBox 重新渲染
+  const handleSearch = useCallback((query: string) => {
+    setSearchQuery(query)
+  }, [])
   const { setContent } = useNewsToolbar()
   const modelConfig = useModelConfig() // 获取当前选中的模型配置
 
@@ -125,32 +182,9 @@ export default function NewsListPage() {
 
   // 将搜索框 + 刷新按钮挂到顶部工具栏
   useEffect(() => {
-    const searchBox = (
-      <div className="relative w-full">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <input
-          type="text"
-          placeholder="搜索新闻、股票代码..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.currentTarget.blur()
-            }
-          }}
-          className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 h-10"
-        />
-        {searchQuery && (
-          <button
-            onClick={() => setSearchQuery('')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-            aria-label="清除搜索"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        )}
-      </div>
-    )
+    // 使用独立的 SearchBox 组件，它自己管理内部状态
+    // 这样 searchQuery 变化时不会导致 input 重新挂载
+    const searchBox = <SearchBox onSearch={handleSearch} />
 
     const refreshButton = (
       <Button
@@ -172,7 +206,7 @@ export default function NewsListPage() {
     return () => {
       setContent({ left: null, right: null })
     }
-  }, [searchQuery, isRefreshing, setContent])
+  }, [isRefreshing, setContent, handleSearch])
 
   const handleAnalyze = (newsId: number) => {
     setAnalyzingNewsId(newsId)
