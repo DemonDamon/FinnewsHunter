@@ -7,6 +7,16 @@ import type {
   CrawlRequest,
   CrawlResponse,
   AnalysisResponse,
+  StockOverview,
+  StockNewsItem,
+  SentimentTrendPoint,
+  KLineDataPoint,
+  DebateRequest,
+  DebateResponse,
+  AgentLogEntry,
+  AgentMetrics,
+  AgentInfo,
+  WorkflowInfo,
 } from '@/types/api'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'
@@ -221,6 +231,143 @@ export const taskApi = {
    */
   getTaskStats: async (): Promise<TaskStats> => {
     const response = await apiClient.get<TaskStats>('/tasks/stats/summary')
+    return response.data
+  },
+}
+
+/**
+ * 股票分析相关 API - Phase 2
+ */
+export const stockApi = {
+  /**
+   * 获取股票概览信息
+   */
+  getOverview: async (stockCode: string): Promise<StockOverview> => {
+    const response = await apiClient.get<StockOverview>(`/stocks/${stockCode}`)
+    return response.data
+  },
+
+  /**
+   * 获取股票关联新闻
+   */
+  getNews: async (stockCode: string, params?: {
+    limit?: number
+    offset?: number
+    sentiment?: 'positive' | 'negative' | 'neutral'
+  }): Promise<StockNewsItem[]> => {
+    const response = await apiClient.get<StockNewsItem[]>(`/stocks/${stockCode}/news`, { params })
+    return response.data
+  },
+
+  /**
+   * 获取情感趋势
+   */
+  getSentimentTrend: async (stockCode: string, days: number = 30): Promise<SentimentTrendPoint[]> => {
+    const response = await apiClient.get<SentimentTrendPoint[]>(
+      `/stocks/${stockCode}/sentiment-trend`,
+      { params: { days } }
+    )
+    return response.data
+  },
+
+  /**
+   * 获取K线数据（模拟）
+   */
+  getKLineData: async (stockCode: string, days: number = 30): Promise<KLineDataPoint[]> => {
+    const response = await apiClient.get<KLineDataPoint[]>(
+      `/stocks/${stockCode}/kline`,
+      { params: { days } }
+    )
+    return response.data
+  },
+
+  /**
+   * 搜索股票
+   */
+  search: async (query: string, limit: number = 10): Promise<Array<{
+    code: string
+    name: string
+    full_code: string | null
+    industry: string | null
+  }>> => {
+    const response = await apiClient.get('/stocks/search/code', {
+      params: { q: query, limit }
+    })
+    return response.data
+  },
+}
+
+/**
+ * 智能体相关 API - Phase 2
+ */
+export const agentApi = {
+  /**
+   * 触发股票辩论分析
+   */
+  runDebate: async (request: DebateRequest): Promise<DebateResponse> => {
+    const response = await apiClient.post<DebateResponse>('/agents/debate', request)
+    return response.data
+  },
+
+  /**
+   * 获取辩论结果
+   */
+  getDebateResult: async (debateId: string): Promise<DebateResponse> => {
+    const response = await apiClient.get<DebateResponse>(`/agents/debate/${debateId}`)
+    return response.data
+  },
+
+  /**
+   * 获取智能体执行日志
+   */
+  getLogs: async (params?: {
+    limit?: number
+    agent_name?: string
+    status?: 'started' | 'completed' | 'failed'
+  }): Promise<AgentLogEntry[]> => {
+    const response = await apiClient.get<AgentLogEntry[]>('/agents/logs', { params })
+    return response.data
+  },
+
+  /**
+   * 获取智能体性能指标
+   */
+  getMetrics: async (): Promise<AgentMetrics> => {
+    const response = await apiClient.get<AgentMetrics>('/agents/metrics')
+    return response.data
+  },
+
+  /**
+   * 获取辩论执行轨迹
+   */
+  getTrajectory: async (debateId: string): Promise<Array<{
+    step_id: string
+    step_name: string
+    timestamp: string
+    agent_name?: string
+    output_data?: Record<string, any>
+    status: string
+  }>> => {
+    const response = await apiClient.get(`/agents/trajectory/${debateId}`)
+    return response.data
+  },
+
+  /**
+   * 获取可用智能体列表
+   */
+  getAvailable: async (): Promise<{
+    agents: AgentInfo[]
+    workflows: WorkflowInfo[]
+  }> => {
+    const response = await apiClient.get('/agents/available')
+    return response.data
+  },
+
+  /**
+   * 清空执行日志（仅开发用）
+   */
+  clearLogs: async (): Promise<{ message: string }> => {
+    const response = await apiClient.delete('/agents/logs')
     return response.data
   },
 }
