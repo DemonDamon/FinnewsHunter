@@ -1,6 +1,8 @@
 # FinnewsHunter：金融新闻驱动的多智能体投资决策平台
 
-![FinnewsHunter Logo](assets/images/FINNEWS_HUNTER_LOGO.png)
+<div align="center">
+  <img src="assets/images/FINNEWS_HUNTER_LOGO.png" alt="FinnewsHunter Logo" width="280">
+</div>
 
 基于 [AgenticX](https://github.com/DemonDamon/AgenticX) 框架构建的企业级金融新闻分析系统，融合实时新闻流、深度量化分析和多智能体辩论机制。
 
