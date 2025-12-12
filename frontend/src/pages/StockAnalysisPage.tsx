@@ -1,33 +1,665 @@
+import { useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useQuery, useMutation } from '@tanstack/react-query'
+import { toast } from 'sonner'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { stockApi, agentApi } from '@/lib/api-client'
+import { formatRelativeTime } from '@/lib/utils'
+import {
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Newspaper,
+  BarChart3,
+  MessageSquare,
+  RefreshCw,
+  Calendar,
+  Swords,
+  Bot,
+  ThumbsUp,
+  ThumbsDown,
+  Scale,
+  Loader2,
+  Activity,
+} from 'lucide-react'
+import {
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Bar,
+  Legend,
+  ComposedChart,
+  Area,
+} from 'recharts'
+import type { DebateResponse } from '@/types/api'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+
+// 股票代码到名称的映射（模拟数据）
+const STOCK_NAMES: Record<string, string> = {
+  '600519': '贵州茅台',
+  'SH600519': '贵州茅台',
+  '000001': '平安银行',
+  'SZ000001': '平安银行',
+  '601318': '中国平安',
+  'SH601318': '中国平安',
+  '000858': '五粮液',
+  'SZ000858': '五粮液',
+  '002594': '比亚迪',
+  'SZ002594': '比亚迪',
+}
 
 export default function StockAnalysisPage() {
   const { code } = useParams<{ code: string }>()
+  const [activeTab, setActiveTab] = useState<'chart' | 'news' | 'debate'>('chart')
+  const [debateResult, setDebateResult] = useState<DebateResponse | null>(null)
+  const stockCode = code?.toUpperCase() || 'SH600519'
+  const stockName = STOCK_NAMES[stockCode] || STOCK_NAMES[stockCode.replace('SH', '').replace('SZ', '')] || stockCode
+
+  // 获取股票概览
+  const { data: overview, isLoading: overviewLoading, refetch: refetchOverview } = useQuery({
+    queryKey: ['stock', 'overview', stockCode],
+    queryFn: () => stockApi.getOverview(stockCode),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // 获取关联新闻
+  const { data: newsList, isLoading: newsLoading } = useQuery({
+    queryKey: ['stock', 'news', stockCode],
+    queryFn: () => stockApi.getNews(stockCode, { limit: 20 }),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // 获取情感趋势
+  const { data: sentimentTrend, isLoading: trendLoading } = useQuery({
+    queryKey: ['stock', 'sentiment-trend', stockCode],
+    queryFn: () => stockApi.getSentimentTrend(stockCode, 30),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // 获取K线数据
+  const { data: klineData, isLoading: klineLoading } = useQuery({
+    queryKey: ['stock', 'kline', stockCode],
+    queryFn: () => stockApi.getKLineData(stockCode, 30),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // 辩论 Mutation
+  const debateMutation = useMutation({
+    mutationFn: () => agentApi.runDebate({
+      stock_code: stockCode,
+      stock_name: stockName,
+    }),
+    onSuccess: (data) => {
+      setDebateResult(data)
+      if (data.success) {
+        toast.success('辩论分析完成！')
+      } else {
+        toast.error(`辩论失败: ${data.error}`)
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(`辩论失败: ${error.message}`)
+    },
+  })
+
+  const handleStartDebate = () => {
+    setDebateResult(null)
+    debateMutation.mutate()
+  }
+
+  // 情感趋势指示器
+  const getTrendIcon = (trend: string) => {
+    switch (trend) {
+      case 'up':
+        return <TrendingUp className="w-5 h-5 text-emerald-500" />
+      case 'down':
+        return <TrendingDown className="w-5 h-5 text-rose-500" />
+      default:
+        return <Minus className="w-5 h-5 text-gray-500" />
+    }
+  }
+
+  const getSentimentColor = (score: number | null) => {
+    if (score === null) return 'gray'
+    if (score > 0.1) return 'emerald'
+    if (score < -0.1) return 'rose'
+    return 'amber'
+  }
+
+  const getSentimentLabel = (score: number | null) => {
+    if (score === null) return '未知'
+    if (score > 0.3) return '强烈利好'
+    if (score > 0.1) return '利好'
+    if (score < -0.3) return '强烈利空'
+    if (score < -0.1) return '利空'
+    return '中性'
+  }
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">个股分析</h1>
-        <p className="text-muted-foreground">股票代码: {code}</p>
+    <div className="p-6 space-y-6 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
+      {/* 顶部标题区 */}
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+              {stockName}
+            </h1>
+            <Badge variant="outline" className="text-base px-3 py-1 bg-white">
+              {stockCode}
+            </Badge>
+          </div>
+          <p className="text-muted-foreground mt-1 flex items-center gap-2">
+            <Activity className="w-4 h-4" />
+            个股分析 · 智能体驱动的投资决策
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => refetchOverview()}
+          disabled={overviewLoading}
+        >
+          <RefreshCw className={`w-4 h-4 mr-2 ${overviewLoading ? 'animate-spin' : ''}`} />
+          刷新数据
+        </Button>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>功能开发中...</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-gray-500">
-            Phase 2 将实现完整的个股分析功能，包括：
-          </p>
-          <ul className="list-disc list-inside mt-2 text-gray-600 space-y-1">
-            <li>K线图展示</li>
-            <li>新闻情感趋势</li>
-            <li>关联新闻列表</li>
-            <li>Bull vs Bear 辩论</li>
-          </ul>
-        </CardContent>
-      </Card>
+      {/* 概览卡片 */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card className="bg-white/80 backdrop-blur-sm border-blue-100">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">关联新闻</p>
+                <p className="text-2xl font-bold text-blue-600">
+                  {overview?.total_news || 0}
+                </p>
+              </div>
+              <Newspaper className="w-8 h-8 text-blue-500/50" />
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              已分析 {overview?.analyzed_news || 0} 条
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white/80 backdrop-blur-sm border-emerald-100">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">整体情感</p>
+                <p className={`text-2xl font-bold text-${getSentimentColor(overview?.avg_sentiment ?? null)}-600`}>
+                  {overview?.avg_sentiment != null 
+                    ? (overview.avg_sentiment > 0 ? '+' : '') + overview.avg_sentiment.toFixed(2)
+                    : '--'}
+                </p>
+              </div>
+              <BarChart3 className={`w-8 h-8 text-${getSentimentColor(overview?.avg_sentiment || null)}-500/50`} />
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              {getSentimentLabel(overview?.avg_sentiment || null)}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white/80 backdrop-blur-sm border-purple-100">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">近7天情感</p>
+                <p className={`text-2xl font-bold text-${getSentimentColor(overview?.recent_sentiment ?? null)}-600`}>
+                  {overview?.recent_sentiment != null
+                    ? (overview.recent_sentiment > 0 ? '+' : '') + overview.recent_sentiment.toFixed(2)
+                    : '--'}
+                </p>
+              </div>
+              {getTrendIcon(overview?.sentiment_trend || 'stable')}
+            </div>
+            <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+              趋势：
+              {overview?.sentiment_trend === 'up' && <span className="text-emerald-600">上升 ↑</span>}
+              {overview?.sentiment_trend === 'down' && <span className="text-rose-600">下降 ↓</span>}
+              {overview?.sentiment_trend === 'stable' && <span className="text-gray-600">稳定 →</span>}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white/80 backdrop-blur-sm border-orange-100">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">最新新闻</p>
+                <p className="text-lg font-medium text-gray-700">
+                  {overview?.last_news_time 
+                    ? formatRelativeTime(overview.last_news_time)
+                    : '暂无'}
+                </p>
+              </div>
+              <Calendar className="w-8 h-8 text-orange-500/50" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Tab 切换 */}
+      <div className="flex gap-2 border-b border-gray-200 pb-2">
+        <Button
+          variant={activeTab === 'chart' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => setActiveTab('chart')}
+          className={activeTab === 'chart' ? 'bg-blue-600' : ''}
+        >
+          <BarChart3 className="w-4 h-4 mr-2" />
+          图表分析
+        </Button>
+        <Button
+          variant={activeTab === 'news' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => setActiveTab('news')}
+          className={activeTab === 'news' ? 'bg-blue-600' : ''}
+        >
+          <Newspaper className="w-4 h-4 mr-2" />
+          关联新闻
+        </Button>
+        <Button
+          variant={activeTab === 'debate' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => setActiveTab('debate')}
+          className={activeTab === 'debate' ? 'bg-blue-600' : ''}
+        >
+          <Swords className="w-4 h-4 mr-2" />
+          Bull vs Bear
+        </Button>
+      </div>
+
+      {/* 图表分析 Tab */}
+      {activeTab === 'chart' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* K线图 */}
+          <Card className="bg-white/90">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-blue-500" />
+                价格走势（模拟）
+              </CardTitle>
+              <CardDescription>
+                近30天K线数据（仅供展示，非实时行情）
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {klineLoading ? (
+                <div className="h-64 flex items-center justify-center">
+                  <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+                </div>
+              ) : klineData && klineData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <ComposedChart data={klineData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis 
+                      dataKey="date" 
+                      tick={{ fontSize: 10 }}
+                      tickFormatter={(value) => value.slice(5)}
+                    />
+                    <YAxis 
+                      domain={['auto', 'auto']}
+                      tick={{ fontSize: 10 }}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                        borderRadius: '8px',
+                        border: '1px solid #e5e7eb',
+                      }}
+                      formatter={(value: number) => [value.toFixed(2), '']}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="close"
+                      fill="rgba(59, 130, 246, 0.1)"
+                      stroke="rgba(59, 130, 246, 0.3)"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="close"
+                      stroke="#3b82f6"
+                      strokeWidth={2}
+                      dot={false}
+                      name="收盘价"
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-64 flex items-center justify-center text-gray-500">
+                  暂无数据
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 情感趋势图 */}
+          <Card className="bg-white/90">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-purple-500" />
+                新闻情感趋势
+              </CardTitle>
+              <CardDescription>
+                近30天新闻情感分布与平均值
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {trendLoading ? (
+                <div className="h-64 flex items-center justify-center">
+                  <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+                </div>
+              ) : sentimentTrend && sentimentTrend.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <ComposedChart data={sentimentTrend}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis 
+                      dataKey="date" 
+                      tick={{ fontSize: 10 }}
+                      tickFormatter={(value) => value.slice(5)}
+                    />
+                    <YAxis 
+                      yAxisId="left"
+                      domain={[-1, 1]}
+                      tick={{ fontSize: 10 }}
+                    />
+                    <YAxis 
+                      yAxisId="right"
+                      orientation="right"
+                      tick={{ fontSize: 10 }}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                        borderRadius: '8px',
+                        border: '1px solid #e5e7eb',
+                      }}
+                    />
+                    <Legend />
+                    <Bar 
+                      yAxisId="right"
+                      dataKey="positive_count" 
+                      stackId="a" 
+                      fill="#10b981" 
+                      name="利好"
+                    />
+                    <Bar 
+                      yAxisId="right"
+                      dataKey="neutral_count" 
+                      stackId="a" 
+                      fill="#f59e0b" 
+                      name="中性"
+                    />
+                    <Bar 
+                      yAxisId="right"
+                      dataKey="negative_count" 
+                      stackId="a" 
+                      fill="#ef4444" 
+                      name="利空"
+                    />
+                    <Line
+                      yAxisId="left"
+                      type="monotone"
+                      dataKey="avg_sentiment"
+                      stroke="#8b5cf6"
+                      strokeWidth={2}
+                      dot={false}
+                      name="平均情感"
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-64 flex items-center justify-center text-gray-500">
+                  暂无数据
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* 关联新闻 Tab */}
+      {activeTab === 'news' && (
+        <Card className="bg-white/90">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Newspaper className="w-5 h-5 text-blue-500" />
+              关联新闻
+            </CardTitle>
+            <CardDescription>
+              包含 {stockCode} 的相关财经新闻
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {newsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+              </div>
+            ) : newsList && newsList.length > 0 ? (
+              <div className="space-y-4">
+                {newsList.map((news) => (
+                  <div
+                    key={news.id}
+                    className="p-4 rounded-lg border border-gray-100 hover:border-blue-200 hover:bg-blue-50/30 transition-all cursor-pointer"
+                    onClick={() => window.dispatchEvent(new CustomEvent('news-select', { detail: news.id }))}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <h3 className="font-medium text-gray-900 line-clamp-1">
+                          {news.title}
+                        </h3>
+                        <p className="text-sm text-gray-500 line-clamp-2 mt-1">
+                          {news.content}
+                        </p>
+                        <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
+                          <span>{news.source}</span>
+                          <span>•</span>
+                          <span>{news.publish_time ? formatRelativeTime(news.publish_time) : '时间未知'}</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        {news.sentiment_score !== null && (
+                          <Badge 
+                            className={`
+                              ${news.sentiment_score > 0.1 ? 'bg-emerald-100 text-emerald-700' : ''}
+                              ${news.sentiment_score < -0.1 ? 'bg-rose-100 text-rose-700' : ''}
+                              ${news.sentiment_score >= -0.1 && news.sentiment_score <= 0.1 ? 'bg-amber-100 text-amber-700' : ''}
+                            `}
+                          >
+                            {news.sentiment_score > 0 ? '+' : ''}{news.sentiment_score.toFixed(2)}
+                          </Badge>
+                        )}
+                        {news.has_analysis && (
+                          <Badge variant="outline" className="text-xs">
+                            已分析
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 text-gray-500">
+                <Newspaper className="w-12 h-12 mx-auto opacity-50 mb-3" />
+                <p>暂无关联新闻</p>
+                <p className="text-sm mt-1">该股票还没有相关新闻数据</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Bull vs Bear 辩论 Tab */}
+      {activeTab === 'debate' && (
+        <div className="space-y-6">
+          {/* 触发辩论按钮 */}
+          <Card className="bg-gradient-to-r from-emerald-50 to-rose-50 border-none">
+            <CardContent className="py-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="flex -space-x-2">
+                    <div className="w-12 h-12 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-lg">
+                      <ThumbsUp className="w-6 h-6" />
+                    </div>
+                    <div className="w-12 h-12 rounded-full bg-rose-500 flex items-center justify-center text-white shadow-lg">
+                      <ThumbsDown className="w-6 h-6" />
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Bull vs Bear 智能体辩论</h3>
+                    <p className="text-sm text-gray-500">
+                      看多研究员 vs 看空研究员，投资经理综合裁决
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  onClick={handleStartDebate}
+                  disabled={debateMutation.isPending}
+                  className="bg-gradient-to-r from-emerald-500 to-rose-500 hover:from-emerald-600 hover:to-rose-600"
+                >
+                  {debateMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      辩论中...
+                    </>
+                  ) : (
+                    <>
+                      <Swords className="w-4 h-4 mr-2" />
+                      开始辩论
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 辩论结果 */}
+          {debateResult && debateResult.success && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* 看多观点 */}
+              <Card className="bg-white/90 border-l-4 border-l-emerald-500">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-emerald-700">
+                    <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
+                      <ThumbsUp className="w-4 h-4 text-emerald-600" />
+                    </div>
+                    看多观点
+                  </CardTitle>
+                  <CardDescription>
+                    <Bot className="w-3 h-3 inline mr-1" />
+                    {debateResult.bull_analysis?.agent_name} · {debateResult.bull_analysis?.agent_role}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="prose prose-sm max-w-none prose-headings:text-emerald-800 prose-headings:font-semibold">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {debateResult.bull_analysis?.analysis || '分析生成中...'}
+                    </ReactMarkdown>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* 看空观点 */}
+              <Card className="bg-white/90 border-l-4 border-l-rose-500">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-rose-700">
+                    <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center">
+                      <ThumbsDown className="w-4 h-4 text-rose-600" />
+                    </div>
+                    看空观点
+                  </CardTitle>
+                  <CardDescription>
+                    <Bot className="w-3 h-3 inline mr-1" />
+                    {debateResult.bear_analysis?.agent_name} · {debateResult.bear_analysis?.agent_role}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="prose prose-sm max-w-none prose-headings:text-rose-800 prose-headings:font-semibold">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {debateResult.bear_analysis?.analysis || '分析生成中...'}
+                    </ReactMarkdown>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* 最终决策 */}
+              <Card className="lg:col-span-2 bg-gradient-to-br from-blue-50 to-purple-50 border-blue-200">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-blue-800">
+                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                      <Scale className="w-5 h-5 text-blue-600" />
+                    </div>
+                    投资经理决策
+                    {debateResult.final_decision?.rating && (
+                      <Badge 
+                        className={`ml-2 ${
+                          debateResult.final_decision.rating === '强烈推荐' || debateResult.final_decision.rating === '推荐'
+                            ? 'bg-emerald-500'
+                            : debateResult.final_decision.rating === '回避' || debateResult.final_decision.rating === '谨慎'
+                            ? 'bg-rose-500'
+                            : 'bg-amber-500'
+                        }`}
+                      >
+                        {debateResult.final_decision.rating}
+                      </Badge>
+                    )}
+                  </CardTitle>
+                  <CardDescription className="flex items-center gap-4">
+                    <span>
+                      <Bot className="w-3 h-3 inline mr-1" />
+                      {debateResult.final_decision?.agent_name} · {debateResult.final_decision?.agent_role}
+                    </span>
+                    {debateResult.execution_time && (
+                      <span className="text-xs bg-blue-100 px-2 py-0.5 rounded">
+                        耗时 {debateResult.execution_time.toFixed(1)}s
+                      </span>
+                    )}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="prose prose-sm max-w-none prose-headings:text-blue-800 prose-headings:font-semibold">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {debateResult.final_decision?.decision || '决策生成中...'}
+                    </ReactMarkdown>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* 辩论失败 */}
+          {debateResult && !debateResult.success && (
+            <Card className="bg-rose-50 border-rose-200">
+              <CardContent className="py-6">
+                <p className="text-rose-700">辩论分析失败: {debateResult.error}</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 初始状态 */}
+          {!debateResult && !debateMutation.isPending && (
+            <Card className="bg-gray-50">
+              <CardContent className="py-12 text-center text-gray-500">
+                <Swords className="w-16 h-16 mx-auto opacity-50 mb-4" />
+                <p className="text-lg">点击"开始辩论"启动智能体分析</p>
+                <p className="text-sm mt-2">
+                  系统将自动调用 Bull/Bear 研究员进行多角度分析，并由投资经理给出综合决策
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
     </div>
   )
 }
-
