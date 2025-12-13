@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -23,6 +23,10 @@ import {
   Scale,
   Loader2,
   Activity,
+  ArrowLeft,
+  Download,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react'
 import {
   XAxis,
@@ -36,7 +40,6 @@ import {
   Line,
 } from 'recharts'
 import KLineChart from '@/components/KLineChart'
-import StockSearch from '@/components/StockSearch'
 import type { DebateResponse } from '@/types/api'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -61,10 +64,27 @@ const PERIOD_OPTIONS: { value: KLinePeriod; label: string; limit: number }[] = [
   { value: '1m', label: '1分', limit: 400 },
 ]
 
+// 定向爬取任务状态类型
+type CrawlTaskStatus = 'idle' | 'pending' | 'running' | 'completed' | 'failed'
+
+interface CrawlTaskState {
+  status: CrawlTaskStatus
+  taskId?: number
+  progress?: {
+    current: number
+    total: number
+    message?: string
+  }
+  error?: string
+}
+
 export default function StockAnalysisPage() {
   const { code } = useParams<{ code: string }>()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [debateResult, setDebateResult] = useState<DebateResponse | null>(null)
   const [klinePeriod, setKlinePeriod] = useState<KLinePeriod>('daily')
+  const [crawlTask, setCrawlTask] = useState<CrawlTaskState>({ status: 'idle' })
   const stockCode = code?.toUpperCase() || 'SH600519'
   const pureCode = extractCode(stockCode)
 
@@ -133,6 +153,94 @@ export default function StockAnalysisPage() {
     debateMutation.mutate()
   }
 
+  // 定向爬取任务状态查询
+  const { data: crawlStatus, refetch: refetchCrawlStatus } = useQuery({
+    queryKey: ['stock', 'targeted-crawl-status', stockCode],
+    queryFn: () => stockApi.getTargetedCrawlStatus(stockCode),
+    enabled: crawlTask.status === 'running' || crawlTask.status === 'pending',
+    refetchInterval: crawlTask.status === 'running' ? 3000 : false, // 运行中时每3秒轮询
+    staleTime: 0,
+  })
+
+  // 监听爬取状态变化
+  useEffect(() => {
+    if (crawlStatus) {
+      if (crawlStatus.status === 'completed') {
+        setCrawlTask({ 
+          status: 'completed', 
+          taskId: crawlStatus.task_id,
+          progress: { current: 100, total: 100, message: '爬取完成' }
+        })
+        // 刷新新闻列表
+        queryClient.invalidateQueries({ queryKey: ['stock', 'news', stockCode] })
+        queryClient.invalidateQueries({ queryKey: ['stock', 'overview', stockCode] })
+        toast.success(`定向爬取完成！新增 ${crawlStatus.saved_count || 0} 条新闻`)
+      } else if (crawlStatus.status === 'failed') {
+        setCrawlTask({ 
+          status: 'failed', 
+          taskId: crawlStatus.task_id,
+          error: crawlStatus.error_message || '爬取失败'
+        })
+        toast.error(`定向爬取失败: ${crawlStatus.error_message || '未知错误'}`)
+      } else if (crawlStatus.status === 'running') {
+        setCrawlTask(prev => ({
+          ...prev,
+          status: 'running',
+          taskId: crawlStatus.task_id,
+          progress: crawlStatus.progress || prev.progress
+        }))
+      }
+    }
+  }, [crawlStatus, stockCode, queryClient])
+
+  // 页面加载时检查是否有进行中的任务
+  useEffect(() => {
+    const checkExistingTask = async () => {
+      try {
+        const status = await stockApi.getTargetedCrawlStatus(stockCode)
+        if (status && (status.status === 'running' || status.status === 'pending')) {
+          setCrawlTask({
+            status: status.status as CrawlTaskStatus,
+            taskId: status.task_id,
+            progress: status.progress
+          })
+        }
+      } catch {
+        // 没有进行中的任务，忽略错误
+      }
+    }
+    checkExistingTask()
+  }, [stockCode])
+
+  // 定向爬取 Mutation
+  const targetedCrawlMutation = useMutation({
+    mutationFn: () => stockApi.startTargetedCrawl(stockCode, stockName),
+    onSuccess: (data) => {
+      if (data.success) {
+        setCrawlTask({ 
+          status: 'running', 
+          taskId: data.task_id,
+          progress: { current: 0, total: 100, message: '开始爬取...' }
+        })
+        toast.success('定向爬取任务已启动')
+        // 开始轮询状态
+        refetchCrawlStatus()
+      } else {
+        setCrawlTask({ status: 'failed', error: data.message })
+        toast.error(`启动失败: ${data.message}`)
+      }
+    },
+    onError: (error: Error) => {
+      setCrawlTask({ status: 'failed', error: error.message })
+      toast.error(`启动失败: ${error.message}`)
+    },
+  })
+
+  const handleStartCrawl = () => {
+    setCrawlTask({ status: 'pending' })
+    targetedCrawlMutation.mutate()
+  }
+
   // 情感趋势指示器
   const getTrendIcon = (trend: string) => {
     switch (trend) {
@@ -183,19 +291,15 @@ export default function StockAnalysisPage() {
         </div>
         
         <div className="flex items-center gap-3">
-          {/* 股票搜索框 */}
-          <StockSearch 
-            className="w-72" 
-            placeholder="搜索股票代码或名称..."
-          />
+          {/* 返回按钮 */}
           <Button
             variant="outline"
             size="sm"
-            onClick={() => refetchOverview()}
-            disabled={overviewLoading}
+            onClick={() => navigate('/stock')}
+            className="gap-2 hover:bg-gray-100"
           >
-            <RefreshCw className={`w-4 h-4 mr-2 ${overviewLoading ? 'animate-spin' : ''}`} />
-            刷新数据
+            <ArrowLeft className="w-4 h-4" />
+            返回搜索
           </Button>
         </div>
       </div>
@@ -383,13 +487,56 @@ export default function StockAnalysisPage() {
       {/* 关联新闻 */}
       <Card className="bg-white/90">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Newspaper className="w-5 h-5 text-blue-500" />
-              关联新闻
-            </CardTitle>
-            <CardDescription>
-              包含 {stockCode} 的相关财经新闻
-            </CardDescription>
+            <div className="flex items-start justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Newspaper className="w-5 h-5 text-blue-500" />
+                  关联新闻
+                </CardTitle>
+                <CardDescription className="mt-1.5">
+                  包含 {stockCode} 的相关财经新闻
+                </CardDescription>
+              </div>
+              {/* 定向爬取按钮 */}
+              <div className="flex items-center gap-2">
+                {crawlTask.status === 'completed' && (
+                  <span className="flex items-center gap-1 text-xs text-emerald-600">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    爬取完成
+                  </span>
+                )}
+                {crawlTask.status === 'failed' && (
+                  <span className="flex items-center gap-1 text-xs text-rose-600">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    爬取失败
+                  </span>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleStartCrawl}
+                  disabled={crawlTask.status === 'running' || crawlTask.status === 'pending' || targetedCrawlMutation.isPending}
+                  className="gap-2"
+                >
+                  {crawlTask.status === 'running' || crawlTask.status === 'pending' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>爬取中...</span>
+                      {crawlTask.progress && (
+                        <span className="text-xs text-gray-500">
+                          {crawlTask.progress.message || `${crawlTask.progress.current}%`}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4" />
+                      定向爬取
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {newsLoading ? (

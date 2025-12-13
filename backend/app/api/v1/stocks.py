@@ -15,7 +15,9 @@ from ...core.database import get_db
 from ...models.news import News
 from ...models.stock import Stock
 from ...models.analysis import Analysis
+from ...models.crawl_task import CrawlTask, CrawlMode, TaskStatus
 from ...services.stock_data_service import stock_data_service
+from ...tasks.crawl_tasks import targeted_stock_crawl_task
 
 logger = logging.getLogger(__name__)
 
@@ -578,3 +580,140 @@ async def search_stocks_db(
         logger.error(f"Failed to search stocks: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ============ 定向爬取 API ============
+
+class TargetedCrawlRequest(BaseModel):
+    """定向爬取请求"""
+    stock_name: str = Field(..., description="股票名称")
+    days: int = Field(default=30, ge=1, le=90, description="搜索时间范围（天）")
+
+
+class TargetedCrawlResponse(BaseModel):
+    """定向爬取响应"""
+    success: bool
+    message: str
+    task_id: Optional[int] = None
+    celery_task_id: Optional[str] = None
+
+
+class TargetedCrawlStatus(BaseModel):
+    """定向爬取状态"""
+    task_id: Optional[int] = None
+    status: str  # idle, pending, running, completed, failed
+    celery_task_id: Optional[str] = None
+    progress: Optional[dict] = None
+    crawled_count: Optional[int] = None
+    saved_count: Optional[int] = None
+    error_message: Optional[str] = None
+    execution_time: Optional[float] = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+
+
+@router.post("/{stock_code}/targeted-crawl", response_model=TargetedCrawlResponse)
+async def start_targeted_crawl(
+    stock_code: str,
+    request: TargetedCrawlRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    触发定向爬取任务
+    
+    - **stock_code**: 股票代码（如 SH600519）
+    - **stock_name**: 股票名称（如 贵州茅台）
+    - **days**: 搜索时间范围（默认30天）
+    """
+    try:
+        # 标准化股票代码
+        code = stock_code.upper()
+        if not (code.startswith("SH") or code.startswith("SZ")):
+            code = f"SH{code}" if code.startswith("6") else f"SZ{code}"
+        
+        # 检查是否有正在运行的任务
+        running_task = await db.execute(
+            select(CrawlTask).where(
+                and_(
+                    CrawlTask.mode == CrawlMode.TARGETED,
+                    CrawlTask.status.in_([TaskStatus.PENDING, TaskStatus.RUNNING]),
+                    CrawlTask.config['stock_code'].astext == code
+                )
+            ).order_by(desc(CrawlTask.created_at)).limit(1)
+        )
+        existing_task = running_task.scalar_one_or_none()
+        
+        if existing_task:
+            return TargetedCrawlResponse(
+                success=False,
+                message=f"该股票已有正在进行的爬取任务 (ID: {existing_task.id})",
+                task_id=existing_task.id,
+                celery_task_id=existing_task.celery_task_id
+            )
+        
+        logger.info(f"触发定向爬取任务: {request.stock_name}({code}), 时间范围: {request.days}天")
+        
+        # 触发 Celery 任务
+        celery_task = targeted_stock_crawl_task.apply_async(
+            args=(code, request.stock_name, request.days)
+        )
+        
+        return TargetedCrawlResponse(
+            success=True,
+            message=f"定向爬取任务已启动: {request.stock_name}({code})",
+            celery_task_id=celery_task.id
+        )
+    
+    except Exception as e:
+        logger.error(f"Failed to start targeted crawl for {stock_code}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{stock_code}/targeted-crawl/status", response_model=TargetedCrawlStatus)
+async def get_targeted_crawl_status(
+    stock_code: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    查询定向爬取任务状态
+    
+    - **stock_code**: 股票代码
+    """
+    try:
+        # 标准化股票代码
+        code = stock_code.upper()
+        if not (code.startswith("SH") or code.startswith("SZ")):
+            code = f"SH{code}" if code.startswith("6") else f"SZ{code}"
+        
+        # 查询最近的定向爬取任务
+        task_query = select(CrawlTask).where(
+            and_(
+                CrawlTask.mode == CrawlMode.TARGETED,
+                CrawlTask.config['stock_code'].astext == code
+            )
+        ).order_by(desc(CrawlTask.created_at)).limit(1)
+        
+        result = await db.execute(task_query)
+        task = result.scalar_one_or_none()
+        
+        if not task:
+            return TargetedCrawlStatus(
+                status="idle",
+                progress=None
+            )
+        
+        return TargetedCrawlStatus(
+            task_id=task.id,
+            status=task.status,
+            celery_task_id=task.celery_task_id,
+            progress=task.progress,
+            crawled_count=task.crawled_count,
+            saved_count=task.saved_count,
+            error_message=task.error_message,
+            execution_time=task.execution_time,
+            started_at=task.started_at.isoformat() if task.started_at else None,
+            completed_at=task.completed_at.isoformat() if task.completed_at else None
+        )
+    
+    except Exception as e:
+        logger.error(f"Failed to get targeted crawl status for {stock_code}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

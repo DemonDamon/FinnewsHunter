@@ -24,6 +24,8 @@ from ..tools import (
     YicaiCrawlerTool,
     Netease163CrawlerTool,
     EastmoneyCrawlerTool,
+    bochaai_search,
+    NewsItem,
 )
 
 logger = logging.getLogger(__name__)
@@ -407,6 +409,235 @@ def cold_start_crawl_task(
             task_record.status = TaskStatus.FAILED
             task_record.completed_at = datetime.utcnow()
             task_record.error_message = str(e)[:1000]
+            db.commit()
+        
+        raise
+    
+    finally:
+        db.close()
+
+
+@celery_app.task(bind=True, name="app.tasks.crawl_tasks.targeted_stock_crawl_task")
+def targeted_stock_crawl_task(
+    self,
+    stock_code: str,
+    stock_name: str,
+    days: int = 30
+):
+    """
+    定向爬取某只股票的相关新闻
+    
+    数据来源：
+    1. BochaAI 搜索引擎 API
+    2. 东方财富等财经网站（可扩展）
+    
+    Args:
+        stock_code: 股票代码（如 SH600519）
+        stock_name: 股票名称（如 贵州茅台）
+        days: 搜索时间范围（天），默认30天
+    """
+    db = get_sync_db_session()
+    task_record = None
+    
+    try:
+        # 标准化股票代码
+        code = stock_code.upper()
+        if code.startswith("SH") or code.startswith("SZ"):
+            pure_code = code[2:]
+        else:
+            pure_code = code
+            code = f"SH{code}" if code.startswith("6") else f"SZ{code}"
+        
+        # 1. 创建任务记录
+        task_record = CrawlTask(
+            celery_task_id=self.request.id,
+            mode=CrawlMode.TARGETED,
+            status=TaskStatus.RUNNING,
+            source="targeted",
+            config={
+                "stock_code": code,
+                "stock_name": stock_name,
+                "days": days,
+            },
+            started_at=datetime.utcnow(),
+        )
+        db.add(task_record)
+        db.commit()
+        db.refresh(task_record)
+        
+        logger.info(f"[Task {task_record.id}] 🎯 开始定向爬取: {stock_name}({code}), 时间范围: {days}天")
+        
+        start_time = datetime.utcnow()
+        all_news = []
+        search_results = []
+        filtered_news = []
+        
+        # 2. 使用 BochaAI 搜索引擎搜索新闻
+        if bochaai_search.is_available():
+            logger.info(f"[Task {task_record.id}] 🔍 使用 BochaAI 搜索...")
+            
+            search_results = bochaai_search.search_stock_news(
+                stock_name=stock_name,
+                stock_code=pure_code,
+                days=days,
+                count=30
+            )
+            
+            logger.info(f"[Task {task_record.id}] 📰 BochaAI 搜索到 {len(search_results)} 条结果")
+            
+            # 转换搜索结果为 NewsItem
+            for result in search_results:
+                # 解析发布时间
+                publish_time = None
+                if result.date_published:
+                    try:
+                        # 尝试解析 ISO 格式
+                        publish_time = datetime.fromisoformat(
+                            result.date_published.replace('Z', '+00:00')
+                        )
+                    except (ValueError, AttributeError):
+                        pass
+                
+                news_item = NewsItem(
+                    title=result.title,
+                    content=result.snippet,  # 搜索结果只有摘要
+                    url=result.url,
+                    source=result.site_name or "web_search",
+                    publish_time=publish_time,
+                    stock_codes=[pure_code, code],  # 关联股票代码
+                )
+                all_news.append(news_item)
+        else:
+            logger.warning(f"[Task {task_record.id}] ⚠️ BochaAI API Key 未配置，跳过搜索引擎搜索")
+        
+        # 3. 使用东方财富爬虫搜索（作为补充）
+        try:
+            logger.info(f"[Task {task_record.id}] 🕷️ 使用东方财富爬虫...")
+            eastmoney_crawler = EastmoneyCrawlerTool()
+            eastmoney_news = eastmoney_crawler.crawl(start_page=1, end_page=3)
+            
+            # 过滤包含股票名称或代码的新闻
+            for news in eastmoney_news:
+                if (stock_name in news.title or 
+                    pure_code in news.title or 
+                    stock_name in (news.content or '') or
+                    pure_code in (news.content or '')):
+                    # 添加股票代码关联
+                    if not news.stock_codes:
+                        news.stock_codes = []
+                    if pure_code not in news.stock_codes:
+                        news.stock_codes.append(pure_code)
+                    if code not in news.stock_codes:
+                        news.stock_codes.append(code)
+                    filtered_news.append(news)
+            
+            logger.info(f"[Task {task_record.id}] 📰 东方财富过滤后 {len(filtered_news)} 条相关新闻")
+            all_news.extend(filtered_news)
+            
+        except Exception as e:
+            logger.warning(f"[Task {task_record.id}] ⚠️ 东方财富爬取失败: {e}")
+        
+        # 4. 去重并保存
+        saved_count = 0
+        duplicate_count = 0
+        
+        logger.info(f"[Task {task_record.id}] 💾 开始保存 {len(all_news)} 条新闻...")
+        
+        for news_item in all_news:
+            # 检查URL是否已存在
+            existing = db.execute(
+                select(News).where(News.url == news_item.url)
+            ).scalar_one_or_none()
+            
+            if existing:
+                duplicate_count += 1
+                # 如果已存在但没有关联这个股票，更新关联
+                if existing.stock_codes is None:
+                    existing.stock_codes = []
+                if pure_code not in existing.stock_codes:
+                    existing.stock_codes = existing.stock_codes + [pure_code]
+                    db.commit()
+                continue
+            
+            # 创建新记录
+            news = News(
+                title=news_item.title,
+                content=news_item.content,
+                url=news_item.url,
+                source=news_item.source,
+                publish_time=news_item.publish_time,
+                author=news_item.author,
+                keywords=news_item.keywords,
+                stock_codes=news_item.stock_codes or [pure_code, code],
+            )
+            
+            db.add(news)
+            saved_count += 1
+        
+        db.commit()
+        
+        logger.info(
+            f"[Task {task_record.id}] 💾 保存 {saved_count} 条新闻 "
+            f"(重复: {duplicate_count})"
+        )
+        
+        # 5. 更新任务状态
+        end_time = datetime.utcnow()
+        execution_time = (end_time - start_time).total_seconds()
+        
+        task_record.status = TaskStatus.COMPLETED
+        task_record.completed_at = end_time
+        task_record.execution_time = execution_time
+        task_record.crawled_count = len(all_news)
+        task_record.saved_count = saved_count
+        task_record.result = {
+            "stock_code": code,
+            "stock_name": stock_name,
+            "total_found": len(all_news),
+            "saved": saved_count,
+            "duplicates": duplicate_count,
+            "sources": {
+                "bochaai": len(search_results),
+                "eastmoney": len(filtered_news),
+            }
+        }
+        task_record.progress = {
+            "current": 100,
+            "total": 100,
+            "message": f"完成！新增 {saved_count} 条新闻"
+        }
+        db.commit()
+        
+        logger.info(
+            f"[Task {task_record.id}] ✅ 定向爬取完成! "
+            f"股票: {stock_name}({code}), 找到: {len(all_news)}, 保存: {saved_count}, "
+            f"耗时: {execution_time:.2f}s"
+        )
+        
+        return {
+            "task_id": task_record.id,
+            "status": "completed",
+            "stock_code": code,
+            "stock_name": stock_name,
+            "crawled": len(all_news),
+            "saved": saved_count,
+            "duplicates": duplicate_count,
+            "execution_time": execution_time,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        
+    except Exception as e:
+        logger.error(f"[Task {task_record.id if task_record else 'unknown'}] 定向爬取失败: {e}", exc_info=True)
+        
+        if task_record:
+            task_record.status = TaskStatus.FAILED
+            task_record.completed_at = datetime.utcnow()
+            task_record.error_message = str(e)[:1000]
+            task_record.progress = {
+                "current": 0,
+                "total": 100,
+                "message": f"失败: {str(e)[:100]}"
+            }
             db.commit()
         
         raise

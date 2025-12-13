@@ -121,6 +121,10 @@ class Settings(BaseSettings):
     BAILIAN_AGENT_CODE: Optional[str] = Field(default=None, description="百炼 Agent Code")
     BAILIAN_REGION_ID: str = Field(default="cn-beijing", description="百炼 Region ID")
     
+    # BochaAI 搜索 API 配置
+    BOCHAAI_API_KEY: Optional[str] = Field(default=None, description="BochaAI Web Search API Key")
+    BOCHAAI_ENDPOINT: str = Field(default="https://api.bochaai.com/v1/web-search", description="BochaAI API Endpoint")
+    
     # Embedding 配置
     EMBEDDING_PROVIDER: str = Field(default="openai")  # openai, huggingface
     EMBEDDING_MODEL: str = Field(default="text-embedding-ada-002")

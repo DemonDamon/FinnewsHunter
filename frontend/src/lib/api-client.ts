@@ -351,6 +351,49 @@ export const stockApi = {
     })
     return response.data
   },
+
+  /**
+   * 触发定向爬取任务
+   */
+  startTargetedCrawl: async (
+    stockCode: string,
+    stockName: string,
+    days: number = 30
+  ): Promise<{
+    success: boolean
+    message: string
+    task_id?: number
+    celery_task_id?: string
+  }> => {
+    const response = await apiClient.post(`/stocks/${stockCode}/targeted-crawl`, {
+      stock_name: stockName,
+      days
+    })
+    return response.data
+  },
+
+  /**
+   * 查询定向爬取任务状态
+   */
+  getTargetedCrawlStatus: async (stockCode: string): Promise<{
+    task_id?: number
+    status: string
+    celery_task_id?: string
+    progress?: {
+      current: number
+      total: number
+      message?: string
+    }
+    crawled_count?: number
+    saved_count?: number
+    error_message?: string
+    execution_time?: number
+    started_at?: string
+    completed_at?: string
+  }> => {
+    const response = await apiClient.get(`/stocks/${stockCode}/targeted-crawl/status`)
+    return response.data
+  },
 }
 
 /**
