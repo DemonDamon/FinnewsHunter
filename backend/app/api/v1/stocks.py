@@ -9,7 +9,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, desc
+from sqlalchemy import select, func, and_, desc, text
 
 from ...core.database import get_db
 from ...models.news import News
@@ -636,7 +636,7 @@ async def start_targeted_crawl(
                 and_(
                     CrawlTask.mode == CrawlMode.TARGETED,
                     CrawlTask.status.in_([TaskStatus.PENDING, TaskStatus.RUNNING]),
-                    CrawlTask.config['stock_code'].astext == code
+                    text("config->>'stock_code' = :stock_code").bindparams(stock_code=code)
                 )
             ).order_by(desc(CrawlTask.created_at)).limit(1)
         )
@@ -688,7 +688,7 @@ async def get_targeted_crawl_status(
         task_query = select(CrawlTask).where(
             and_(
                 CrawlTask.mode == CrawlMode.TARGETED,
-                CrawlTask.config['stock_code'].astext == code
+                text("config->>'stock_code' = :stock_code").bindparams(stock_code=code)
             )
         ).order_by(desc(CrawlTask.created_at)).limit(1)
         
