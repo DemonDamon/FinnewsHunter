@@ -15,6 +15,8 @@ FinnewsHunter 不再局限于传统的文本分类，而是部署多智能体战
 - ✅ **AgenticX 原生**: 深度集成 AgenticX 框架，使用 Agent、Tool、Workflow 等核心抽象
 - ✅ **智能体驱动**: NewsAnalyst 智能体自动分析新闻情感和市场影响
 - ✅ **多厂商 LLM 支持**: 支持百炼、OpenAI、DeepSeek、Kimi、智谱 5 大厂商，前端一键切换
+- ✅ **股票 K 线分析**: 集成 akshare 真实行情数据，支持日K/分K多周期展示
+- ✅ **股票智能搜索**: 支持代码和名称模糊查询，预加载 5000+ A股数据
 - ✅ **完整技术栈**: FastAPI + PostgreSQL + Milvus + Redis + React
 - ✅ **实时搜索**: 支持标题、内容、股票代码多维度搜索，关键词高亮
 - ✅ **生产就绪**: Docker Compose 一键部署，日志、监控完备
@@ -102,6 +104,14 @@ docker compose -f deploy/docker-compose.dev.yml up -d postgres redis milvus-etcd
 ```bash
 cd FinnewsHunter/backend
 python init_db.py
+```
+
+### 5.1 初始化股票数据（可选，用于股票搜索功能）
+
+```bash
+cd FinnewsHunter/backend
+python -m app.scripts.init_stocks
+# 将从 akshare 获取全部 A 股数据（约 5000+ 只）并存入数据库
 ```
 
 ### 6. 启动后端API服务
@@ -611,6 +621,35 @@ curl http://localhost:8000/api/v1/llm/config
 
 ---
 
+### 股票 K 线分析
+
+**前端操作：**
+1. 访问 http://localhost:3000/stocks/SH600519（贵州茅台示例）
+2. 使用右上角搜索框输入股票代码或名称（如 `茅台`、`600519`）
+3. 选择时间周期：日K、60分、30分、15分、5分、1分
+4. 图表支持：
+   - 📈 K 线蜡烛图（OHLC）
+   - 📊 成交量柱状图
+   - 📉 MA 均线（5/10/30/60日）
+
+**API 操作：**
+
+```bash
+# 获取 K 线数据（日线，默认180条）
+curl "http://localhost:8000/api/v1/stocks/SH600519/kline?period=daily&limit=180"
+
+# 获取分钟 K 线（60分钟线）
+curl "http://localhost:8000/api/v1/stocks/SH600519/kline?period=60m&limit=200"
+
+# 搜索股票
+curl "http://localhost:8000/api/v1/stocks/search/realtime?q=茅台&limit=10"
+
+# 查看数据库中的股票数量
+curl "http://localhost:8000/api/v1/stocks/count"
+```
+
+---
+
 ### 按来源筛选查看
 
 **前端操作：**
@@ -1074,6 +1113,40 @@ class CustomCrawlerTool(BaseCrawler):
         pass
 ```
 
+### 使用增强版爬虫（可选）
+
+对于需要 JS 渲染或智能内容提取的场景，可使用增强版爬虫：
+
+```python
+from app.tools.crawler_enhanced import crawl_url, EnhancedCrawler
+
+# 快速爬取单个 URL
+article = crawl_url("https://finance.sina.com.cn/xxx", engine='auto')
+print(article.to_markdown())
+
+# 获取 LLM 消息格式（多模态）
+llm_messages = article.to_llm_message()
+
+# 批量爬取（带缓存）
+crawler = EnhancedCrawler(use_cache=True)
+articles = crawler.crawl_batch(urls, delay=1.0)
+```
+
+**支持的引擎：**
+- `requests`: 基础 HTTP 请求（默认）
+- `playwright`: JS 渲染（需安装 `playwright install chromium`）
+- `jina`: Jina Reader API（需配置 `JINA_API_KEY`）
+- `auto`: 自动选择最佳引擎
+
+**安装可选依赖：**
+
+```bash
+pip install markdownify readabilipy playwright
+playwright install chromium  # 可选，用于 JS 渲染
+```
+
+---
+
 ### 添加新的智能体
 
 1. 继承 `Agent` 类
@@ -1116,6 +1189,16 @@ class RiskAnalystAgent(Agent):
 - [x] 实时搜索功能（多维度 + 关键词高亮）
 - [x] Markdown 渲染（支持表格、代码块）
 - [x] 一键复制分析报告
+
+### Phase 1.6: 股票分析与增强爬虫（已完成） ✅
+- [x] 股票 K 线图（集成 akshare + klinecharts）
+- [x] 多周期支持（日K/60分/30分/15分/5分/1分）
+- [x] 股票搜索（代码/名称模糊查询，预加载 5000+ A股）
+- [x] 增强版爬虫模块
+  - [x] 多引擎支持（Requests/Playwright/Jina）
+  - [x] 智能内容提取（readabilipy + 启发式算法）
+  - [x] 内容质量评估与自动重试
+  - [x] 缓存机制和统一 Article 模型
 
 ### Phase 2: 多智能体协作（计划中）
 - [ ] BullResearcher & BearResearcher 智能体
