@@ -11,6 +11,7 @@ import type {
   StockNewsItem,
   SentimentTrendPoint,
   KLineDataPoint,
+  RealtimeQuote,
   DebateRequest,
   DebateResponse,
   AgentLogEntry,
@@ -271,18 +272,73 @@ export const stockApi = {
   },
 
   /**
-   * 获取K线数据（模拟）
+   * 获取K线数据（真实数据，使用 akshare）
+   * @param stockCode 股票代码
+   * @param period 周期：daily, 1m, 5m, 15m, 30m, 60m
+   * @param limit 数据条数
+   * @param adjust 复权类型：qfq=前复权, hfq=后复权, ""=不复权
    */
-  getKLineData: async (stockCode: string, days: number = 30): Promise<KLineDataPoint[]> => {
+  getKLineData: async (
+    stockCode: string, 
+    period: 'daily' | '1m' | '5m' | '15m' | '30m' | '60m' = 'daily',
+    limit: number = 90,
+    adjust: 'qfq' | 'hfq' | '' = 'qfq'
+  ): Promise<KLineDataPoint[]> => {
     const response = await apiClient.get<KLineDataPoint[]>(
       `/stocks/${stockCode}/kline`,
-      { params: { days } }
+      { params: { period, limit, adjust } }
     )
     return response.data
   },
 
   /**
-   * 搜索股票
+   * 获取实时行情
+   */
+  getRealtimeQuote: async (stockCode: string): Promise<RealtimeQuote | null> => {
+    const response = await apiClient.get<RealtimeQuote | null>(
+      `/stocks/${stockCode}/realtime`
+    )
+    return response.data
+  },
+
+  /**
+   * 搜索股票（从数据库）
+   */
+  searchRealtime: async (query: string, limit: number = 20): Promise<Array<{
+    code: string
+    name: string
+    full_code: string
+    market: string | null
+    industry: string | null
+  }>> => {
+    const response = await apiClient.get('/stocks/search/realtime', {
+      params: { q: query, limit }
+    })
+    return response.data
+  },
+
+  /**
+   * 初始化股票数据（从 akshare 获取并存入数据库）
+   */
+  initStockData: async (): Promise<{
+    success: boolean
+    message: string
+    count: number
+  }> => {
+    const response = await apiClient.post('/stocks/init')
+    return response.data
+  },
+
+  /**
+   * 获取数据库中的股票数量
+   */
+  getStockCount: async (): Promise<{ count: number; message: string }> => {
+    const response = await apiClient.get('/stocks/count')
+    return response.data
+  },
+
+  /**
+   * 从数据库搜索股票
    */
   search: async (query: string, limit: number = 10): Promise<Array<{
     code: string

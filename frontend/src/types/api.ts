@@ -124,12 +124,32 @@ export interface SentimentTrendPoint {
 }
 
 export interface KLineDataPoint {
+  timestamp: number  // 时间戳（毫秒）
   date: string
   open: number
   high: number
   low: number
   close: number
   volume: number
+  turnover?: number  // 成交额
+  change_percent?: number  // 涨跌幅
+  change_amount?: number  // 涨跌额
+  amplitude?: number  // 振幅
+  turnover_rate?: number  // 换手率
+}
+
+export interface RealtimeQuote {
+  code: string
+  name: string
+  price: number
+  change_percent: number
+  change_amount: number
+  volume: number
+  turnover: number
+  high: number
+  low: number
+  open: number
+  prev_close: number
 }
 
 // ============ Phase 2: 智能体辩论类型 ============

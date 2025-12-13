@@ -23,6 +23,9 @@ requests>=2.31.0
 beautifulsoup4>=4.12.0
 lxml>=4.9.0
 aiohttp>=3.9.0
+markdownify>=0.11.0  # HTML 转 Markdown
+readabilipy>=0.2.0  # 智能内容提取（Mozilla Readability）
+playwright>=1.40.0  # JS 渲染（可选，需运行 playwright install）
 
 # ===== AI/ML =====
 openai>=1.0.0
@@ -41,3 +44,5 @@ tenacity>=8.2.0  # 重试机制
 # ===== AgenticX 框架 =====
 agenticx==0.1.9  # Docker 容器中使用 PyPI 版本
 # 本地开发可以用：pip install -e ../../../../agenticx
+
+akshare

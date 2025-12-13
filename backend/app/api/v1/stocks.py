@@ -1,6 +1,7 @@
 """
 股票分析 API 路由 - Phase 2
 提供个股分析、关联新闻、情感趋势等接口
+支持 akshare 真实股票数据
 """
 import logging
 from datetime import datetime, timedelta
@@ -14,6 +15,7 @@ from ...core.database import get_db
 from ...models.news import News
 from ...models.stock import Stock
 from ...models.analysis import Analysis
+from ...services.stock_data_service import stock_data_service
 
 logger = logging.getLogger(__name__)
 
@@ -70,16 +72,158 @@ class StockOverview(BaseModel):
 
 
 class KLineDataPoint(BaseModel):
-    """K线数据点（模拟数据）"""
+    """K线数据点（akshare 真实数据）"""
+    timestamp: int  # 时间戳（毫秒）
     date: str
     open: float
     high: float
     low: float
     close: float
     volume: int
+    turnover: Optional[float] = None  # 成交额
+    change_percent: Optional[float] = None  # 涨跌幅
+    change_amount: Optional[float] = None  # 涨跌额
+    amplitude: Optional[float] = None  # 振幅
+    turnover_rate: Optional[float] = None  # 换手率
 
 
 # ============ API 端点 ============
+
+# ⚠️ 注意：具体路径的路由必须放在动态路由 /{stock_code} 之前！
+
+class StockSearchResult(BaseModel):
+    """股票搜索结果"""
+    code: str
+    name: str
+    full_code: str
+    market: Optional[str] = None
+    industry: Optional[str] = None
+
+
+@router.get("/search/realtime", response_model=List[StockSearchResult])
+async def search_stocks_realtime(
+    q: str = Query(..., min_length=1, description="搜索关键词（代码或名称）"),
+    limit: int = Query(20, le=50),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    搜索股票（从数据库，支持代码和名称模糊匹配）
+    
+    - **q**: 搜索关键词（如 "600519" 或 "茅台"）
+    - **limit**: 返回数量限制
+    """
+    try:
+        # 从数据库搜索
+        query = select(Stock).where(
+            (Stock.code.ilike(f"%{q}%")) | 
+            (Stock.name.ilike(f"%{q}%")) |
+            (Stock.full_code.ilike(f"%{q}%"))
+        ).limit(limit)
+        
+        result = await db.execute(query)
+        stocks = result.scalars().all()
+        
+        if stocks:
+            return [
+                StockSearchResult(
+                    code=stock.code,
+                    name=stock.name,
+                    full_code=stock.full_code or f"{'SH' if stock.code.startswith('6') else 'SZ'}{stock.code}",
+                    market=stock.market,
+                    industry=stock.industry,
+                )
+                for stock in stocks
+            ]
+        
+        return []
+    
+    except Exception as e:
+        logger.error(f"Failed to search stocks: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class StockInitResponse(BaseModel):
+    """股票数据初始化响应"""
+    success: bool
+    message: str
+    count: int = 0
+
+
+@router.post("/init", response_model=StockInitResponse)
+async def init_stock_data(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    初始化股票数据（从 akshare 获取全部 A 股并存入数据库）
+    """
+    try:
+        import akshare as ak
+        from datetime import datetime
+        from sqlalchemy import delete
+        
+        logger.info("Starting stock data initialization...")
+        
+        df = ak.stock_zh_a_spot_em()
+        
+        if df is None or df.empty:
+            return StockInitResponse(success=False, message="Failed to fetch stocks from akshare", count=0)
+        
+        await db.execute(delete(Stock))
+        
+        count = 0
+        for _, row in df.iterrows():
+            code = str(row['代码'])
+            name = str(row['名称'])
+            
+            if not code or not name or name in ['N/A', 'nan', '']:
+                continue
+            
+            if code.startswith('6'):
+                market = "SH"
+                full_code = f"SH{code}"
+            elif code.startswith('0') or code.startswith('3'):
+                market = "SZ"
+                full_code = f"SZ{code}"
+            else:
+                market = "OTHER"
+                full_code = code
+            
+            stock = Stock(
+                code=code,
+                name=name,
+                full_code=full_code,
+                market=market,
+                status="active",
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+            )
+            db.add(stock)
+            count += 1
+        
+        await db.commit()
+        
+        return StockInitResponse(success=True, message=f"Successfully initialized {count} stocks", count=count)
+        
+    except ImportError:
+        return StockInitResponse(success=False, message="akshare not installed", count=0)
+    except Exception as e:
+        logger.error(f"Failed to init stocks: {e}")
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/count")
+async def get_stock_count(db: AsyncSession = Depends(get_db)):
+    """获取数据库中的股票数量"""
+    from sqlalchemy import func as sql_func
+    
+    result = await db.execute(select(sql_func.count(Stock.id)))
+    count = result.scalar() or 0
+    
+    return {"count": count, "message": f"Database has {count} stocks"}
+
+
+# ============ 动态路由（必须放在最后） ============
 
 @router.get("/{stock_code}", response_model=StockOverview)
 async def get_stock_overview(
@@ -334,66 +478,87 @@ async def get_sentiment_trend(
 @router.get("/{stock_code}/kline", response_model=List[KLineDataPoint])
 async def get_kline_data(
     stock_code: str,
-    days: int = Query(30, le=90, ge=7),
+    period: str = Query("daily", description="周期: daily, 1m, 5m, 15m, 30m, 60m"),
+    limit: int = Query(90, le=500, ge=10, description="数据条数"),
+    adjust: str = Query("qfq", description="复权类型: qfq=前复权, hfq=后复权, 空=不复权（仅日线有效）"),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    获取K线数据（模拟数据，用于展示）
+    获取K线数据（真实数据，使用 akshare）
     
-    注意：这是模拟数据，实际生产环境应对接真实行情接口（如 Tushare）
+    - **stock_code**: 股票代码（支持 600519, SH600519, sh600519 等格式）
+    - **period**: 周期类型
+      - daily: 日线（默认）
+      - 1m: 1分钟
+      - 5m: 5分钟
+      - 15m: 15分钟
+      - 30m: 30分钟
+      - 60m: 60分钟/1小时
+    - **limit**: 返回数据条数（10-500，默认90）
+    - **adjust**: 复权类型 (qfq=前复权, hfq=后复权, ""=不复权)，仅对日线有效
+    """
+    try:
+        kline_data = await stock_data_service.get_kline_data(
+            stock_code=stock_code,
+            period=period,
+            limit=limit,
+            adjust=adjust
+        )
+        
+        if not kline_data:
+            logger.warning(f"No kline data for {stock_code} period={period}")
+            return []
+        
+        return [KLineDataPoint(**item) for item in kline_data]
+    
+    except Exception as e:
+        logger.error(f"Failed to get kline data for {stock_code}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class RealtimeQuote(BaseModel):
+    """实时行情"""
+    code: str
+    name: str
+    price: float
+    change_percent: float
+    change_amount: float
+    volume: int
+    turnover: float
+    high: float
+    low: float
+    open: float
+    prev_close: float
+
+
+@router.get("/{stock_code}/realtime", response_model=Optional[RealtimeQuote])
+async def get_realtime_quote(
+    stock_code: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    获取实时行情（使用 akshare）
     
     - **stock_code**: 股票代码
-    - **days**: 天数范围
     """
-    import random
-    
-    # 生成模拟K线数据
-    kline_data = []
-    base_price = 100.0  # 基准价格
-    
-    # 根据股票代码生成不同的基准价格（模拟）
-    if "600519" in stock_code:
-        base_price = 1800.0  # 茅台
-    elif "000001" in stock_code:
-        base_price = 15.0  # 平安银行
-    elif "601318" in stock_code:
-        base_price = 50.0  # 中国平安
-    
-    current_price = base_price
-    
-    for i in range(days):
-        date = (datetime.utcnow() - timedelta(days=days-i-1)).strftime("%Y-%m-%d")
-        
-        # 随机波动
-        change_percent = random.uniform(-0.03, 0.03)
-        open_price = current_price
-        close_price = current_price * (1 + change_percent)
-        high_price = max(open_price, close_price) * (1 + random.uniform(0, 0.02))
-        low_price = min(open_price, close_price) * (1 - random.uniform(0, 0.02))
-        volume = random.randint(100000, 500000)
-        
-        kline_data.append(KLineDataPoint(
-            date=date,
-            open=round(open_price, 2),
-            high=round(high_price, 2),
-            low=round(low_price, 2),
-            close=round(close_price, 2),
-            volume=volume
-        ))
-        
-        current_price = close_price
-    
-    return kline_data
+    try:
+        quote = await stock_data_service.get_realtime_quote(stock_code)
+        if quote:
+            return RealtimeQuote(**quote)
+        return None
+    except Exception as e:
+        logger.error(f"Failed to get realtime quote for {stock_code}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/search/code", response_model=List[StockInfo])
-async def search_stocks(
+async def search_stocks_db(
     q: str = Query(..., min_length=1, description="搜索关键词"),
     limit: int = Query(10, le=50),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    搜索股票
+    从数据库搜索股票
     
     - **q**: 搜索关键词（代码或名称）
     """
