@@ -63,7 +63,6 @@ const PERIOD_OPTIONS: { value: KLinePeriod; label: string; limit: number }[] = [
 
 export default function StockAnalysisPage() {
   const { code } = useParams<{ code: string }>()
-  const [activeTab, setActiveTab] = useState<'chart' | 'news' | 'debate'>('chart')
   const [debateResult, setDebateResult] = useState<DebateResponse | null>(null)
   const [klinePeriod, setKlinePeriod] = useState<KLinePeriod>('daily')
   const stockCode = code?.toUpperCase() || 'SH600519'
@@ -278,42 +277,8 @@ export default function StockAnalysisPage() {
         </Card>
       </div>
 
-      {/* Tab 切换 */}
-      <div className="flex gap-2 border-b border-gray-200 pb-2">
-        <Button
-          variant={activeTab === 'chart' ? 'default' : 'ghost'}
-          size="sm"
-          onClick={() => setActiveTab('chart')}
-          className={activeTab === 'chart' ? 'bg-blue-600' : ''}
-        >
-          <BarChart3 className="w-4 h-4 mr-2" />
-          图表分析
-        </Button>
-        <Button
-          variant={activeTab === 'news' ? 'default' : 'ghost'}
-          size="sm"
-          onClick={() => setActiveTab('news')}
-          className={activeTab === 'news' ? 'bg-blue-600' : ''}
-        >
-          <Newspaper className="w-4 h-4 mr-2" />
-          关联新闻
-        </Button>
-        <Button
-          variant={activeTab === 'debate' ? 'default' : 'ghost'}
-          size="sm"
-          onClick={() => setActiveTab('debate')}
-          className={activeTab === 'debate' ? 'bg-blue-600' : ''}
-        >
-          <Swords className="w-4 h-4 mr-2" />
-          Bull vs Bear
-        </Button>
-      </div>
-
-      {/* 图表分析 Tab */}
-      {activeTab === 'chart' && (
-        <div className="space-y-6">
-          {/* K线图 - 全宽 */}
-          <Card className="bg-white/90">
+      {/* K线图 */}
+      <Card className="bg-white/90">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
@@ -412,174 +377,11 @@ export default function StockAnalysisPage() {
                   <p className="text-sm mt-1">请检查股票代码是否正确</p>
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </CardContent>
+        </Card>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-            {/* 情感趋势图 */}
-            <Card className="bg-white/90">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MessageSquare className="w-5 h-5 text-purple-500" />
-                  新闻情感趋势
-                </CardTitle>
-                <CardDescription>
-                  近30天新闻情感分布与平均值
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {trendLoading ? (
-                  <div className="h-64 flex items-center justify-center">
-                    <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
-                  </div>
-                ) : sentimentTrend && sentimentTrend.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <ComposedChart data={sentimentTrend}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis 
-                        dataKey="date" 
-                        tick={{ fontSize: 10 }}
-                        tickFormatter={(value) => value.slice(5)}
-                      />
-                      <YAxis 
-                        yAxisId="left"
-                        domain={[-1, 1]}
-                        tick={{ fontSize: 10 }}
-                      />
-                      <YAxis 
-                        yAxisId="right"
-                        orientation="right"
-                        tick={{ fontSize: 10 }}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                          borderRadius: '8px',
-                          border: '1px solid #e5e7eb',
-                        }}
-                      />
-                      <Legend />
-                      <Bar 
-                        yAxisId="right"
-                        dataKey="positive_count" 
-                        stackId="a" 
-                        fill="#10b981" 
-                        name="利好"
-                      />
-                      <Bar 
-                        yAxisId="right"
-                        dataKey="neutral_count" 
-                        stackId="a" 
-                        fill="#f59e0b" 
-                        name="中性"
-                      />
-                      <Bar 
-                        yAxisId="right"
-                        dataKey="negative_count" 
-                        stackId="a" 
-                        fill="#ef4444" 
-                        name="利空"
-                      />
-                      <Line
-                        yAxisId="left"
-                        type="monotone"
-                        dataKey="avg_sentiment"
-                        stroke="#8b5cf6"
-                        strokeWidth={2}
-                        dot={false}
-                        name="平均情感"
-                      />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-64 flex items-center justify-center text-gray-500">
-                    暂无数据
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* 成交量统计 */}
-            <Card className="bg-white/90">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-blue-500" />
-                  成交量走势
-                </CardTitle>
-                <CardDescription>
-                  近期成交量与价格变动
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {klineLoading ? (
-                  <div className="h-64 flex items-center justify-center">
-                    <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-                  </div>
-                ) : klineData && klineData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <ComposedChart data={klineData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis 
-                        dataKey="date" 
-                        tick={{ fontSize: 10 }}
-                        tickFormatter={(value) => value.slice(5)}
-                      />
-                      <YAxis 
-                        yAxisId="left"
-                        tick={{ fontSize: 10 }}
-                        tickFormatter={(value) => `${(value / 10000).toFixed(0)}万`}
-                      />
-                      <YAxis 
-                        yAxisId="right"
-                        orientation="right"
-                        tick={{ fontSize: 10 }}
-                        domain={['auto', 'auto']}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                          borderRadius: '8px',
-                          border: '1px solid #e5e7eb',
-                        }}
-                        formatter={(value: number, name: string) => {
-                          if (name === '成交量') return [`${(value / 10000).toFixed(0)}万`, name]
-                          if (name === '收盘价') return [value.toFixed(2), name]
-                          return [value, name]
-                        }}
-                      />
-                      <Legend />
-                      <Bar 
-                        yAxisId="left"
-                        dataKey="volume" 
-                        fill="rgba(59, 130, 246, 0.6)"
-                        name="成交量"
-                      />
-                      <Line
-                        yAxisId="right"
-                        type="monotone"
-                        dataKey="close"
-                        stroke="#f59e0b"
-                        strokeWidth={2}
-                        dot={false}
-                        name="收盘价"
-                      />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-64 flex items-center justify-center text-gray-500">
-                    暂无数据
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      )}
-
-      {/* 关联新闻 Tab */}
-      {activeTab === 'news' && (
-        <Card className="bg-white/90">
+      {/* 关联新闻 */}
+      <Card className="bg-white/90">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Newspaper className="w-5 h-5 text-blue-500" />
@@ -643,15 +445,96 @@ export default function StockAnalysisPage() {
                 <Newspaper className="w-12 h-12 mx-auto opacity-50 mb-3" />
                 <p>暂无关联新闻</p>
                 <p className="text-sm mt-1">该股票还没有相关新闻数据</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-      {/* Bull vs Bear 辩论 Tab */}
-      {activeTab === 'debate' && (
-        <div className="space-y-6">
+      {/* 情感趋势图 */}
+      <Card className="bg-white/90">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MessageSquare className="w-5 h-5 text-purple-500" />
+            新闻情感趋势
+          </CardTitle>
+          <CardDescription>
+            近30天新闻情感分布与平均值
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {trendLoading ? (
+            <div className="h-64 flex items-center justify-center">
+              <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+            </div>
+          ) : sentimentTrend && sentimentTrend.length > 0 ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <ComposedChart data={sentimentTrend}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis 
+                  dataKey="date" 
+                  tick={{ fontSize: 10 }}
+                  tickFormatter={(value) => value.slice(5)}
+                />
+                <YAxis 
+                  yAxisId="left"
+                  domain={[-1, 1]}
+                  tick={{ fontSize: 10 }}
+                />
+                <YAxis 
+                  yAxisId="right"
+                  orientation="right"
+                  tick={{ fontSize: 10 }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                    borderRadius: '8px',
+                    border: '1px solid #e5e7eb',
+                  }}
+                />
+                <Legend />
+                <Bar 
+                  yAxisId="right"
+                  dataKey="positive_count" 
+                  stackId="a" 
+                  fill="#10b981" 
+                  name="利好"
+                />
+                <Bar 
+                  yAxisId="right"
+                  dataKey="neutral_count" 
+                  stackId="a" 
+                  fill="#f59e0b" 
+                  name="中性"
+                />
+                <Bar 
+                  yAxisId="right"
+                  dataKey="negative_count" 
+                  stackId="a" 
+                  fill="#ef4444" 
+                  name="利空"
+                />
+                <Line
+                  yAxisId="left"
+                  type="monotone"
+                  dataKey="avg_sentiment"
+                  stroke="#8b5cf6"
+                  strokeWidth={2}
+                  dot={false}
+                  name="平均情感"
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-64 flex items-center justify-center text-gray-500">
+              暂无数据
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Bull vs Bear 辩论 */}
+      <div className="space-y-6">
           {/* 触发辩论按钮 */}
           <Card className="bg-gradient-to-r from-emerald-50 to-rose-50 border-none">
             <CardContent className="py-6">
@@ -809,7 +692,6 @@ export default function StockAnalysisPage() {
             </Card>
           )}
         </div>
-      )}
     </div>
   )
 }
