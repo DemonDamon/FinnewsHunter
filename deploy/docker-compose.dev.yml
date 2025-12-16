@@ -112,6 +112,8 @@ services:
       "
     volumes:
       - ../backend:/app
+    env_file:
+      - ../backend/.env
     environment:
       - POSTGRES_USER=finnews
       - POSTGRES_PASSWORD=finnews_dev_password
@@ -141,6 +143,8 @@ services:
       "
     volumes:
       - ../backend:/app
+    env_file:
+      - ../backend/.env
     environment:
       - POSTGRES_USER=finnews
       - POSTGRES_PASSWORD=finnews_dev_password

@@ -9,7 +9,8 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, desc, text
+from sqlalchemy import select, func, and_, desc, text, or_
+from sqlalchemy.dialects.postgresql import ARRAY, array
 
 from ...core.database import get_db
 from ...models.news import News
@@ -256,17 +257,19 @@ async def get_stock_overview(
         stock_name = stock.name if stock else None
         
         # 统计关联新闻
-        # 使用 PostgreSQL 的数组包含操作
-        news_query = select(func.count(News.id)).where(
-            News.stock_codes.any(short_code) | News.stock_codes.any(code)
-        )
+        # 使用 PostgreSQL 原生 ARRAY 查询语法
+        stock_codes_filter = text(
+            "stock_codes @> ARRAY[:code1]::varchar[] OR stock_codes @> ARRAY[:code2]::varchar[]"
+        ).bindparams(code1=short_code, code2=code)
+        
+        news_query = select(func.count(News.id)).where(stock_codes_filter)
         result = await db.execute(news_query)
         total_news = result.scalar() or 0
         
         # 已分析的新闻数量
         analyzed_query = select(func.count(News.id)).where(
             and_(
-                News.stock_codes.any(short_code) | News.stock_codes.any(code),
+                stock_codes_filter,
                 News.sentiment_score.isnot(None)
             )
         )
@@ -276,7 +279,7 @@ async def get_stock_overview(
         # 计算平均情感
         avg_sentiment_query = select(func.avg(News.sentiment_score)).where(
             and_(
-                News.stock_codes.any(short_code) | News.stock_codes.any(code),
+                stock_codes_filter,
                 News.sentiment_score.isnot(None)
             )
         )
@@ -287,7 +290,7 @@ async def get_stock_overview(
         seven_days_ago = datetime.utcnow() - timedelta(days=7)
         recent_query = select(func.avg(News.sentiment_score)).where(
             and_(
-                News.stock_codes.any(short_code) | News.stock_codes.any(code),
+                stock_codes_filter,
                 News.sentiment_score.isnot(None),
                 News.publish_time >= seven_days_ago
             )
@@ -309,7 +312,7 @@ async def get_stock_overview(
         
         # 最新新闻时间
         last_news_query = select(News.publish_time).where(
-            News.stock_codes.any(short_code) | News.stock_codes.any(code)
+            stock_codes_filter
         ).order_by(desc(News.publish_time)).limit(1)
         result = await db.execute(last_news_query)
         last_news_time = result.scalar()
@@ -355,10 +358,12 @@ async def get_stock_news(
         code = f"SH{code}" if code.startswith("6") else f"SZ{code}"
     
     try:
-        # 构建查询
-        query = select(News).where(
-            News.stock_codes.any(short_code) | News.stock_codes.any(code)
-        )
+        # 构建查询 - 使用 PostgreSQL 原生 ARRAY 查询语法
+        stock_codes_filter = text(
+            "stock_codes @> ARRAY[:code1]::varchar[] OR stock_codes @> ARRAY[:code2]::varchar[]"
+        ).bindparams(code1=short_code, code2=code)
+        
+        query = select(News).where(stock_codes_filter)
         
         # 情感筛选
         if sentiment:

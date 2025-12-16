@@ -8,7 +8,7 @@ from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, or_
 
 from ...core.database import get_db
 from ...models.news import News
@@ -131,10 +131,13 @@ async def run_stock_debate(
             short_code = code
             code = f"SH{code}" if code.startswith("6") else f"SZ{code}"
         
-        # 获取关联新闻
-        news_query = select(News).where(
-            News.stock_codes.any(short_code) | News.stock_codes.any(code)
-        ).order_by(desc(News.publish_time)).limit(10)
+        # 获取关联新闻 - 使用 PostgreSQL 原生 ARRAY 查询语法
+        from sqlalchemy import text
+        stock_codes_filter = text(
+            "stock_codes @> ARRAY[:code1]::varchar[] OR stock_codes @> ARRAY[:code2]::varchar[]"
+        ).bindparams(code1=short_code, code2=code)
+        
+        news_query = select(News).where(stock_codes_filter).order_by(desc(News.publish_time)).limit(10)
         
         result = await db.execute(news_query)
         news_list = result.scalars().all()

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { stockApi, agentApi } from '@/lib/api-client'
 import { formatRelativeTime } from '@/lib/utils'
+import NewsDetailDrawer from '@/components/NewsDetailDrawer'
 import {
   TrendingUp,
   TrendingDown,
@@ -85,6 +86,8 @@ export default function StockAnalysisPage() {
   const [debateResult, setDebateResult] = useState<DebateResponse | null>(null)
   const [klinePeriod, setKlinePeriod] = useState<KLinePeriod>('daily')
   const [crawlTask, setCrawlTask] = useState<CrawlTaskState>({ status: 'idle' })
+  const [selectedNewsId, setSelectedNewsId] = useState<number | null>(null)
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const stockCode = code?.toUpperCase() || 'SH600519'
   const pureCode = extractCode(stockCode)
 
@@ -548,12 +551,15 @@ export default function StockAnalysisPage() {
                 {newsList.map((news) => (
                   <div
                     key={news.id}
-                    className="p-4 rounded-lg border border-gray-100 hover:border-blue-200 hover:bg-blue-50/30 transition-all cursor-pointer"
-                    onClick={() => window.dispatchEvent(new CustomEvent('news-select', { detail: news.id }))}
+                    className="p-4 rounded-lg border border-gray-100 hover:border-blue-200 hover:bg-blue-50/30 transition-all cursor-pointer group"
+                    onClick={() => {
+                      setSelectedNewsId(news.id)
+                      setDrawerOpen(true)
+                    }}
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1">
-                        <h3 className="font-medium text-gray-900 line-clamp-1">
+                        <h3 className="font-medium text-gray-900 line-clamp-1 group-hover:text-blue-600 transition-colors">
                           {news.title}
                         </h3>
                         <p className="text-sm text-gray-500 line-clamp-2 mt-1">
@@ -839,6 +845,19 @@ export default function StockAnalysisPage() {
             </Card>
           )}
         </div>
+
+      {/* 新闻详情抽屉 */}
+      <NewsDetailDrawer
+        newsId={selectedNewsId}
+        open={drawerOpen}
+        onOpenChange={(open) => {
+          setDrawerOpen(open)
+          if (!open) {
+            // 延迟清除newsId，避免关闭动画时闪烁
+            setTimeout(() => setSelectedNewsId(null), 300)
+          }
+        }}
+      />
     </div>
   )
 }

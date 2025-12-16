@@ -27,6 +27,7 @@ from ..tools import (
     bochaai_search,
     NewsItem,
 )
+from ..tools.crawler_enhanced import EnhancedCrawler, crawl_url
 
 logger = logging.getLogger(__name__)
 
@@ -485,8 +486,11 @@ def targeted_stock_crawl_task(
             
             logger.info(f"[Task {task_record.id}] 📰 BochaAI 搜索到 {len(search_results)} 条结果")
             
-            # 转换搜索结果为 NewsItem
-            for result in search_results:
+            # 创建增强爬虫实例，用于二次爬取完整内容
+            enhanced_crawler = EnhancedCrawler(use_cache=True)
+            
+            # 转换搜索结果为 NewsItem，并二次爬取完整内容
+            for idx, result in enumerate(search_results):
                 # 解析发布时间
                 publish_time = None
                 if result.date_published:
@@ -498,9 +502,22 @@ def targeted_stock_crawl_task(
                     except (ValueError, AttributeError):
                         pass
                 
+                # 二次爬取完整内容
+                full_content = result.snippet  # 默认使用摘要
+                try:
+                    logger.info(f"[Task {task_record.id}] 🔗 [{idx+1}/{len(search_results)}] 爬取完整内容: {result.url[:60]}...")
+                    article = enhanced_crawler.crawl(result.url, engine='auto')
+                    if article and article.content and len(article.content) > len(result.snippet):
+                        full_content = article.content
+                        logger.info(f"[Task {task_record.id}] ✅ 获取完整内容: {len(full_content)} 字符")
+                    else:
+                        logger.warning(f"[Task {task_record.id}] ⚠️ 完整内容获取失败或内容更短，使用摘要")
+                except Exception as e:
+                    logger.warning(f"[Task {task_record.id}] ⚠️ 二次爬取失败: {e}, 使用摘要")
+                
                 news_item = NewsItem(
                     title=result.title,
-                    content=result.snippet,  # 搜索结果只有摘要
+                    content=full_content,  # 使用完整内容
                     url=result.url,
                     source=result.site_name or "web_search",
                     publish_time=publish_time,

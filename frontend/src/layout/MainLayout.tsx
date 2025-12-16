@@ -7,7 +7,7 @@ import { NewsToolbarProvider, useNewsToolbar } from '@/context/NewsToolbarContex
 const navigation = [
   { name: '首页', href: '/', icon: Home },
   { name: '新闻流', href: '/news', icon: Newspaper },
-  { name: '个股分析', href: '/stock/SH600519', icon: TrendingUp },
+  { name: '个股分析', href: '/stock', icon: TrendingUp },
   { name: '智能体监控', href: '/agents', icon: Activity },
   { name: '任务管理', href: '/tasks', icon: Settings },
 ]
