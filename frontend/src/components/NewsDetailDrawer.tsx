@@ -26,6 +26,8 @@ import {
   Sparkles,
   Copy,
   Check,
+  FileText,
+  Code,
 } from 'lucide-react'
 
 // 新闻源配置
@@ -56,6 +58,7 @@ export default function NewsDetailDrawer({
 }: NewsDetailDrawerProps) {
   const [analyzing, setAnalyzing] = useState(false)
   const [copiedId, setCopiedId] = useState<number | null>(null)
+  const [showRawHtml, setShowRawHtml] = useState(false)  // 是否显示原始 HTML
 
   // 清理HTML标签并转换为Markdown
   const cleanMarkdown = (text: string): string => {
@@ -110,6 +113,13 @@ export default function NewsDetailDrawer({
       return allNews.filter(n => n.id !== newsId).slice(0, 5)
     },
     enabled: !!newsId && open && !!news,
+  })
+
+  // 获取原始 HTML（仅在点击"查看原始内容"时加载）
+  const { data: htmlData, isLoading: htmlLoading } = useQuery({
+    queryKey: ['news', 'html', newsId],
+    queryFn: () => newsApi.getNewsHtml(newsId!),
+    enabled: !!newsId && open && showRawHtml,
   })
 
   // 处理分享
@@ -252,6 +262,15 @@ export default function NewsDetailDrawer({
                 <Sparkles className={`w-4 h-4 ${analyzing ? 'animate-spin' : ''}`} />
                 {analyzing ? '分析中...' : '分析'}
               </Button>
+              <Button
+                variant={showRawHtml ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowRawHtml(!showRawHtml)}
+                className="flex items-center gap-2"
+              >
+                <Code className="w-4 h-4" />
+                {showRawHtml ? '显示解析内容' : '查看原始内容'}
+              </Button>
             </div>
 
             {/* 情感分析卡片 - 优先显示最新分析结果 */}
@@ -311,16 +330,47 @@ export default function NewsDetailDrawer({
 
             {/* 完整正文区域 */}
             <div>
-              <h3 className="font-semibold text-gray-900 mb-3">正文内容</h3>
-              <div className="prose prose-sm max-w-none">
-                <div className="text-gray-700 leading-relaxed whitespace-pre-wrap">
-                  {news.content.split('\n').map((paragraph, idx) => (
-                    <p key={idx} className="mb-4">
-                      {paragraph}
-                    </p>
-                  ))}
+              <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                {showRawHtml ? <Code className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                {showRawHtml ? '原始内容' : '正文内容'}
+              </h3>
+              
+              {showRawHtml ? (
+                // 原始 HTML 展示区域
+                <div className="border rounded-lg overflow-hidden bg-white">
+                  {htmlLoading ? (
+                    <div className="p-8 text-center text-gray-500">
+                      <div className="animate-spin w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+                      加载原始内容中...
+                    </div>
+                  ) : htmlData?.raw_html ? (
+                    <iframe
+                      srcDoc={htmlData.raw_html}
+                      className="w-full border-0"
+                      style={{ height: '600px' }}
+                      sandbox="allow-same-origin"
+                      title="原始新闻内容"
+                    />
+                  ) : (
+                    <div className="p-8 text-center text-gray-500">
+                      <Code className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                      <p>该新闻暂无原始 HTML 内容</p>
+                      <p className="text-sm mt-1">请重新爬取该新闻以获取完整内容</p>
+                    </div>
+                  )}
                 </div>
-              </div>
+              ) : (
+                // 解析后的文本展示
+                <div className="prose prose-sm max-w-none">
+                  <div className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                    {news.content.split('\n').map((paragraph, idx) => (
+                      <p key={idx} className="mb-4">
+                        {paragraph}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 分析详情 */}

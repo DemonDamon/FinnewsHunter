@@ -101,6 +101,14 @@ export const newsApi = {
   },
 
   /**
+   * 获取新闻原始 HTML
+   */
+  getNewsHtml: async (newsId: number): Promise<{ id: number; title: string; url: string; raw_html: string | null; has_raw_html: boolean }> => {
+    const response = await apiClient.get(`/news/${newsId}/html`)
+    return response.data
+  },
+
+  /**
    * 【已废弃】触发爬取
    */
   crawlNews: async (data: CrawlRequest): Promise<CrawlResponse> => {
