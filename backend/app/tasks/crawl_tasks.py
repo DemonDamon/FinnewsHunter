@@ -180,10 +180,11 @@ def realtime_crawl_task(self, source: str = "sina", force_refresh: bool = False)
                 logger.debug(f"[Task {task_record.id}] ⏭️  跳过重复新闻: {news_item.title[:30]}...")
                 continue
             
-            # 创建新记录（移除 summary 字段）
+            # 创建新记录
             news = News(
                 title=news_item.title,
                 content=news_item.content,
+                raw_html=news_item.raw_html,  # 保存原始 HTML
                 url=news_item.url,
                 source=news_item.source,
                 publish_time=news_item.publish_time,
@@ -349,13 +350,13 @@ def cold_start_crawl_task(
                         news = News(
                             title=news_item.title,
                             content=news_item.content,
+                            raw_html=news_item.raw_html,  # 保存原始 HTML
                             url=news_item.url,
                             source=news_item.source,
                             publish_time=news_item.publish_time,
                             author=news_item.author,
                             keywords=news_item.keywords,
                             stock_codes=news_item.stock_codes,
-                            summary=news_item.summary,
                         )
                         db.add(news)
                         page_saved += 1
@@ -481,7 +482,8 @@ def targeted_stock_crawl_task(
                 stock_name=stock_name,
                 stock_code=pure_code,
                 days=days,
-                count=30
+                count=100,  # 获取100条新闻
+                max_age_days=180  # 不超过半年的新闻
             )
             
             logger.info(f"[Task {task_record.id}] 📰 BochaAI 搜索到 {len(search_results)} 条结果")
@@ -504,12 +506,14 @@ def targeted_stock_crawl_task(
                 
                 # 二次爬取完整内容
                 full_content = result.snippet  # 默认使用摘要
+                raw_html = None  # 原始 HTML
                 try:
                     logger.info(f"[Task {task_record.id}] 🔗 [{idx+1}/{len(search_results)}] 爬取完整内容: {result.url[:60]}...")
                     article = enhanced_crawler.crawl(result.url, engine='auto')
                     if article and article.content and len(article.content) > len(result.snippet):
                         full_content = article.content
-                        logger.info(f"[Task {task_record.id}] ✅ 获取完整内容: {len(full_content)} 字符")
+                        raw_html = article.html_content  # 保存原始 HTML
+                        logger.info(f"[Task {task_record.id}] ✅ 获取完整内容: {len(full_content)} 字符, HTML: {len(raw_html) if raw_html else 0} 字符")
                     else:
                         logger.warning(f"[Task {task_record.id}] ⚠️ 完整内容获取失败或内容更短，使用摘要")
                 except Exception as e:
@@ -522,6 +526,7 @@ def targeted_stock_crawl_task(
                     source=result.site_name or "web_search",
                     publish_time=publish_time,
                     stock_codes=[pure_code, code],  # 关联股票代码
+                    raw_html=raw_html,  # 原始 HTML
                 )
                 all_news.append(news_item)
         else:
@@ -580,6 +585,7 @@ def targeted_stock_crawl_task(
             news = News(
                 title=news_item.title,
                 content=news_item.content,
+                raw_html=news_item.raw_html,  # 保存原始 HTML
                 url=news_item.url,
                 source=news_item.source,
                 publish_time=news_item.publish_time,

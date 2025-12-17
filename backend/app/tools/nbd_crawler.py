@@ -114,7 +114,8 @@ class NbdCrawlerTool(BaseCrawler):
         
         try:
             response = self._fetch_page(url)
-            soup = self._parse_html(response.text)
+            raw_html = response.text  # 保存原始 HTML
+            soup = self._parse_html(raw_html)
             
             # 提取正文
             content = self._extract_content(soup)
@@ -133,7 +134,8 @@ class NbdCrawlerTool(BaseCrawler):
                 url=url,
                 source=self.SOURCE_NAME,
                 publish_time=publish_time,
-                author=author
+                author=author,
+                raw_html=raw_html,  # 保存原始 HTML
             )
             
         except Exception as e:
@@ -142,27 +144,56 @@ class NbdCrawlerTool(BaseCrawler):
     
     def _extract_content(self, soup: BeautifulSoup) -> str:
         """提取新闻正文"""
+        # 每经网站可能的正文容器选择器（按优先级排序）
         content_selectors = [
+            # 新版页面结构
+            {'class': 'article-body'},
+            {'class': 'article__body'},
+            {'class': 'article-text'},
+            {'class': 'content-article'},
+            {'class': 'main-content'},
+            # 旧版页面结构
             {'class': 'g-article-content'},
             {'class': 'article-content'},
             {'class': 'content'},
             {'id': 'contentText'},
+            {'id': 'article-content'},
+            # 通用选择器
+            {'itemprop': 'articleBody'},
         ]
         
         for selector in content_selectors:
-            content_div = soup.find('div', selector)
+            content_div = soup.find(['div', 'article', 'section'], selector)
             if content_div:
+                # 移除脚本、样式、广告等无关元素
+                for tag in content_div.find_all(['script', 'style', 'iframe', 'ins', 'noscript']):
+                    tag.decompose()
+                for ad in content_div.find_all(class_=re.compile(r'ad|advertisement|banner|recommend')):
+                    ad.decompose()
+                
+                # 提取所有段落，不限制数量
                 paragraphs = content_div.find_all('p')
                 if paragraphs:
                     content = '\n'.join([p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True)])
-                    if content:
+                    if content and len(content) > 50:
                         return self._clean_text(content)
+                
+                # 如果没有 p 标签，直接取文本
+                text = content_div.get_text(separator='\n', strip=True)
+                if text and len(text) > 50:
+                    return self._clean_text(text)
         
-        # 后备方案
+        # 后备方案：取所有段落（不限制数量）
         paragraphs = soup.find_all('p')
         if paragraphs:
-            content = '\n'.join([p.get_text(strip=True) for p in paragraphs[:10] if p.get_text(strip=True)])
-            return self._clean_text(content) if content else ""
+            # 过滤掉可能的导航、页脚等短段落
+            valid_paragraphs = [
+                p.get_text(strip=True) for p in paragraphs 
+                if p.get_text(strip=True) and len(p.get_text(strip=True)) > 10
+            ]
+            content = '\n'.join(valid_paragraphs)
+            if content:
+                return self._clean_text(content)
         
         return ""
     

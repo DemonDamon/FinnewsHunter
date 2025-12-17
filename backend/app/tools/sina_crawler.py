@@ -118,7 +118,8 @@ class SinaCrawlerTool(BaseCrawler):
         try:
             response = self._fetch_page(url)
             response.encoding = BeautifulSoup(response.content, "lxml").original_encoding
-            soup = self._parse_html(response.text)
+            raw_html = response.text  # 保存原始 HTML
+            soup = self._parse_html(raw_html)
             
             # 提取标题
             title = self._extract_title(soup)
@@ -148,6 +149,7 @@ class SinaCrawlerTool(BaseCrawler):
                 summary=summary,
                 keywords=keywords,
                 stock_codes=stock_codes,
+                raw_html=raw_html,  # 保存原始 HTML
             )
             
         except Exception as e:
@@ -241,23 +243,90 @@ class SinaCrawlerTool(BaseCrawler):
     
     def _extract_content(self, soup: BeautifulSoup) -> str:
         """提取正文内容"""
-        # 查找所有段落
-        paragraphs = soup.find_all('p')
+        # 尝试使用更精确的选择器
+        content_selectors = [
+            {'id': 'artibody'},
+            {'class': 'article-content'},
+            {'class': 'article'},
+            {'id': 'article'},
+        ]
         
-        article_parts = []
-        for p in paragraphs:
-            text = p.get_text()
-            
-            # 检查中文比例
-            chinese_ratio = self._extract_chinese_ratio(text)
-            if chinese_ratio > self.min_chinese_ratio:
-                clean_text = self._clean_text(text)
-                if clean_text:
-                    article_parts.append(clean_text)
+        for selector in content_selectors:
+            content_div = soup.find(['div', 'article'], selector)
+            if content_div:
+                # 1. 移除明确的噪音元素
+                for tag in content_div.find_all(['script', 'style', 'iframe', 'ins', 'select', 'input', 'button', 'form']):
+                    tag.decompose()
+                
+                # 2. 移除特定的广告和推荐块
+                for ad in content_div.find_all(class_=re.compile(r'ad|banner|share|otherContent|recommend|app-guide', re.I)):
+                    ad.decompose()
+
+                # 3. 获取所有文本，使用换行符分隔
+                # 关键修改：使用 get_text 而不是 find_all('p')，确保不漏掉裸露的文本节点
+                full_text = content_div.get_text(separator='\n', strip=True)
+                
+                # 4. 按行分割并清洗
+                lines = full_text.split('\n')
+                article_parts = []
+                
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+                        
+                    # 5. 过滤和清洗行
+                    # 检查中文比例
+                    chinese_ratio = self._extract_chinese_ratio(line)
+                    
+                    # 宽松的保留策略：
+                    # - 忽略极短的非中文行（可能是页码、特殊符号）
+                    if len(line) < 2:
+                        continue
+                        
+                    # 保留条件：
+                    # 1. 包含一定比例中文（>5%）
+                    # 2. 或者长文本（>20字符），可能是纯数据或英文段落
+                    if chinese_ratio > 0.05 or len(line) > 20:
+                        clean_line = self._clean_text(line)
+                        if clean_line and not self._is_noise_text(clean_line):
+                            article_parts.append(clean_line)
+                
+                if article_parts:
+                    return '\n'.join(article_parts)
         
-        # 合并所有段落
-        content = '\n'.join(article_parts)
-        return content.strip()
+        # 后备方案：使用基类的智能提取方法
+        return self._extract_article_content(soup)
+    
+    def _is_noise_text(self, text: str) -> bool:
+        """判断是否为噪音文本（广告、版权等）"""
+        noise_patterns = [
+            r'^责任编辑',
+            r'^编辑[:：]',
+            r'^来源[:：]',
+            r'^声明[:：]',
+            r'^免责声明',
+            r'^版权',
+            r'^copyright',
+            r'^点击进入',
+            r'^相关阅读',
+            r'^延伸阅读',
+            r'^\s*$',
+            r'登录新浪财经APP',
+            r'搜索【信披】',
+            r'缩小字体',
+            r'放大字体',
+            r'收藏',
+            r'微博',
+            r'微信',
+            r'分享',
+            r'腾讯QQ',
+        ]
+        text_lower = text.lower().strip()
+        for pattern in noise_patterns:
+            if re.match(pattern, text_lower, re.I) or re.search(pattern, text_lower, re.I):
+                return True
+        return False
 
 
 # 便捷创建函数

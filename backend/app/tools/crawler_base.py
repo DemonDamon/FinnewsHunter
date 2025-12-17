@@ -30,6 +30,7 @@ class NewsItem:
     keywords: Optional[List[str]] = None
     stock_codes: Optional[List[str]] = None
     summary: Optional[str] = None
+    raw_html: Optional[str] = None  # 原始 HTML 内容
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
@@ -43,6 +44,7 @@ class NewsItem:
             "keywords": self.keywords,
             "stock_codes": self.stock_codes,
             "summary": self.summary,
+            "raw_html": self.raw_html,
         }
 
 
@@ -156,6 +158,72 @@ class BaseCrawler(BaseTool):
         # 移除多余空格和换行
         text = ' '.join(text.split())
         return text.strip()
+    
+    def _extract_article_content(self, soup: BeautifulSoup, selectors: List[dict] = None) -> str:
+        """
+        通用智能内容提取方法
+        
+        Args:
+            soup: BeautifulSoup对象
+            selectors: 可选的自定义选择器列表
+            
+        Returns:
+            提取的正文内容
+        """
+        import re
+        
+        # 默认选择器（按优先级排序）
+        default_selectors = [
+            # 文章主体选择器
+            {'class': re.compile(r'article[-_]?(body|content|text|main)', re.I)},
+            {'class': re.compile(r'content[-_]?(article|body|text|main)', re.I)},
+            {'class': re.compile(r'main[-_]?(content|body|text|article)', re.I)},
+            {'class': re.compile(r'^(article|content|body|text|post)$', re.I)},
+            {'itemprop': 'articleBody'},
+            {'id': re.compile(r'(article|content|body|text)[-_]?(content|body|text)?', re.I)},
+            # 通用选择器
+            {'class': 'g-article-content'},
+            {'class': 'article-content'},
+            {'class': 'news-content'},
+            {'id': 'contentText'},
+        ]
+        
+        all_selectors = (selectors or []) + default_selectors
+        
+        for selector in all_selectors:
+            content_div = soup.find(['div', 'article', 'section', 'main'], selector)
+            if content_div:
+                # 移除无关元素
+                for tag in content_div.find_all(['script', 'style', 'iframe', 'ins', 'noscript', 'nav', 'footer', 'header']):
+                    tag.decompose()
+                for ad in content_div.find_all(class_=re.compile(r'(ad|advertisement|banner|recommend|related|share|comment)', re.I)):
+                    ad.decompose()
+                
+                # 提取所有段落（不限制数量）
+                paragraphs = content_div.find_all('p')
+                if paragraphs:
+                    content = '\n'.join([p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True)])
+                    if content and len(content) > 50:
+                        return self._clean_text(content)
+                
+                # 如果没有 p 标签，直接取文本
+                text = content_div.get_text(separator='\n', strip=True)
+                if text and len(text) > 50:
+                    return self._clean_text(text)
+        
+        # 后备方案：取所有符合条件的段落（不限制数量）
+        paragraphs = soup.find_all('p')
+        if paragraphs:
+            valid_paragraphs = [
+                p.get_text(strip=True) for p in paragraphs 
+                if p.get_text(strip=True) and len(p.get_text(strip=True)) > 15
+                and not any(kw in p.get_text(strip=True).lower() for kw in ['copyright', '版权', '广告', 'advertisement'])
+            ]
+            content = '\n'.join(valid_paragraphs)
+            if content:
+                return self._clean_text(content)
+        
+        return ""
     
     def _is_stock_related_by_url(self, url: str) -> bool:
         """

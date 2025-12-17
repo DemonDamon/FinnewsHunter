@@ -186,8 +186,8 @@ class EeoCrawlerTool(BaseCrawler):
             # 提取作者
             author = news_data.get('author', '')
             
-            # 获取新闻详情（内容）
-            content = self._fetch_news_content(url)
+            # 获取新闻详情（内容和原始HTML）
+            content, raw_html = self._fetch_news_content(url)
             
             if not content:
                 return None
@@ -198,14 +198,15 @@ class EeoCrawlerTool(BaseCrawler):
                 url=url,
                 source=self.SOURCE_NAME,
                 publish_time=publish_time,
-                author=author if author else None
+                author=author if author else None,
+                raw_html=raw_html,  # 保存原始 HTML
             )
             
         except Exception as e:
             logger.warning(f"Failed to parse API news item: {e}")
             return None
     
-    def _fetch_news_content(self, url: str) -> str:
+    def _fetch_news_content(self, url: str) -> tuple:
         """
         获取新闻详情页内容
         
@@ -213,19 +214,20 @@ class EeoCrawlerTool(BaseCrawler):
             url: 新闻详情页URL
             
         Returns:
-            新闻正文
+            (新闻正文, 原始HTML)
         """
         try:
             response = self._fetch_page(url)
-            soup = self._parse_html(response.text)
+            raw_html = response.text  # 保存原始 HTML
+            soup = self._parse_html(raw_html)
             
             # 提取正文
             content = self._extract_content(soup)
-            return content
+            return content, raw_html
             
         except Exception as e:
             logger.warning(f"Failed to fetch content from {url}: {e}")
-            return ""
+            return "", ""
     
     def _crawl_page_html(self) -> List[NewsItem]:
         """
@@ -290,7 +292,8 @@ class EeoCrawlerTool(BaseCrawler):
         
         try:
             response = self._fetch_page(url)
-            soup = self._parse_html(response.text)
+            raw_html = response.text  # 保存原始 HTML
+            soup = self._parse_html(raw_html)
             
             # 提取正文
             content = self._extract_content(soup)
@@ -309,7 +312,8 @@ class EeoCrawlerTool(BaseCrawler):
                 url=url,
                 source=self.SOURCE_NAME,
                 publish_time=publish_time,
-                author=author
+                author=author,
+                raw_html=raw_html,  # 保存原始 HTML
             )
             
         except Exception as e:
@@ -323,24 +327,45 @@ class EeoCrawlerTool(BaseCrawler):
             {'class': 'content'},
             {'id': 'articleContent'},
             {'class': 'news-content'},
+            {'class': 'text_content'},  # 常见的正文类名
         ]
         
         for selector in content_selectors:
-            content_div = soup.find('div', selector)
+            content_div = soup.find(['div', 'article'], selector)
             if content_div:
-                paragraphs = content_div.find_all('p')
-                if paragraphs:
-                    content = '\n'.join([p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True)])
-                    if content:
-                        return self._clean_text(content)
+                # 1. 移除明确的噪音元素
+                for tag in content_div.find_all(['script', 'style', 'iframe', 'ins', 'select', 'input', 'button', 'form']):
+                    tag.decompose()
+                
+                # 2. 移除特定的广告和推荐块
+                for ad in content_div.find_all(class_=re.compile(r'ad|banner|share|otherContent|recommend|app-guide|qrcode', re.I)):
+                    ad.decompose()
+
+                # 3. 获取所有文本，使用换行符分隔
+                # 关键修改：使用 get_text 而不是 find_all('p')
+                full_text = content_div.get_text(separator='\n', strip=True)
+                
+                # 4. 按行分割并清洗
+                lines = full_text.split('\n')
+                article_parts = []
+                
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+                        
+                    # 5. 简单的长度过滤，防止页码等噪音
+                    if len(line) < 2:
+                        continue
+                        
+                    article_parts.append(line)
+                
+                if article_parts:
+                    content = '\n'.join(article_parts)
+                    return self._clean_text(content)
         
-        # 后备方案
-        paragraphs = soup.find_all('p')
-        if paragraphs:
-            content = '\n'.join([p.get_text(strip=True) for p in paragraphs[:10] if p.get_text(strip=True)])
-            return self._clean_text(content) if content else ""
-        
-        return ""
+        # 后备方案：使用基类的智能提取方法
+        return self._extract_article_content(soup)
     
     def _extract_publish_time(self, soup: BeautifulSoup) -> Optional[datetime]:
         """提取发布时间"""

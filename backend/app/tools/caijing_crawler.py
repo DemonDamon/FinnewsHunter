@@ -122,7 +122,8 @@ class CaijingCrawlerTool(BaseCrawler):
         
         try:
             response = self._fetch_page(url)
-            soup = self._parse_html(response.text)
+            raw_html = response.text  # 保存原始 HTML
+            soup = self._parse_html(raw_html)
             
             # 提取正文
             content = self._extract_content(soup)
@@ -141,7 +142,8 @@ class CaijingCrawlerTool(BaseCrawler):
                 url=url,
                 source=self.SOURCE_NAME,
                 publish_time=publish_time,
-                author=author
+                author=author,
+                raw_html=raw_html,  # 保存原始 HTML
             )
             
         except Exception as e:
@@ -166,11 +168,8 @@ class CaijingCrawlerTool(BaseCrawler):
                     if content:
                         return self._clean_text(content)
         
-        # 后备方案
-        paragraphs = soup.find_all('p')
-        if paragraphs:
-            content = '\n'.join([p.get_text(strip=True) for p in paragraphs[:10] if p.get_text(strip=True)])
-            return self._clean_text(content) if content else ""
+        # 后备方案：使用基类的智能提取方法
+        return self._extract_article_content(soup)
         
         return ""
     

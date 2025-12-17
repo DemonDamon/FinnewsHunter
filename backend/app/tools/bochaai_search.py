@@ -57,6 +57,7 @@ class BochaAISearchTool:
         query: str,
         freshness: str = "noLimit",
         count: int = 10,
+        offset: int = 0,
         include_sites: Optional[str] = None,
         exclude_sites: Optional[str] = None,
     ) -> List[SearchResult]:
@@ -66,7 +67,8 @@ class BochaAISearchTool:
         Args:
             query: 搜索查询字符串
             freshness: 时间范围（noLimit, day, week, month）
-            count: 返回结果数量（1-50）
+            count: 返回结果数量（1-50，单次最大50条）
+            offset: 结果偏移量（用于分页）
             include_sites: 限定搜索的网站（逗号分隔）
             exclude_sites: 排除的网站（逗号分隔）
             
@@ -85,6 +87,10 @@ class BochaAISearchTool:
                 "summary": False,
                 "count": min(max(count, 1), 50)
             }
+            
+            # 添加 offset 参数进行分页
+            if offset > 0:
+                request_data["offset"] = offset
             
             if include_sites:
                 request_data["include"] = include_sites
@@ -123,7 +129,7 @@ class BochaAISearchTool:
                         )
                         results.append(search_result)
             
-            logger.info(f"BochaAI 搜索完成: query='{query}', 结果数={len(results)}")
+            logger.info(f"BochaAI 搜索完成: query='{query}', offset={offset}, 结果数={len(results)}")
             return results
             
         except urllib.error.HTTPError as e:
@@ -152,7 +158,8 @@ class BochaAISearchTool:
         stock_name: str,
         stock_code: Optional[str] = None,
         days: int = 30,
-        count: int = 20,
+        count: int = 100,
+        max_age_days: int = 180,
     ) -> List[SearchResult]:
         """
         搜索股票相关新闻
@@ -160,11 +167,12 @@ class BochaAISearchTool:
         Args:
             stock_name: 股票名称（如"贵州茅台"）
             stock_code: 股票代码（可选，如"600519"）
-            days: 搜索时间范围（天）
-            count: 返回结果数量
+            days: 搜索时间范围（天），用于API freshness参数
+            count: 返回结果数量（支持超过50条，会自动分页请求）
+            max_age_days: 最大新闻年龄（天），默认180天（半年），超过此时间的新闻将被过滤
             
         Returns:
-            搜索结果列表
+            搜索结果列表（按时间从新到旧排序，不超过半年）
         """
         # 构建搜索查询
         query_parts = [stock_name, "股票", "新闻"]
@@ -177,15 +185,9 @@ class BochaAISearchTool:
         
         query = " ".join(query_parts)
         
-        # 确定时间范围
-        if days <= 1:
-            freshness = "day"
-        elif days <= 7:
-            freshness = "week"
-        elif days <= 30:
-            freshness = "month"
-        else:
-            freshness = "noLimit"
+        # 确定时间范围 - 由于需要获取较多结果，使用 noLimit 让API返回更多结果
+        # 然后在本地进行时间过滤
+        freshness = "noLimit"
         
         # 财经网站列表（用于优先搜索）
         finance_sites = (
@@ -201,12 +203,77 @@ class BochaAISearchTool:
             "chinanews.com.cn"
         )
         
-        return self.search(
-            query=query,
-            freshness=freshness,
-            count=count,
-            include_sites=finance_sites
-        )
+        # 计算截止时间（半年前）
+        from datetime import timedelta
+        cutoff_date = datetime.now() - timedelta(days=max_age_days)
+        
+        all_results = []
+        offset = 0
+        batch_size = 50  # API单次最大返回数
+        max_requests = 5  # 最多请求5次，防止无限循环
+        request_count = 0
+        
+        logger.info(f"BochaAI 开始搜索股票新闻: {stock_name}, 目标数量={count}, 截止日期={cutoff_date.strftime('%Y-%m-%d')}")
+        
+        while len(all_results) < count and request_count < max_requests:
+            batch_results = self.search(
+                query=query,
+                freshness=freshness,
+                count=batch_size,
+                offset=offset,
+                include_sites=finance_sites
+            )
+            
+            if not batch_results:
+                logger.info(f"BochaAI 第{request_count+1}次请求未返回结果，停止分页")
+                break
+            
+            # 过滤超过半年的新闻
+            for result in batch_results:
+                if result.date_published:
+                    try:
+                        # 尝试解析发布时间
+                        pub_date = datetime.fromisoformat(
+                            result.date_published.replace('Z', '+00:00')
+                        )
+                        # 转换为无时区的时间进行比较
+                        if pub_date.tzinfo:
+                            pub_date = pub_date.replace(tzinfo=None)
+                        
+                        # 检查是否在半年内
+                        if pub_date < cutoff_date:
+                            logger.debug(f"过滤超过半年的新闻: {result.title[:30]}... ({result.date_published})")
+                            continue
+                    except (ValueError, AttributeError) as e:
+                        # 无法解析日期的新闻也保留
+                        logger.debug(f"无法解析日期，保留新闻: {result.title[:30]}... (date: {result.date_published})")
+                
+                all_results.append(result)
+                
+                if len(all_results) >= count:
+                    break
+            
+            offset += batch_size
+            request_count += 1
+            logger.info(f"BochaAI 第{request_count}次请求完成，当前累计 {len(all_results)} 条有效结果")
+        
+        # 按发布时间排序（从新到旧）
+        def parse_date(r):
+            if r.date_published:
+                try:
+                    dt = datetime.fromisoformat(r.date_published.replace('Z', '+00:00'))
+                    if dt.tzinfo:
+                        dt = dt.replace(tzinfo=None)
+                    return dt
+                except (ValueError, AttributeError):
+                    pass
+            return datetime.min  # 无法解析的日期排在最后
+        
+        all_results.sort(key=parse_date, reverse=True)
+        
+        logger.info(f"BochaAI 搜索股票新闻完成: {stock_name}, 返回 {len(all_results)} 条结果 (共请求{request_count}次)")
+        
+        return all_results[:count]  # 确保不超过请求数量
 
 
 # 全局实例
