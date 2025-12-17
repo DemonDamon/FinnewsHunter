@@ -19,7 +19,8 @@ class News(Base):
     
     # 基本信息
     title = Column(String(500), nullable=False, index=True, comment="新闻标题")
-    content = Column(Text, nullable=False, comment="新闻正文")
+    content = Column(Text, nullable=False, comment="新闻正文（解析后）")
+    raw_html = Column(Text, nullable=True, comment="原始HTML内容")
     url = Column(String(1000), unique=True, nullable=False, index=True, comment="新闻URL")
     source = Column(String(100), nullable=False, index=True, comment="新闻来源（sina, jrj, cnstock等）")
     
@@ -55,9 +56,9 @@ class News(Base):
     def __repr__(self):
         return f"<News(id={self.id}, title='{self.title[:30]}...', source='{self.source}')>"
     
-    def to_dict(self):
+    def to_dict(self, include_html: bool = False):
         """转换为字典"""
-        return {
+        result = {
             "id": self.id,
             "title": self.title,
             "content": self.content,
@@ -69,5 +70,9 @@ class News(Base):
             "sentiment_score": self.sentiment_score,
             "author": self.author,
             "keywords": self.keywords,
+            "has_raw_html": self.raw_html is not None and len(self.raw_html or '') > 0,
         }
+        if include_html and self.raw_html:
+            result["raw_html"] = self.raw_html
+        return result
 

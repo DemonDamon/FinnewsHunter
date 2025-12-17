@@ -52,6 +52,16 @@ class NewsResponse(BaseModel):
     stock_codes: Optional[List[str]] = None
     sentiment_score: Optional[float] = None
     created_at: datetime
+    has_raw_html: bool = False  # 是否有原始 HTML
+
+
+class NewsHtmlResponse(BaseModel):
+    """新闻原始 HTML 响应"""
+    id: int
+    title: str
+    url: str
+    raw_html: Optional[str] = None
+    has_raw_html: bool = False
 
 
 class LatestNewsResponse(BaseModel):
@@ -205,6 +215,35 @@ async def force_refresh_news(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/{news_id}/html", response_model=NewsHtmlResponse, summary="获取新闻原始HTML")
+async def get_news_html(
+    news_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """获取新闻的原始 HTML 内容（用于完整展示）"""
+    try:
+        query = select(News).where(News.id == news_id)
+        result = await db.execute(query)
+        news = result.scalar_one_or_none()
+        
+        if not news:
+            raise HTTPException(status_code=404, detail="新闻不存在")
+        
+        return NewsHtmlResponse(
+            id=news.id,
+            title=news.title,
+            url=news.url,
+            raw_html=news.raw_html,
+            has_raw_html=news.raw_html is not None and len(news.raw_html or '') > 0,
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取新闻HTML失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{news_id}", response_model=NewsResponse, summary="获取新闻详情")
 async def get_news_detail(
     news_id: int,
@@ -219,7 +258,10 @@ async def get_news_detail(
         if not news:
             raise HTTPException(status_code=404, detail="新闻不存在")
         
-        return NewsResponse.model_validate(news)
+        # 添加 has_raw_html 字段
+        response = NewsResponse.model_validate(news)
+        response.has_raw_html = news.raw_html is not None and len(news.raw_html or '') > 0
+        return response
         
     except HTTPException:
         raise
