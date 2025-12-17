@@ -51,3 +51,6 @@ Thumbs.db
 .coverage
 htmlcov/
 
+celerybeat-schedule
+celerybeat-schedule
+celerybeat-schedule
