@@ -161,22 +161,26 @@ export default function StockAnalysisPage() {
     queryKey: ['stock', 'targeted-crawl-status', stockCode],
     queryFn: () => stockApi.getTargetedCrawlStatus(stockCode),
     enabled: crawlTask.status === 'running' || crawlTask.status === 'pending',
-    refetchInterval: crawlTask.status === 'running' ? 3000 : false, // 运行中时每3秒轮询
+    refetchInterval: crawlTask.status === 'running' ? 2000 : false, // 运行中时每2秒轮询
     staleTime: 0,
   })
 
   // 监听爬取状态变化
   useEffect(() => {
-    if (crawlStatus) {
+    // 只在有状态且当前任务正在进行时处理
+    if (crawlStatus && (crawlTask.status === 'running' || crawlTask.status === 'pending')) {
       if (crawlStatus.status === 'completed') {
         setCrawlTask({ 
           status: 'completed', 
           taskId: crawlStatus.task_id,
           progress: { current: 100, total: 100, message: '爬取完成' }
         })
-        // 刷新新闻列表
-        queryClient.invalidateQueries({ queryKey: ['stock', 'news', stockCode] })
-        queryClient.invalidateQueries({ queryKey: ['stock', 'overview', stockCode] })
+        // 强制刷新新闻列表（忽略缓存）
+        queryClient.resetQueries({ queryKey: ['stock', 'news', stockCode] })
+        queryClient.resetQueries({ queryKey: ['stock', 'overview', stockCode] })
+        // 立即重新获取
+        queryClient.refetchQueries({ queryKey: ['stock', 'news', stockCode], type: 'all' })
+        queryClient.refetchQueries({ queryKey: ['stock', 'overview', stockCode], type: 'all' })
         toast.success(`定向爬取完成！新增 ${crawlStatus.saved_count || 0} 条新闻`)
       } else if (crawlStatus.status === 'failed') {
         setCrawlTask({ 
@@ -186,30 +190,36 @@ export default function StockAnalysisPage() {
         })
         toast.error(`定向爬取失败: ${crawlStatus.error_message || '未知错误'}`)
       } else if (crawlStatus.status === 'running') {
+        // 更新进度和真实的 taskId
         setCrawlTask(prev => ({
           ...prev,
           status: 'running',
-          taskId: crawlStatus.task_id,
+          taskId: crawlStatus.task_id || prev.taskId,
           progress: crawlStatus.progress || prev.progress
         }))
       }
     }
-  }, [crawlStatus, stockCode, queryClient])
+  }, [crawlStatus, crawlTask.status, stockCode, queryClient])
 
   // 页面加载时检查是否有进行中的任务
   useEffect(() => {
     const checkExistingTask = async () => {
       try {
         const status = await stockApi.getTargetedCrawlStatus(stockCode)
+        // 只恢复正在运行或等待中的任务
         if (status && (status.status === 'running' || status.status === 'pending')) {
           setCrawlTask({
             status: status.status as CrawlTaskStatus,
             taskId: status.task_id,
             progress: status.progress
           })
+        } else {
+          // 其他状态（completed/failed/idle）重置为 idle
+          setCrawlTask({ status: 'idle' })
         }
       } catch {
-        // 没有进行中的任务，忽略错误
+        // 没有进行中的任务，保持 idle 状态
+        setCrawlTask({ status: 'idle' })
       }
     }
     checkExistingTask()
@@ -220,14 +230,16 @@ export default function StockAnalysisPage() {
     mutationFn: () => stockApi.startTargetedCrawl(stockCode, stockName),
     onSuccess: (data) => {
       if (data.success) {
+        // 任务启动成功，设置为 running 状态
+        // task_id 可能为空（因为 Celery 任务是异步创建的），使用临时标记
         setCrawlTask({ 
           status: 'running', 
-          taskId: data.task_id,
+          taskId: data.task_id || Date.now(),  // 使用 task_id 或临时 ID
           progress: { current: 0, total: 100, message: '开始爬取...' }
         })
         toast.success('定向爬取任务已启动')
-        // 开始轮询状态
-        refetchCrawlStatus()
+        // 延迟开始轮询，等待后端创建任务记录
+        setTimeout(() => refetchCrawlStatus(), 2000)
       } else {
         setCrawlTask({ status: 'failed', error: data.message })
         toast.error(`启动失败: ${data.message}`)
@@ -240,7 +252,8 @@ export default function StockAnalysisPage() {
   })
 
   const handleStartCrawl = () => {
-    setCrawlTask({ status: 'pending' })
+    // 重置状态，清除之前的 taskId
+    setCrawlTask({ status: 'pending', taskId: undefined })
     targetedCrawlMutation.mutate()
   }
 
