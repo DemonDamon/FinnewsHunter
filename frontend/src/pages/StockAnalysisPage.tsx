@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -28,6 +28,7 @@ import {
   Download,
   CheckCircle2,
   AlertCircle,
+  ChevronDown,
 } from 'lucide-react'
 import {
   XAxis,
@@ -88,6 +89,7 @@ export default function StockAnalysisPage() {
   const [crawlTask, setCrawlTask] = useState<CrawlTaskState>({ status: 'idle' })
   const [selectedNewsId, setSelectedNewsId] = useState<number | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [newsDisplayCount, setNewsDisplayCount] = useState(30) // 默认显示30条
   const stockCode = code?.toUpperCase() || 'SH600519'
   const pureCode = extractCode(stockCode)
 
@@ -114,9 +116,48 @@ export default function StockAnalysisPage() {
   // 获取关联新闻
   const { data: newsList, isLoading: newsLoading } = useQuery({
     queryKey: ['stock', 'news', stockCode],
-    queryFn: () => stockApi.getNews(stockCode, { limit: 20 }),
+    queryFn: () => stockApi.getNews(stockCode, { limit: 200 }), // 获取更多数据，前端分页
     staleTime: 5 * 60 * 1000,
   })
+
+  // 计算排序后的展示新闻（按时间从新到旧）
+  const displayedNews = useMemo(() => {
+    if (!newsList) return []
+    const sorted = [...newsList].sort((a, b) => {
+      const timeA = a.publish_time ? new Date(a.publish_time).getTime() : 0
+      const timeB = b.publish_time ? new Date(b.publish_time).getTime() : 0
+      return timeB - timeA // 降序排列（最新的在前）
+    })
+    return sorted.slice(0, newsDisplayCount)
+  }, [newsList, newsDisplayCount])
+
+  // 是否还有更多新闻
+  const hasMoreNews = (newsList?.length || 0) > newsDisplayCount
+  
+  // 是否有历史新闻数据
+  const hasHistoryNews = newsList && newsList.length > 0
+
+  // 获取新闻卡片样式（根据情感分数）
+  const getNewsCardStyle = (sentiment: number | null) => {
+    const baseStyle = "flex flex-col transition-all duration-300 border min-w-0 h-full hover:shadow-lg hover:-translate-y-1 cursor-pointer"
+    
+    if (sentiment === null) {
+      return `${baseStyle} bg-white border-gray-200 hover:border-blue-300`
+    }
+
+    if (sentiment > 0.1) {
+      // 利好：绿色渐变
+      return `${baseStyle} bg-gradient-to-br from-emerald-50 to-white border-emerald-200 hover:border-emerald-400 hover:shadow-emerald-200/60`
+    }
+    
+    if (sentiment < -0.1) {
+      // 利空：红色渐变
+      return `${baseStyle} bg-gradient-to-br from-rose-50 to-white border-rose-200 hover:border-rose-400 hover:shadow-rose-200/60`
+    }
+
+    // 中性：蓝灰色渐变
+    return `${baseStyle} bg-gradient-to-br from-slate-50 to-white border-slate-200 hover:border-slate-400 hover:shadow-slate-200/60`
+  }
 
   // 获取情感趋势
   const { data: sentimentTrend, isLoading: trendLoading } = useQuery({
@@ -240,6 +281,16 @@ export default function StockAnalysisPage() {
         toast.success('定向爬取任务已启动')
         // 延迟开始轮询，等待后端创建任务记录
         setTimeout(() => refetchCrawlStatus(), 2000)
+      } else if (data.task_id) {
+        // 已有正在进行的任务，恢复到该任务的状态
+        setCrawlTask({ 
+          status: 'running', 
+          taskId: data.task_id,
+          progress: { current: 0, total: 100, message: '正在爬取中...' }
+        })
+        toast.info('该股票已有正在进行的爬取任务，正在同步状态...')
+        // 立即获取任务状态
+        refetchCrawlStatus()
       } else {
         setCrawlTask({ status: 'failed', error: data.message })
         toast.error(`启动失败: ${data.message}`)
@@ -290,33 +341,33 @@ export default function StockAnalysisPage() {
       {/* 顶部标题区 */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-6">
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-bold tracking-tight text-gray-900">
-                {stockName}
-              </h1>
-              <Badge variant="outline" className="text-base px-3 py-1 bg-white">
-                {stockCode}
-              </Badge>
-            </div>
-            <p className="text-muted-foreground mt-1 flex items-center gap-2">
-              <Activity className="w-4 h-4" />
-              个股分析 · 智能体驱动的投资决策
-            </p>
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+              {stockName}
+            </h1>
+            <Badge variant="outline" className="text-base px-3 py-1 bg-white">
+              {stockCode}
+            </Badge>
           </div>
+          <p className="text-muted-foreground mt-1 flex items-center gap-2">
+            <Activity className="w-4 h-4" />
+            个股分析 · 智能体驱动的投资决策
+          </p>
+        </div>
         </div>
         
         <div className="flex items-center gap-3">
           {/* 返回按钮 */}
-          <Button
-            variant="outline"
-            size="sm"
+        <Button
+          variant="outline"
+          size="sm"
             onClick={() => navigate('/stock')}
             className="gap-2 hover:bg-gray-100"
-          >
+        >
             <ArrowLeft className="w-4 h-4" />
             返回搜索
-          </Button>
+        </Button>
         </div>
       </div>
 
@@ -397,18 +448,18 @@ export default function StockAnalysisPage() {
         </Card>
       </div>
 
-      {/* K线图 */}
-      <Card className="bg-white/90">
+          {/* K线图 */}
+          <Card className="bg-white/90">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <TrendingUp className="w-5 h-5 text-blue-500" />
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-blue-500" />
                     K线图 · 真实行情
-                  </CardTitle>
-                  <CardDescription>
+              </CardTitle>
+              <CardDescription>
                     数据来源：akshare · 前复权 · 支持缩放拖拽
-                  </CardDescription>
+              </CardDescription>
                 </div>
                 {klineData && klineData.length > 0 && (
                   <div className="flex items-center gap-4 text-sm">
@@ -547,7 +598,7 @@ export default function StockAnalysisPage() {
                   ) : (
                     <>
                       <Download className="w-4 h-4" />
-                      定向爬取
+                      {hasHistoryNews ? '更新爬取' : '定向爬取'}
                     </>
                   )}
                 </Button>
@@ -561,146 +612,190 @@ export default function StockAnalysisPage() {
               </div>
             ) : newsList && newsList.length > 0 ? (
               <div className="space-y-4">
-                {newsList.map((news) => (
-                  <div
-                    key={news.id}
-                    className="p-4 rounded-lg border border-gray-100 hover:border-blue-200 hover:bg-blue-50/30 transition-all cursor-pointer group"
-                    onClick={() => {
-                      setSelectedNewsId(news.id)
-                      setDrawerOpen(true)
-                    }}
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <h3 className="font-medium text-gray-900 line-clamp-1 group-hover:text-blue-600 transition-colors">
+                {/* 卡片 Grid 布局 */}
+                <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+                  {displayedNews.map((news) => (
+                    <Card
+                      key={news.id}
+                      className={getNewsCardStyle(news.sentiment_score)}
+                      onClick={() => {
+                        setSelectedNewsId(news.id)
+                        setDrawerOpen(true)
+                      }}
+                    >
+                      <CardHeader className="pb-2 flex-shrink-0">
+                        <CardTitle className="text-sm leading-tight font-semibold text-gray-900 line-clamp-2 min-h-[40px]">
                           {news.title}
-                        </h3>
-                        <p className="text-sm text-gray-500 line-clamp-2 mt-1">
+                        </CardTitle>
+                        <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
+                          <Calendar className="w-3 h-3" />
+                          <span>{news.publish_time ? formatRelativeTime(news.publish_time) : '时间未知'}</span>
+                          <span>•</span>
+                          <span>{news.source}</span>
+                        </div>
+                      </CardHeader>
+                      
+                      <CardContent className="flex-1 flex flex-col pb-3 pt-1 overflow-hidden">
+                        <p 
+                          className="text-sm text-gray-600 leading-relaxed flex-1"
+                          style={{
+                            display: '-webkit-box',
+                            WebkitLineClamp: 3,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden'
+                          }}
+                        >
                           {news.content}
                         </p>
-                        <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
-                          <span>{news.source}</span>
-                          <span>•</span>
-                          <span>{news.publish_time ? formatRelativeTime(news.publish_time) : '时间未知'}</span>
+                        
+                        {/* 底部标签区域 */}
+                        <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100">
+                          <div className="flex items-center gap-1.5">
+                            {news.sentiment_score !== null && (
+                              <Badge 
+                                className={`text-xs px-2 py-0.5 ${
+                                  news.sentiment_score > 0.1 ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
+                                  news.sentiment_score < -0.1 ? 'bg-rose-100 text-rose-700 border-rose-200' :
+                                  'bg-amber-100 text-amber-700 border-amber-200'
+                                }`}
+                              >
+                                {news.sentiment_score > 0.1 ? '📈 利好' : 
+                                 news.sentiment_score < -0.1 ? '📉 利空' : '➖ 中性'}
+                              </Badge>
+                            )}
+                            {news.has_analysis && (
+                              <Badge variant="outline" className="text-xs px-2 py-0.5">
+                                已分析
+                              </Badge>
+                            )}
+                          </div>
+                          {news.sentiment_score !== null && (
+                            <span className="text-xs text-gray-400">
+                              {news.sentiment_score > 0 ? '+' : ''}{news.sentiment_score.toFixed(2)}
+                            </span>
+                          )}
                         </div>
-                      </div>
-                      <div className="flex flex-col items-end gap-2">
-                        {news.sentiment_score !== null && (
-                          <Badge 
-                            className={`
-                              ${news.sentiment_score > 0.1 ? 'bg-emerald-100 text-emerald-700' : ''}
-                              ${news.sentiment_score < -0.1 ? 'bg-rose-100 text-rose-700' : ''}
-                              ${news.sentiment_score >= -0.1 && news.sentiment_score <= 0.1 ? 'bg-amber-100 text-amber-700' : ''}
-                            `}
-                          >
-                            {news.sentiment_score > 0 ? '+' : ''}{news.sentiment_score.toFixed(2)}
-                          </Badge>
-                        )}
-                        {news.has_analysis && (
-                          <Badge variant="outline" className="text-xs">
-                            已分析
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+                
+                {/* 展示更多按钮 */}
+                {hasMoreNews && (
+                  <div className="text-center pt-4">
+                    <Button
+                      variant="outline"
+                      onClick={() => setNewsDisplayCount(prev => prev + 30)}
+                      className="gap-2 hover:bg-blue-50"
+                    >
+                      <ChevronDown className="w-4 h-4" />
+                      展示更多 ({(newsList?.length || 0) - newsDisplayCount} 条)
+                    </Button>
                   </div>
-                ))}
+                )}
+                
+                {/* 已显示全部提示 */}
+                {!hasMoreNews && newsList && newsList.length > 30 && (
+                  <div className="text-center pt-4 text-sm text-gray-400">
+                    已显示全部 {newsList.length} 条新闻
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-center py-12 text-gray-500">
                 <Newspaper className="w-12 h-12 mx-auto opacity-50 mb-3" />
                 <p>暂无关联新闻</p>
-                <p className="text-sm mt-1">该股票还没有相关新闻数据</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                <p className="text-sm mt-1">点击「{hasHistoryNews ? '更新爬取' : '定向爬取'}」获取该股票的相关新闻</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-      {/* 情感趋势图 */}
-      <Card className="bg-white/90">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <MessageSquare className="w-5 h-5 text-purple-500" />
-            新闻情感趋势
-          </CardTitle>
-          <CardDescription>
-            近30天新闻情感分布与平均值
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {trendLoading ? (
-            <div className="h-64 flex items-center justify-center">
-              <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
-            </div>
-          ) : sentimentTrend && sentimentTrend.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <ComposedChart data={sentimentTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis 
-                  dataKey="date" 
-                  tick={{ fontSize: 10 }}
-                  tickFormatter={(value) => value.slice(5)}
-                />
-                <YAxis 
-                  yAxisId="left"
-                  domain={[-1, 1]}
-                  tick={{ fontSize: 10 }}
-                />
-                <YAxis 
-                  yAxisId="right"
-                  orientation="right"
-                  tick={{ fontSize: 10 }}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                    borderRadius: '8px',
-                    border: '1px solid #e5e7eb',
-                  }}
-                />
-                <Legend />
-                <Bar 
-                  yAxisId="right"
-                  dataKey="positive_count" 
-                  stackId="a" 
-                  fill="#10b981" 
-                  name="利好"
-                />
-                <Bar 
-                  yAxisId="right"
-                  dataKey="neutral_count" 
-                  stackId="a" 
-                  fill="#f59e0b" 
-                  name="中性"
-                />
-                <Bar 
-                  yAxisId="right"
-                  dataKey="negative_count" 
-                  stackId="a" 
-                  fill="#ef4444" 
-                  name="利空"
-                />
-                <Line
-                  yAxisId="left"
-                  type="monotone"
-                  dataKey="avg_sentiment"
-                  stroke="#8b5cf6"
-                  strokeWidth={2}
-                  dot={false}
-                  name="平均情感"
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-64 flex items-center justify-center text-gray-500">
-              暂无数据
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          {/* 情感趋势图 */}
+          <Card className="bg-white/90">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-purple-500" />
+                新闻情感趋势
+              </CardTitle>
+              <CardDescription>
+                近30天新闻情感分布与平均值
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {trendLoading ? (
+                <div className="h-64 flex items-center justify-center">
+                  <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+                </div>
+              ) : sentimentTrend && sentimentTrend.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <ComposedChart data={sentimentTrend}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis 
+                      dataKey="date" 
+                      tick={{ fontSize: 10 }}
+                      tickFormatter={(value) => value.slice(5)}
+                    />
+                    <YAxis 
+                      yAxisId="left"
+                      domain={[-1, 1]}
+                      tick={{ fontSize: 10 }}
+                    />
+                    <YAxis 
+                      yAxisId="right"
+                      orientation="right"
+                      tick={{ fontSize: 10 }}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                        borderRadius: '8px',
+                        border: '1px solid #e5e7eb',
+                      }}
+                    />
+                    <Legend />
+                    <Bar 
+                      yAxisId="right"
+                      dataKey="positive_count" 
+                      stackId="a" 
+                      fill="#10b981" 
+                      name="利好"
+                    />
+                    <Bar 
+                      yAxisId="right"
+                      dataKey="neutral_count" 
+                      stackId="a" 
+                      fill="#f59e0b" 
+                      name="中性"
+                    />
+                    <Bar 
+                      yAxisId="right"
+                      dataKey="negative_count" 
+                      stackId="a" 
+                      fill="#ef4444" 
+                      name="利空"
+                    />
+                    <Line
+                      yAxisId="left"
+                      type="monotone"
+                      dataKey="avg_sentiment"
+                      stroke="#8b5cf6"
+                      strokeWidth={2}
+                      dot={false}
+                      name="平均情感"
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-64 flex items-center justify-center text-gray-500">
+                  暂无数据
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
       {/* Bull vs Bear 辩论 */}
-      <div className="space-y-6">
+        <div className="space-y-6">
           {/* 触发辩论按钮 */}
           <Card className="bg-gradient-to-r from-emerald-50 to-rose-50 border-none">
             <CardContent className="py-6">
