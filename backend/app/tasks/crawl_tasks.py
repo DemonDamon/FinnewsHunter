@@ -532,32 +532,64 @@ def targeted_stock_crawl_task(
         else:
             logger.warning(f"[Task {task_record.id}] ⚠️ BochaAI API Key 未配置，跳过搜索引擎搜索")
         
-        # 3. 使用东方财富爬虫搜索（作为补充）
-        try:
-            logger.info(f"[Task {task_record.id}] 🕷️ 使用东方财富爬虫...")
-            eastmoney_crawler = EastmoneyCrawlerTool()
-            eastmoney_news = eastmoney_crawler.crawl(start_page=1, end_page=3)
-            
-            # 过滤包含股票名称或代码的新闻
-            for news in eastmoney_news:
-                if (stock_name in news.title or 
-                    pure_code in news.title or 
-                    stock_name in (news.content or '') or
-                    pure_code in (news.content or '')):
-                    # 添加股票代码关联
-                    if not news.stock_codes:
-                        news.stock_codes = []
-                    if pure_code not in news.stock_codes:
-                        news.stock_codes.append(pure_code)
-                    if code not in news.stock_codes:
-                        news.stock_codes.append(code)
-                    filtered_news.append(news)
-            
-            logger.info(f"[Task {task_record.id}] 📰 东方财富过滤后 {len(filtered_news)} 条相关新闻")
-            all_news.extend(filtered_news)
-            
-        except Exception as e:
-            logger.warning(f"[Task {task_record.id}] ⚠️ 东方财富爬取失败: {e}")
+        # 3. 使用多个爬虫作为补充来源
+        # 定义要使用的爬虫列表（爬虫名称, 爬取页数, 图标）
+        crawler_configs = [
+            ("eastmoney", 3, "💎"),  # 东方财富
+            ("sina", 2, "🌐"),       # 新浪财经
+            ("tencent", 2, "🐧"),    # 腾讯财经
+            ("163", 2, "📧"),        # 网易财经
+            ("nbd", 2, "📰"),        # 每日经济新闻
+            ("yicai", 2, "🎯"),      # 第一财经
+            ("caijing", 2, "📈"),    # 财经网
+            ("jingji21", 2, "📉"),   # 21经济网
+            ("eeo", 2, "📊"),        # 经济观察网
+            ("jwview", 2, "💰"),     # 金融界
+        ]
+        
+        total_crawlers = len(crawler_configs)
+        for idx, (crawler_name, pages, icon) in enumerate(crawler_configs):
+            try:
+                logger.info(f"[Task {task_record.id}] {icon} [{idx+1}/{total_crawlers}] 使用 {crawler_name} 爬虫...")
+                
+                # 更新进度
+                task_record.progress = {
+                    "current": idx + 1,
+                    "total": total_crawlers,
+                    "message": f"正在爬取 {crawler_name}..."
+                }
+                db.commit()
+                
+                crawler = get_crawler_tool(crawler_name)
+                crawler_news = crawler.crawl(start_page=1, end_page=pages)
+                
+                # 过滤包含股票名称或代码的新闻
+                matched_count = 0
+                for news in crawler_news:
+                    # 检查标题或内容是否包含股票名称或代码
+                    title_match = (stock_name in news.title or pure_code in news.title)
+                    content_match = (stock_name in (news.content or '') or pure_code in (news.content or ''))
+                    
+                    if title_match or content_match:
+                        # 添加股票代码关联
+                        if not news.stock_codes:
+                            news.stock_codes = []
+                        if pure_code not in news.stock_codes:
+                            news.stock_codes.append(pure_code)
+                        if code not in news.stock_codes:
+                            news.stock_codes.append(code)
+                        filtered_news.append(news)
+                        matched_count += 1
+                
+                logger.info(f"[Task {task_record.id}] {icon} {crawler_name} 爬取 {len(crawler_news)} 条，匹配 {matched_count} 条")
+                
+            except Exception as e:
+                logger.warning(f"[Task {task_record.id}] ⚠️ {crawler_name} 爬取失败: {e}")
+                continue
+        
+        # 合并所有爬虫获取的新闻
+        all_news.extend(filtered_news)
+        logger.info(f"[Task {task_record.id}] 📰 多爬虫共过滤出 {len(filtered_news)} 条相关新闻")
         
         # 4. 去重并保存
         saved_count = 0
