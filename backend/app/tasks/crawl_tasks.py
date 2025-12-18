@@ -483,7 +483,7 @@ def targeted_stock_crawl_task(
                 stock_code=pure_code,
                 days=days,
                 count=100,  # 获取100条新闻
-                max_age_days=180  # 不超过半年的新闻
+                max_age_days=90  # 只获取最近3个月的新闻
             )
             
             logger.info(f"[Task {task_record.id}] 📰 BochaAI 搜索到 {len(search_results)} 条结果")

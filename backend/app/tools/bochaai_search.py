@@ -159,7 +159,7 @@ class BochaAISearchTool:
         stock_code: Optional[str] = None,
         days: int = 30,
         count: int = 100,
-        max_age_days: int = 180,
+        max_age_days: int = 90,
     ) -> List[SearchResult]:
         """
         搜索股票相关新闻
@@ -169,10 +169,10 @@ class BochaAISearchTool:
             stock_code: 股票代码（可选，如"600519"）
             days: 搜索时间范围（天），用于API freshness参数
             count: 返回结果数量（支持超过50条，会自动分页请求）
-            max_age_days: 最大新闻年龄（天），默认180天（半年），超过此时间的新闻将被过滤
+            max_age_days: 最大新闻年龄（天），默认90天（3个月），超过此时间的新闻将被过滤
             
         Returns:
-            搜索结果列表（按时间从新到旧排序，不超过半年）
+            搜索结果列表（按时间从新到旧排序，只返回最近3个月内的新闻）
         """
         # 构建搜索查询
         query_parts = [stock_name, "股票", "新闻"]
@@ -185,9 +185,9 @@ class BochaAISearchTool:
         
         query = " ".join(query_parts)
         
-        # 确定时间范围 - 由于需要获取较多结果，使用 noLimit 让API返回更多结果
-        # 然后在本地进行时间过滤
-        freshness = "noLimit"
+        # 确定时间范围 - 使用 "month" 让 API 优先返回最近的结果
+        # 然后在本地进行更精确的时间过滤（默认3个月）
+        freshness = "month"
         
         # 财经网站列表（用于优先搜索）
         finance_sites = (
@@ -228,30 +228,35 @@ class BochaAISearchTool:
                 logger.info(f"BochaAI 第{request_count+1}次请求未返回结果，停止分页")
                 break
             
-            # 过滤超过半年的新闻
+            # 严格过滤：只保留最近 max_age_days 天内的新闻
             for result in batch_results:
-                if result.date_published:
-                    try:
-                        # 尝试解析发布时间
-                        pub_date = datetime.fromisoformat(
-                            result.date_published.replace('Z', '+00:00')
-                        )
-                        # 转换为无时区的时间进行比较
-                        if pub_date.tzinfo:
-                            pub_date = pub_date.replace(tzinfo=None)
+                # 必须有发布日期，没有日期的新闻直接过滤
+                if not result.date_published:
+                    logger.debug(f"过滤无日期新闻: {result.title[:30]}...")
+                    continue
+                
+                try:
+                    # 尝试解析发布时间
+                    pub_date = datetime.fromisoformat(
+                        result.date_published.replace('Z', '+00:00')
+                    )
+                    # 转换为无时区的时间进行比较
+                    if pub_date.tzinfo:
+                        pub_date = pub_date.replace(tzinfo=None)
+                    
+                    # 检查是否在指定时间范围内（默认3个月）
+                    if pub_date < cutoff_date:
+                        logger.debug(f"过滤超过{max_age_days}天的新闻: {result.title[:30]}... ({result.date_published})")
+                        continue
+                    
+                    all_results.append(result)
+                    
+                    if len(all_results) >= count:
+                        break
                         
-                        # 检查是否在半年内
-                        if pub_date < cutoff_date:
-                            logger.debug(f"过滤超过半年的新闻: {result.title[:30]}... ({result.date_published})")
-                            continue
-                    except (ValueError, AttributeError) as e:
-                        # 无法解析日期的新闻也保留
-                        logger.debug(f"无法解析日期，保留新闻: {result.title[:30]}... (date: {result.date_published})")
-                
-                all_results.append(result)
-                
-                if len(all_results) >= count:
-                    break
+                except (ValueError, AttributeError) as e:
+                    # 无法解析日期的新闻也过滤掉（避免老旧新闻混入）
+                    logger.debug(f"无法解析日期，过滤新闻: {result.title[:30]}... (date: {result.date_published})")
             
             offset += batch_size
             request_count += 1
@@ -271,7 +276,7 @@ class BochaAISearchTool:
         
         all_results.sort(key=parse_date, reverse=True)
         
-        logger.info(f"BochaAI 搜索股票新闻完成: {stock_name}, 返回 {len(all_results)} 条结果 (共请求{request_count}次)")
+        logger.info(f"BochaAI 搜索股票新闻完成: {stock_name}, 返回 {len(all_results)} 条结果 (共请求{request_count}次, 仅保留最近{max_age_days}天内)")
         
         return all_results[:count]  # 确保不超过请求数量
 
