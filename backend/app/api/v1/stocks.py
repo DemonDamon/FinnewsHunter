@@ -722,3 +722,28 @@ async def get_targeted_crawl_status(
     except Exception as e:
         logger.error(f"Failed to get targeted crawl status for {stock_code}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/cache/clear")
+async def clear_stock_data_cache(
+    pattern: Optional[str] = Query(None, description="缓存键模式，如 'kline' 或 '002837'")
+):
+    """
+    清除股票数据缓存
+    
+    - **pattern**: 可选的缓存键模式，如果不提供则清除所有缓存
+    
+    Examples:
+    - `POST /api/v1/stocks/cache/clear` - 清除所有缓存
+    - `POST /api/v1/stocks/cache/clear?pattern=kline` - 只清除K线缓存
+    - `POST /api/v1/stocks/cache/clear?pattern=002837` - 只清除特定股票的缓存
+    """
+    try:
+        stock_data_service.clear_cache(pattern)
+        return {
+            "success": True,
+            "message": f"Cache cleared successfully" + (f" (pattern: {pattern})" if pattern else " (all)")
+        }
+    except Exception as e:
+        logger.error(f"Failed to clear cache: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
