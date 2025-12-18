@@ -423,6 +423,8 @@ class DebateWorkflow:
         start_time = datetime.utcnow()
         self.trajectory = []
         
+        logger.info(f"🚀 辩论工作流开始: {stock_name}({stock_code}), 新闻数量={len(news_list)}")
+        
         try:
             # 第一阶段：独立分析
             self._log_step("debate_start", {
@@ -432,22 +434,27 @@ class DebateWorkflow:
             })
             
             # Bull 分析
+            logger.info("📈 开始看多分析 (BullResearcher)...")
             self._log_step("bull_analysis_start", {"agent": "BullResearcher"})
             bull_result = self.bull_agent.analyze(stock_code, stock_name, news_list, context)
+            logger.info(f"📈 看多分析完成: success={bull_result.get('success', False)}")
             self._log_step("bull_analysis_complete", {
                 "agent": "BullResearcher",
                 "success": bull_result.get("success", False)
             })
             
             # Bear 分析
+            logger.info("📉 开始看空分析 (BearResearcher)...")
             self._log_step("bear_analysis_start", {"agent": "BearResearcher"})
             bear_result = self.bear_agent.analyze(stock_code, stock_name, news_list, context)
+            logger.info(f"📉 看空分析完成: success={bear_result.get('success', False)}")
             self._log_step("bear_analysis_complete", {
                 "agent": "BearResearcher",
                 "success": bear_result.get("success", False)
             })
             
             # 第二阶段：投资经理决策
+            logger.info("⚖️ 开始投资经理决策 (InvestmentManager)...")
             self._log_step("decision_start", {"agent": "InvestmentManager"})
             decision_result = self.manager_agent.make_decision(
                 stock_code=stock_code,
@@ -456,6 +463,7 @@ class DebateWorkflow:
                 bear_analysis=bear_result.get("analysis", ""),
                 context=context
             )
+            logger.info(f"⚖️ 投资经理决策完成: rating={decision_result.get('rating', 'unknown')}")
             self._log_step("decision_complete", {
                 "agent": "InvestmentManager",
                 "rating": decision_result.get("rating", "unknown")
@@ -463,6 +471,8 @@ class DebateWorkflow:
             
             end_time = datetime.utcnow()
             execution_time = (end_time - start_time).total_seconds()
+            
+            logger.info(f"✅ 辩论工作流完成! 耗时={execution_time:.2f}秒, 评级={decision_result.get('rating', 'unknown')}")
             
             self._log_step("debate_complete", {
                 "execution_time": execution_time,
@@ -482,7 +492,7 @@ class DebateWorkflow:
             }
         
         except Exception as e:
-            logger.error(f"Debate workflow failed: {e}")
+            logger.error(f"❌ 辩论工作流失败: {e}", exc_info=True)
             self._log_step("debate_failed", {"error": str(e)})
             return {
                 "success": False,

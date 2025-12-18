@@ -105,6 +105,8 @@ async def run_stock_debate(
     - **provider**: LLM提供商（可选）
     - **model**: 模型名称（可选）
     """
+    logger.info(f"🎯 收到辩论请求: stock_code={request.stock_code}, stock_name={request.stock_name}")
+    
     start_time = datetime.utcnow()
     debate_id = f"debate_{start_time.strftime('%Y%m%d%H%M%S')}_{request.stock_code}"
     
@@ -131,6 +133,8 @@ async def run_stock_debate(
             short_code = code
             code = f"SH{code}" if code.startswith("6") else f"SZ{code}"
         
+        logger.info(f"🔍 查询股票 {code} 的关联新闻...")
+        
         # 获取关联新闻 - 使用 PostgreSQL 原生 ARRAY 查询语法
         from sqlalchemy import text
         stock_codes_filter = text(
@@ -141,6 +145,8 @@ async def run_stock_debate(
         
         result = await db.execute(news_query)
         news_list = result.scalars().all()
+        
+        logger.info(f"📰 找到 {len(news_list)} 条关联新闻")
         
         news_data = [
             {
@@ -153,15 +159,23 @@ async def run_stock_debate(
             for n in news_list
         ]
         
+        # 如果没有关联新闻，给出警告
+        if not news_data:
+            logger.warning(f"⚠️ 股票 {code} 没有关联新闻，辩论将基于空数据进行")
+        
         # 创建 LLM provider（如果指定了自定义配置）
         llm_provider = None
         if request.provider or request.model:
+            logger.info(f"🤖 使用自定义模型: provider={request.provider}, model={request.model}")
             llm_provider = get_llm_provider(
                 provider=request.provider,
                 model=request.model
             )
+        else:
+            logger.info("🤖 使用默认 LLM 配置")
         
         # 运行辩论工作流
+        logger.info(f"⚔️ 开始辩论工作流...")
         workflow = create_debate_workflow(llm_provider)
         debate_result = await workflow.run_debate(
             stock_code=code,
