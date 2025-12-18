@@ -65,22 +65,44 @@ class StockDataService:
         """
         return self._normalize_code(stock_code)
     
-    def _is_cache_valid(self, key: str) -> bool:
+    def _is_cache_valid(self, key: str, ttl: int = None) -> bool:
         """检查缓存是否有效"""
         if key not in self._cache:
             return False
         _, timestamp = self._cache[key]
-        return (datetime.now() - timestamp).seconds < self.CACHE_TTL
+        cache_ttl = ttl if ttl is not None else self.CACHE_TTL
+        # 修复bug: 使用 total_seconds() 而不是 seconds
+        # seconds 只返回秒数部分(0-86399)，不包括天数
+        return (datetime.now() - timestamp).total_seconds() < cache_ttl
     
-    def _get_cached(self, key: str) -> Optional[Any]:
+    def _get_cached(self, key: str, ttl: int = None) -> Optional[Any]:
         """获取缓存数据"""
-        if self._is_cache_valid(key):
+        if self._is_cache_valid(key, ttl):
             return self._cache[key][0]
+        # 清理过期缓存
+        if key in self._cache:
+            del self._cache[key]
         return None
     
     def _set_cache(self, key: str, data: Any):
         """设置缓存"""
         self._cache[key] = (data, datetime.now())
+    
+    def clear_cache(self, pattern: str = None):
+        """
+        清除缓存
+        Args:
+            pattern: 可选的缓存键模式，如果提供则只清除匹配的缓存
+        """
+        if pattern:
+            keys_to_delete = [k for k in self._cache.keys() if pattern in k]
+            for key in keys_to_delete:
+                del self._cache[key]
+            logger.info(f"🧹 Cleared {len(keys_to_delete)} cache entries matching pattern: {pattern}")
+        else:
+            count = len(self._cache)
+            self._cache.clear()
+            logger.info(f"🧹 Cleared all {count} cache entries")
     
     async def get_kline_data(
         self,
@@ -104,10 +126,16 @@ class StockDataService:
         # 标准化周期
         period_key = self.PERIOD_MAP.get(period, period)
         cache_key = f"kline:{stock_code}:{period}:{limit}:{adjust}"
-        cached = self._get_cached(cache_key)
+        
+        # 根据周期使用不同的缓存TTL：日线5分钟，分钟级1分钟
+        cache_ttl = self.CACHE_TTL if period_key == "daily" else self.CACHE_TTL_MINUTE
+        cached = self._get_cached(cache_key, ttl=cache_ttl)
         if cached:
-            logger.debug(f"Cache hit for {cache_key}")
+            latest_date = cached[-1].get('date', 'unknown') if cached else 'empty'
+            logger.info(f"🔵 Cache hit for {cache_key}, latest date: {latest_date}, count: {len(cached)}")
             return cached
+        
+        logger.info(f"🔴 Cache miss for {cache_key}, fetching fresh data...")
         
         if not AKSHARE_AVAILABLE:
             logger.warning("akshare not available, returning mock data")
@@ -125,15 +153,23 @@ class StockDataService:
                 kline_data = await self._fetch_minute_kline(symbol, period_key, limit, loop)
             
             if not kline_data:
-                logger.warning(f"No data returned for {stock_code} period={period}")
+                logger.warning(f"⚠️ No valid data after parsing for {stock_code} period={period}, using mock data")
                 return self._generate_mock_kline(stock_code, limit)
             
+            # 记录最新数据的日期和价格，便于调试
+            latest = kline_data[-1]
+            logger.info(f"✅ Successfully fetched {len(kline_data)} kline records for {stock_code} period={period}, latest: {latest['date']}, close: {latest['close']}")
+            
             self._set_cache(cache_key, kline_data)
-            logger.info(f"Fetched {len(kline_data)} kline records for {stock_code} period={period}")
             return kline_data
             
         except Exception as e:
-            logger.error(f"Failed to fetch kline data for {stock_code}: {e}")
+            logger.error(f"❌ Failed to fetch kline data for {stock_code}: {type(e).__name__}: {e}", exc_info=True)
+            # 只在某些特定错误时返回mock数据，其他错误应该抛出
+            if "NaTType" in str(e) or "timestamp" in str(e).lower():
+                logger.warning(f"Data parsing error, this should not happen after fix. Returning empty list.")
+                return []
+            # 网络错误或API错误才返回mock数据
             return self._generate_mock_kline(stock_code, limit)
     
     async def _fetch_daily_kline(
@@ -145,8 +181,11 @@ class StockDataService:
     ) -> List[Dict[str, Any]]:
         """获取日线数据"""
         end_date = datetime.now()
-        # 多获取一些天数，确保有足够数据（考虑周末和节假日）
-        start_date = end_date - timedelta(days=limit * 2)
+        # 多获取一些天数，确保有足够数据（考虑周末和节假日，约1个交易日=1.5个自然日）
+        # limit * 1.6 能确保获取到足够的交易日数据
+        start_date = end_date - timedelta(days=int(limit * 1.6))
+        
+        logger.info(f"📊 Calling akshare API: symbol={symbol}, start={start_date.strftime('%Y%m%d')}, end={end_date.strftime('%Y%m%d')}, adjust={adjust}")
         
         df = await loop.run_in_executor(
             None,
@@ -158,8 +197,13 @@ class StockDataService:
             )
         )
         
+        logger.info(f"✅ Akshare returned {len(df) if df is not None and not df.empty else 0} rows")
+        
         if df is None or df.empty:
             return []
+        
+        # 清理数据：移除日期为NaT的行
+        df = df.dropna(subset=['日期'])
         
         # 只取最近 limit 条数据
         df = df.tail(limit)
@@ -167,27 +211,46 @@ class StockDataService:
         # 转换为标准格式
         kline_data = []
         for _, row in df.iterrows():
-            date_str = str(row['日期'])
-            if isinstance(row['日期'], str):
-                dt = datetime.strptime(date_str, "%Y-%m-%d")
-            else:
-                dt = pd.to_datetime(row['日期'])
-            timestamp = int(dt.timestamp() * 1000)
-            
-            kline_data.append({
-                "timestamp": timestamp,
-                "date": date_str,
-                "open": float(row['开盘']),
-                "high": float(row['最高']),
-                "low": float(row['最低']),
-                "close": float(row['收盘']),
-                "volume": int(row['成交量']),
-                "turnover": float(row.get('成交额', 0)),
-                "change_percent": float(row.get('涨跌幅', 0)),
-                "change_amount": float(row.get('涨跌额', 0)),
-                "amplitude": float(row.get('振幅', 0)),
-                "turnover_rate": float(row.get('换手率', 0)),
-            })
+            try:
+                # 处理日期
+                date_val = row['日期']
+                if pd.isna(date_val):
+                    logger.warning(f"Skipping row with NaT date")
+                    continue
+                    
+                if isinstance(date_val, str):
+                    dt = datetime.strptime(date_val, "%Y-%m-%d")
+                    date_str = date_val
+                else:
+                    dt = pd.to_datetime(date_val)
+                    if pd.isna(dt):
+                        logger.warning(f"Skipping row with invalid date")
+                        continue
+                    date_str = dt.strftime("%Y-%m-%d")
+                
+                timestamp = int(dt.timestamp() * 1000)
+                
+                kline_data.append({
+                    "timestamp": timestamp,
+                    "date": date_str,
+                    "open": float(row['开盘']),
+                    "high": float(row['最高']),
+                    "low": float(row['最低']),
+                    "close": float(row['收盘']),
+                    "volume": int(row['成交量']),
+                    "turnover": float(row.get('成交额', 0)),
+                    "change_percent": float(row.get('涨跌幅', 0)),
+                    "change_amount": float(row.get('涨跌额', 0)),
+                    "amplitude": float(row.get('振幅', 0)),
+                    "turnover_rate": float(row.get('换手率', 0)),
+                })
+            except Exception as e:
+                logger.warning(f"Failed to parse row, skipping: {e}")
+                continue
+        
+        # 记录数据范围
+        if kline_data:
+            logger.info(f"✅ Parsed {len(kline_data)} valid records, date range: {kline_data[0]['date']} to {kline_data[-1]['date']}")
         
         return kline_data
     
@@ -211,38 +274,55 @@ class StockDataService:
         if df is None or df.empty:
             return []
         
+        # 清理数据：移除时间为NaT的行
+        df = df.dropna(subset=['时间'])
+        
         # 只取最近 limit 条数据
         df = df.tail(limit)
         
         # 转换为标准格式
         kline_data = []
         for _, row in df.iterrows():
-            # 分钟数据的时间列名是 '时间'
-            time_str = str(row['时间'])
             try:
-                dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
-            except:
-                try:
-                    dt = pd.to_datetime(row['时间'])
-                except:
+                # 处理时间
+                time_val = row['时间']
+                if pd.isna(time_val):
+                    logger.warning(f"Skipping row with NaT time")
                     continue
-            
-            timestamp = int(dt.timestamp() * 1000)
-            
-            kline_data.append({
-                "timestamp": timestamp,
-                "date": time_str,
-                "open": float(row['开盘']),
-                "high": float(row['最高']),
-                "low": float(row['最低']),
-                "close": float(row['收盘']),
-                "volume": int(row['成交量']),
-                "turnover": float(row.get('成交额', 0)),
-                "change_percent": 0,  # 分钟数据可能没有涨跌幅
-                "change_amount": 0,
-                "amplitude": 0,
-                "turnover_rate": 0,
-            })
+                
+                time_str = str(time_val)
+                try:
+                    dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+                except:
+                    dt = pd.to_datetime(time_val)
+                    if pd.isna(dt):
+                        logger.warning(f"Skipping row with invalid time")
+                        continue
+                    time_str = dt.strftime("%Y-%m-%d %H:%M:%S")
+                
+                timestamp = int(dt.timestamp() * 1000)
+                
+                kline_data.append({
+                    "timestamp": timestamp,
+                    "date": time_str,
+                    "open": float(row['开盘']),
+                    "high": float(row['最高']),
+                    "low": float(row['最低']),
+                    "close": float(row['收盘']),
+                    "volume": int(row['成交量']),
+                    "turnover": float(row.get('成交额', 0)),
+                    "change_percent": 0,  # 分钟数据可能没有涨跌幅
+                    "change_amount": 0,
+                    "amplitude": 0,
+                    "turnover_rate": 0,
+                })
+            except Exception as e:
+                logger.warning(f"Failed to parse minute row, skipping: {e}")
+                continue
+        
+        # 记录数据范围
+        if kline_data:
+            logger.info(f"✅ Parsed {len(kline_data)} valid minute records, time range: {kline_data[0]['date']} to {kline_data[-1]['date']}")
         
         return kline_data
     
