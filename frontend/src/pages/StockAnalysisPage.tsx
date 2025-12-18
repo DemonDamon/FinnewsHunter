@@ -58,12 +58,20 @@ const extractCode = (fullCode: string): string => {
 // K线周期配置
 type KLinePeriod = 'daily' | '1m' | '5m' | '15m' | '30m' | '60m'
 const PERIOD_OPTIONS: { value: KLinePeriod; label: string; limit: number }[] = [
-  { value: 'daily', label: '日K', limit: 180 },  // 约半年数据
+  { value: 'daily', label: '日K', limit: 120 },  // 近3-4个月数据（扣除周末节假日约90个交易日）
   { value: '60m', label: '60分', limit: 200 },
   { value: '30m', label: '30分', limit: 200 },
   { value: '15m', label: '15分', limit: 200 },
   { value: '5m', label: '5分', limit: 300 },
   { value: '1m', label: '1分', limit: 400 },
+]
+
+// 复权类型配置
+type KLineAdjust = 'qfq' | 'hfq' | ''
+const ADJUST_OPTIONS: { value: KLineAdjust; label: string; tip: string }[] = [
+  { value: 'qfq', label: '前复权', tip: '消除除权缺口，保持走势连续（推荐）' },
+  { value: '', label: '不复权', tip: '显示真实交易价格，会有除权缺口' },
+  { value: 'hfq', label: '后复权', tip: '以上市首日为基准，价格可能很高' },
 ]
 
 // 定向爬取任务状态类型
@@ -86,6 +94,7 @@ export default function StockAnalysisPage() {
   const queryClient = useQueryClient()
   const [debateResult, setDebateResult] = useState<DebateResponse | null>(null)
   const [klinePeriod, setKlinePeriod] = useState<KLinePeriod>('daily')
+  const [klineAdjust, setKlineAdjust] = useState<KLineAdjust>('qfq')  // 默认前复权，与国内主流软件一致
   const [crawlTask, setCrawlTask] = useState<CrawlTaskState>({ status: 'idle' })
   const [selectedNewsId, setSelectedNewsId] = useState<number | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -166,11 +175,30 @@ export default function StockAnalysisPage() {
     staleTime: 5 * 60 * 1000,
   })
 
-  // 获取K线数据 - 支持多周期
+  // 获取K线数据 - 支持多周期和复权类型
   const { data: klineData, isLoading: klineLoading, refetch: refetchKline } = useQuery({
-    queryKey: ['stock', 'kline', stockCode, klinePeriod, currentPeriodConfig.limit],
-    queryFn: () => stockApi.getKLineData(stockCode, klinePeriod, currentPeriodConfig.limit),
-    staleTime: klinePeriod === 'daily' ? 5 * 60 * 1000 : 60 * 1000, // 分钟级数据缓存1分钟
+    queryKey: ['stock', 'kline', stockCode, klinePeriod, currentPeriodConfig.limit, klineAdjust],
+    queryFn: async () => {
+      const actualAdjust = klinePeriod === 'daily' ? klineAdjust : ''
+      console.log(`🔍 Fetching kline data: code=${stockCode}, period=${klinePeriod}, limit=${currentPeriodConfig.limit}, adjust=${actualAdjust}`)
+      
+      const data = await stockApi.getKLineData(
+        stockCode, 
+        klinePeriod, 
+        currentPeriodConfig.limit,
+        actualAdjust
+      )
+      
+      if (data && data.length > 0) {
+        console.log(`✅ Received ${data.length} kline data points, latest: ${data[data.length - 1].date}, close: ${data[data.length - 1].close}`)
+      } else {
+        console.warn(`⚠️ Received empty kline data`)
+      }
+      
+      return data
+    },
+    staleTime: 0, // 禁用缓存，每次都重新获取以避免混乱
+    gcTime: 0, // 立即丢弃缓存 (React Query v5: cacheTime改名为gcTime)
   })
 
   // 辩论 Mutation
@@ -458,7 +486,7 @@ export default function StockAnalysisPage() {
                     K线图 · 真实行情
               </CardTitle>
               <CardDescription>
-                    数据来源：akshare · 前复权 · 支持缩放拖拽
+                    数据来源：akshare · {ADJUST_OPTIONS.find(o => o.value === klineAdjust)?.label || '前复权'} · 支持缩放拖拽
               </CardDescription>
                 </div>
                 {klineData && klineData.length > 0 && (
@@ -498,8 +526,8 @@ export default function StockAnalysisPage() {
                   </div>
                 )}
               </div>
-              {/* 周期选择器 */}
-              <div className="flex items-center gap-1 mt-3 pt-3 border-t border-gray-100">
+              {/* 周期和复权选择器 */}
+              <div className="flex items-center gap-1 mt-3 pt-3 border-t border-gray-100 flex-wrap">
                 <span className="text-sm text-gray-500 mr-2">周期：</span>
                 {PERIOD_OPTIONS.map((option) => (
                   <Button
@@ -516,6 +544,34 @@ export default function StockAnalysisPage() {
                     {option.label}
                   </Button>
                 ))}
+                
+                {/* 复权类型选择器（仅日线有效） */}
+                {klinePeriod === 'daily' && (
+                  <>
+                    <span className="text-gray-300 mx-2">|</span>
+                    <span className="text-sm text-gray-500 mr-2" title="前复权可消除分红送股产生的缺口，保持K线连续性">
+                      复权：
+                    </span>
+                    {ADJUST_OPTIONS.map((option) => (
+                      <Button
+                        key={option.value}
+                        variant={klineAdjust === option.value ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setKlineAdjust(option.value)}
+                        title={option.tip}
+                        className={`h-7 px-3 text-xs ${
+                          klineAdjust === option.value 
+                            ? 'bg-amber-600 hover:bg-amber-700' 
+                            : 'hover:bg-gray-100'
+                        }`}
+                      >
+                        {option.label}
+                        {option.value === 'qfq' && <span className="ml-1 text-[10px] opacity-70">推荐</span>}
+                      </Button>
+                    ))}
+                  </>
+                )}
+                
                 <Button
                   variant="ghost"
                   size="sm"
@@ -540,6 +596,7 @@ export default function StockAnalysisPage() {
                   showMA={klinePeriod === 'daily'}
                   showMACD={false}
                   theme="light"
+                  period={klinePeriod}
                 />
               ) : (
                 <div className="h-[550px] flex flex-col items-center justify-center text-gray-500">
