@@ -29,6 +29,7 @@ interface KLineChartProps {
   showMA?: boolean
   showMACD?: boolean
   theme?: 'light' | 'dark'
+  period?: 'daily' | '1m' | '5m' | '15m' | '30m' | '60m'  // 添加周期参数
 }
 
 export default function KLineChart({
@@ -39,6 +40,7 @@ export default function KLineChart({
   showMA = true,
   showMACD = false,
   theme = 'light',
+  period = 'daily',
 }: KLineChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<Chart | null>(null)
@@ -291,6 +293,28 @@ export default function KLineChart({
     if (chart) {
       chartRef.current = chart
       
+      // 设置自定义时间格式化
+      chart.setCustomApi({
+        formatDate: (dateTimeFormat: any, timestamp: number, format: string, type: number) => {
+          const date = new Date(timestamp)
+          
+          // 日线：只显示日期
+          if (period === 'daily') {
+            const year = date.getFullYear()
+            const month = String(date.getMonth() + 1).padStart(2, '0')
+            const day = String(date.getDate()).padStart(2, '0')
+            return `${month}-${day}`  // 简化为月-日
+          }
+          
+          // 分钟线：显示月-日 时:分
+          const month = String(date.getMonth() + 1).padStart(2, '0')
+          const day = String(date.getDate()).padStart(2, '0')
+          const hours = String(date.getHours()).padStart(2, '0')
+          const minutes = String(date.getMinutes()).padStart(2, '0')
+          return `${month}-${day} ${hours}:${minutes}`
+        },
+      })
+      
       // 设置右侧留白为最小，让 K 线尽量占满
       chart.setOffsetRightDistance(20)
       
@@ -318,7 +342,7 @@ export default function KLineChart({
         chartRef.current = null
       }
     }
-  }, [theme, showVolume, showMA, showMACD])
+  }, [theme, showVolume, showMA, showMACD, period])
 
   // 更新数据
   useEffect(() => {
