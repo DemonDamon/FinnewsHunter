@@ -14,6 +14,7 @@ from ...core.database import get_db
 from ...models.news import News
 from ...models.analysis import Analysis
 from ...agents.debate_agents import create_debate_workflow
+from ...agents.orchestrator import create_orchestrator
 from ...services.llm_service import get_llm_provider
 from ...services.stock_data_service import stock_data_service
 
@@ -40,6 +41,7 @@ class DebateRequest(BaseModel):
     context: Optional[str] = Field(None, description="额外背景信息")
     provider: Optional[str] = Field(None, description="LLM提供商")
     model: Optional[str] = Field(None, description="模型名称")
+    mode: Optional[str] = Field("parallel", description="辩论模式: parallel, realtime_debate, quick_analysis")
 
 
 class DebateResponse(BaseModel):
@@ -48,9 +50,12 @@ class DebateResponse(BaseModel):
     debate_id: Optional[str] = None
     stock_code: str
     stock_name: Optional[str] = None
+    mode: Optional[str] = None  # 辩论模式
     bull_analysis: Optional[Dict[str, Any]] = None
     bear_analysis: Optional[Dict[str, Any]] = None
     final_decision: Optional[Dict[str, Any]] = None
+    quick_analysis: Optional[Dict[str, Any]] = None  # 快速分析结果
+    debate_history: Optional[List[Dict[str, Any]]] = None  # 实时辩论历史
     trajectory: Optional[List[Dict[str, Any]]] = None
     execution_time: Optional[float] = None
     error: Optional[str] = None
@@ -192,15 +197,28 @@ async def run_stock_debate(
         else:
             logger.info("🤖 使用默认 LLM 配置")
         
-        # 运行辩论工作流
-        logger.info(f"⚔️ 开始辩论工作流...")
-        workflow = create_debate_workflow(llm_provider)
-        debate_result = await workflow.run_debate(
-            stock_code=code,
-            stock_name=request.stock_name or code,
-            news_list=news_data,
-            context=full_context
-        )
+        # 选择辩论模式
+        mode = request.mode or "parallel"
+        logger.info(f"⚔️ 开始辩论工作流，模式: {mode}")
+        
+        if mode == "parallel":
+            # 使用原有的并行工作流
+            workflow = create_debate_workflow(llm_provider)
+            debate_result = await workflow.run_debate(
+                stock_code=code,
+                stock_name=request.stock_name or code,
+                news_list=news_data,
+                context=full_context
+            )
+        else:
+            # 使用新的编排器（支持 realtime_debate 和 quick_analysis）
+            orchestrator = create_orchestrator(mode=mode, llm_provider=llm_provider)
+            debate_result = await orchestrator.run(
+                stock_code=code,
+                stock_name=request.stock_name or code,
+                context=full_context,
+                news_list=news_data
+            )
         
         end_time = datetime.utcnow()
         execution_time = (end_time - start_time).total_seconds()
@@ -229,9 +247,12 @@ async def run_stock_debate(
                 debate_id=debate_id,
                 stock_code=code,
                 stock_name=request.stock_name,
+                mode=mode,
                 bull_analysis=debate_result.get("bull_analysis"),
                 bear_analysis=debate_result.get("bear_analysis"),
                 final_decision=debate_result.get("final_decision"),
+                quick_analysis=debate_result.get("quick_analysis"),
+                debate_history=debate_result.get("debate_history"),
                 trajectory=debate_result.get("trajectory"),
                 execution_time=execution_time
             )
@@ -240,6 +261,7 @@ async def run_stock_debate(
                 success=False,
                 debate_id=debate_id,
                 stock_code=code,
+                mode=mode,
                 error=debate_result.get("error", "Unknown error")
             )
     

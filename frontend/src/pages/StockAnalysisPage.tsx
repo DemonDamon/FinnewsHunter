@@ -205,9 +205,10 @@ export default function StockAnalysisPage() {
 
   // 辩论 Mutation
   const debateMutation = useMutation({
-    mutationFn: () => agentApi.runDebate({
+    mutationFn: (mode: string) => agentApi.runDebate({
       stock_code: stockCode,
       stock_name: stockName,
+      mode: mode as 'parallel' | 'realtime_debate' | 'quick_analysis',
     }),
     onSuccess: (data) => {
       setDebateResult(data)
@@ -224,7 +225,7 @@ export default function StockAnalysisPage() {
 
   const handleStartDebate = () => {
     setDebateResult(null)
-    debateMutation.mutate()
+    debateMutation.mutate(debateMode)
   }
 
   // 定向爬取任务状态查询
@@ -909,171 +910,305 @@ export default function StockAnalysisPage() {
 
           {/* 辩论进行中的加载状态 */}
           {debateMutation.isPending && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* 看多分析加载中 */}
-              <Card className="bg-white/90 border-l-4 border-l-emerald-500">
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-emerald-700">
-                    <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
-                      <ThumbsUp className="w-4 h-4 text-emerald-600" />
+            <>
+              {/* 快速分析模式 */}
+              {debateMode === 'quick_analysis' && (
+                <Card className="bg-gradient-to-r from-blue-50 to-cyan-50 border-none">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-blue-700">
+                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                        <Activity className="w-5 h-5 text-blue-600" />
+                      </div>
+                      🚀 快速分析
+                    </CardTitle>
+                    <CardDescription>
+                      <Bot className="w-3 h-3 inline mr-1" />
+                      QuickAnalyst · 快速分析师
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                      <Loader2 className="w-10 h-10 animate-spin text-blue-500 mb-4" />
+                      <p className="text-sm font-medium">快速分析中...</p>
+                      <p className="text-xs text-gray-400 mt-1">综合多角度快速给出投资建议</p>
+                      <p className="text-xs text-gray-400 mt-2">⏱️ 预计需要 30-60 秒</p>
                     </div>
-                    看多观点
-                  </CardTitle>
-                  <CardDescription>
-                    <Bot className="w-3 h-3 inline mr-1" />
-                    BullResearcher · 看多研究员
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-col items-center justify-center py-12 text-gray-500">
-                    <Loader2 className="w-8 h-8 animate-spin text-emerald-500 mb-4" />
-                    <p className="text-sm">分析生成中...</p>
-                    <p className="text-xs text-gray-400 mt-1">正在从积极角度分析股票</p>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              )}
 
-              {/* 看空分析加载中 */}
-              <Card className="bg-white/90 border-l-4 border-l-rose-500">
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-rose-700">
-                    <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center">
-                      <ThumbsDown className="w-4 h-4 text-rose-600" />
-                    </div>
-                    看空观点
-                  </CardTitle>
-                  <CardDescription>
-                    <Bot className="w-3 h-3 inline mr-1" />
-                    BearResearcher · 看空研究员
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-col items-center justify-center py-12 text-gray-500">
-                    <Loader2 className="w-8 h-8 animate-spin text-rose-500 mb-4" />
-                    <p className="text-sm">分析生成中...</p>
-                    <p className="text-xs text-gray-400 mt-1">正在从风险角度分析股票</p>
-                  </div>
-                </CardContent>
-              </Card>
+              {/* 实时辩论模式 */}
+              {debateMode === 'realtime_debate' && (
+                <div className="space-y-4">
+                  {/* 实时辩论状态卡片 */}
+                  <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-none">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-purple-700">
+                        <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                          <MessageSquare className="w-5 h-5 text-purple-600" />
+                        </div>
+                        🎭 实时辩论进行中
+                      </CardTitle>
+                      <CardDescription>
+                        数据专员 → 多空辩论 → 投资经理决策
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        {/* 辩论流程进度 */}
+                        <div className="flex items-center justify-between px-4">
+                          <div className="flex flex-col items-center">
+                            <div className="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center text-white animate-pulse">
+                              <BarChart3 className="w-4 h-4" />
+                            </div>
+                            <span className="text-xs mt-1 text-purple-600">数据搜集</span>
+                          </div>
+                          <div className="flex-1 h-0.5 bg-purple-200 mx-2"></div>
+                          <div className="flex flex-col items-center">
+                            <div className="w-8 h-8 rounded-full bg-purple-300 flex items-center justify-center text-white">
+                              <Swords className="w-4 h-4" />
+                            </div>
+                            <span className="text-xs mt-1 text-gray-400">辩论中</span>
+                          </div>
+                          <div className="flex-1 h-0.5 bg-gray-200 mx-2"></div>
+                          <div className="flex flex-col items-center">
+                            <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-400">
+                              <Scale className="w-4 h-4" />
+                            </div>
+                            <span className="text-xs mt-1 text-gray-400">决策</span>
+                          </div>
+                        </div>
+                        
+                        <div className="flex flex-col items-center justify-center py-8 text-gray-500">
+                          <Loader2 className="w-10 h-10 animate-spin text-purple-500 mb-4" />
+                          <p className="text-sm font-medium">多智能体协作中...</p>
+                          <p className="text-xs text-gray-400 mt-1">投资经理主持，多空双方交替发言</p>
+                          <p className="text-xs text-gray-400 mt-2">⏱️ 预计需要 3-5 分钟，请耐心等待</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
 
-              {/* 投资经理决策加载中 */}
-              <Card className="lg:col-span-2 bg-gradient-to-r from-blue-50 to-indigo-50 border-none">
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-indigo-700">
-                    <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
-                      <Scale className="w-5 h-5 text-indigo-600" />
-                    </div>
-                    投资经理决策
-                  </CardTitle>
-                  <CardDescription>
-                    <Bot className="w-3 h-3 inline mr-1" />
-                    InvestmentManager · 投资经理
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-col items-center justify-center py-8 text-gray-500">
-                    <Loader2 className="w-10 h-10 animate-spin text-indigo-500 mb-4" />
-                    <p className="text-sm font-medium">决策生成中...</p>
-                    <p className="text-xs text-gray-400 mt-1">正在综合看多/看空观点，给出最终投资建议</p>
-                    <p className="text-xs text-gray-400 mt-2">⏱️ 预计需要 30-60 秒，请耐心等待</p>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+              {/* 并行分析模式（默认） */}
+              {debateMode === 'parallel' && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* 看多分析加载中 */}
+                  <Card className="bg-white/90 border-l-4 border-l-emerald-500">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-emerald-700">
+                        <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
+                          <ThumbsUp className="w-4 h-4 text-emerald-600" />
+                        </div>
+                        看多观点
+                      </CardTitle>
+                      <CardDescription>
+                        <Bot className="w-3 h-3 inline mr-1" />
+                        BullResearcher · 看多研究员
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                        <Loader2 className="w-8 h-8 animate-spin text-emerald-500 mb-4" />
+                        <p className="text-sm">分析生成中...</p>
+                        <p className="text-xs text-gray-400 mt-1">正在从积极角度分析股票</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* 看空分析加载中 */}
+                  <Card className="bg-white/90 border-l-4 border-l-rose-500">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-rose-700">
+                        <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center">
+                          <ThumbsDown className="w-4 h-4 text-rose-600" />
+                        </div>
+                        看空观点
+                      </CardTitle>
+                      <CardDescription>
+                        <Bot className="w-3 h-3 inline mr-1" />
+                        BearResearcher · 看空研究员
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                        <Loader2 className="w-8 h-8 animate-spin text-rose-500 mb-4" />
+                        <p className="text-sm">分析生成中...</p>
+                        <p className="text-xs text-gray-400 mt-1">正在从风险角度分析股票</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* 投资经理决策加载中 */}
+                  <Card className="lg:col-span-2 bg-gradient-to-r from-blue-50 to-indigo-50 border-none">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-indigo-700">
+                        <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
+                          <Scale className="w-5 h-5 text-indigo-600" />
+                        </div>
+                        投资经理决策
+                      </CardTitle>
+                      <CardDescription>
+                        <Bot className="w-3 h-3 inline mr-1" />
+                        InvestmentManager · 投资经理
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-col items-center justify-center py-8 text-gray-500">
+                        <Loader2 className="w-10 h-10 animate-spin text-indigo-500 mb-4" />
+                        <p className="text-sm font-medium">决策生成中...</p>
+                        <p className="text-xs text-gray-400 mt-1">正在综合看多/看空观点，给出最终投资建议</p>
+                        <p className="text-xs text-gray-400 mt-2">⏱️ 预计需要 2-3 分钟，请耐心等待</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+            </>
           )}
 
           {/* 辩论结果 */}
           {!debateMutation.isPending && debateResult && debateResult.success && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* 看多观点 */}
-              <Card className="bg-white/90 border-l-4 border-l-emerald-500">
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-emerald-700">
-                    <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
-                      <ThumbsUp className="w-4 h-4 text-emerald-600" />
-                    </div>
-                    看多观点
-                  </CardTitle>
-                  <CardDescription>
-                    <Bot className="w-3 h-3 inline mr-1" />
-                    {debateResult.bull_analysis?.agent_name} · {debateResult.bull_analysis?.agent_role}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="prose prose-sm max-w-none prose-headings:text-emerald-800 prose-headings:font-semibold">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {debateResult.bull_analysis?.analysis || '分析生成中...'}
-                    </ReactMarkdown>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* 看空观点 */}
-              <Card className="bg-white/90 border-l-4 border-l-rose-500">
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-rose-700">
-                    <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center">
-                      <ThumbsDown className="w-4 h-4 text-rose-600" />
-                    </div>
-                    看空观点
-                  </CardTitle>
-                  <CardDescription>
-                    <Bot className="w-3 h-3 inline mr-1" />
-                    {debateResult.bear_analysis?.agent_name} · {debateResult.bear_analysis?.agent_role}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="prose prose-sm max-w-none prose-headings:text-rose-800 prose-headings:font-semibold">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {debateResult.bear_analysis?.analysis || '分析生成中...'}
-                    </ReactMarkdown>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* 最终决策 */}
-              <Card className="lg:col-span-2 bg-gradient-to-br from-blue-50 to-purple-50 border-blue-200">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-blue-800">
-                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                      <Scale className="w-5 h-5 text-blue-600" />
-                    </div>
-                    投资经理决策
-                    {debateResult.final_decision?.rating && (
-                      <Badge 
-                        className={`ml-2 ${
-                          debateResult.final_decision.rating === '强烈推荐' || debateResult.final_decision.rating === '推荐'
-                            ? 'bg-emerald-500'
-                            : debateResult.final_decision.rating === '回避' || debateResult.final_decision.rating === '谨慎'
-                            ? 'bg-rose-500'
-                            : 'bg-amber-500'
-                        }`}
-                      >
-                        {debateResult.final_decision.rating}
-                      </Badge>
-                    )}
-                  </CardTitle>
-                  <CardDescription className="flex items-center gap-4">
-                    <span>
-                      <Bot className="w-3 h-3 inline mr-1" />
-                      {debateResult.final_decision?.agent_name} · {debateResult.final_decision?.agent_role}
-                    </span>
-                    {debateResult.execution_time && (
-                      <span className="text-xs bg-blue-100 px-2 py-0.5 rounded">
-                        耗时 {debateResult.execution_time.toFixed(1)}s
+            <>
+              {/* 快速分析结果 */}
+              {debateResult.mode === 'quick_analysis' && debateResult.quick_analysis && (
+                <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-blue-200">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-blue-800">
+                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                        <Activity className="w-5 h-5 text-blue-600" />
+                      </div>
+                      🚀 快速分析结果
+                    </CardTitle>
+                    <CardDescription className="flex items-center gap-4">
+                      <span>
+                        <Bot className="w-3 h-3 inline mr-1" />
+                        QuickAnalyst · 快速分析师
                       </span>
-                    )}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="prose prose-sm max-w-none prose-headings:text-blue-800 prose-headings:font-semibold">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {debateResult.final_decision?.decision || '决策生成中...'}
-                    </ReactMarkdown>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                      {debateResult.execution_time && (
+                        <span className="text-xs bg-blue-100 px-2 py-0.5 rounded">
+                          耗时 {debateResult.execution_time.toFixed(1)}s
+                        </span>
+                      )}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="prose prose-sm max-w-none prose-headings:text-blue-800 prose-headings:font-semibold">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {debateResult.quick_analysis.analysis || '分析完成'}
+                      </ReactMarkdown>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* 实时辩论结果 或 并行分析结果 */}
+              {(debateResult.mode === 'realtime_debate' || debateResult.mode === 'parallel' || !debateResult.mode) && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* 辩论模式标识 */}
+                  {debateResult.mode === 'realtime_debate' && (
+                    <div className="lg:col-span-2 mb-2">
+                      <Badge className="bg-purple-500">🎭 实时辩论模式</Badge>
+                      {debateResult.debate_history && (
+                        <span className="ml-2 text-sm text-gray-500">
+                          共 {Math.max(...debateResult.debate_history.map(h => h.round))} 轮辩论
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* 看多观点 */}
+                  <Card className="bg-white/90 border-l-4 border-l-emerald-500">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-emerald-700">
+                        <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
+                          <ThumbsUp className="w-4 h-4 text-emerald-600" />
+                        </div>
+                        看多观点
+                      </CardTitle>
+                      <CardDescription>
+                        <Bot className="w-3 h-3 inline mr-1" />
+                        {debateResult.bull_analysis?.agent_name || 'BullResearcher'} · {debateResult.bull_analysis?.agent_role || '看多研究员'}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="prose prose-sm max-w-none prose-headings:text-emerald-800 prose-headings:font-semibold">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {debateResult.bull_analysis?.analysis || '分析生成中...'}
+                        </ReactMarkdown>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* 看空观点 */}
+                  <Card className="bg-white/90 border-l-4 border-l-rose-500">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-rose-700">
+                        <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center">
+                          <ThumbsDown className="w-4 h-4 text-rose-600" />
+                        </div>
+                        看空观点
+                      </CardTitle>
+                      <CardDescription>
+                        <Bot className="w-3 h-3 inline mr-1" />
+                        {debateResult.bear_analysis?.agent_name || 'BearResearcher'} · {debateResult.bear_analysis?.agent_role || '看空研究员'}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="prose prose-sm max-w-none prose-headings:text-rose-800 prose-headings:font-semibold">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {debateResult.bear_analysis?.analysis || '分析生成中...'}
+                        </ReactMarkdown>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* 最终决策 */}
+                  <Card className="lg:col-span-2 bg-gradient-to-br from-blue-50 to-purple-50 border-blue-200">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-blue-800">
+                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                          <Scale className="w-5 h-5 text-blue-600" />
+                        </div>
+                        投资经理决策
+                        {debateResult.final_decision?.rating && (
+                          <Badge 
+                            className={`ml-2 ${
+                              debateResult.final_decision.rating === '强烈推荐' || debateResult.final_decision.rating === '推荐'
+                                ? 'bg-emerald-500'
+                                : debateResult.final_decision.rating === '回避' || debateResult.final_decision.rating === '谨慎'
+                                ? 'bg-rose-500'
+                                : 'bg-amber-500'
+                            }`}
+                          >
+                            {debateResult.final_decision.rating}
+                          </Badge>
+                        )}
+                      </CardTitle>
+                      <CardDescription className="flex items-center gap-4">
+                        <span>
+                          <Bot className="w-3 h-3 inline mr-1" />
+                          {debateResult.final_decision?.agent_name || 'InvestmentManager'} · {debateResult.final_decision?.agent_role || '投资经理'}
+                        </span>
+                        {debateResult.execution_time && (
+                          <span className="text-xs bg-blue-100 px-2 py-0.5 rounded">
+                            耗时 {debateResult.execution_time.toFixed(1)}s
+                          </span>
+                        )}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="prose prose-sm max-w-none prose-headings:text-blue-800 prose-headings:font-semibold">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {debateResult.final_decision?.decision || '决策生成中...'}
+                        </ReactMarkdown>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+            </>
           )}
 
           {/* 辩论失败 */}

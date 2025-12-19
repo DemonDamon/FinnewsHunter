@@ -160,6 +160,7 @@ export interface DebateRequest {
   context?: string
   provider?: string
   model?: string
+  mode?: 'parallel' | 'realtime_debate' | 'quick_analysis'  // 辩论模式
 }
 
 export interface AgentAnalysis {
@@ -188,14 +189,31 @@ export interface TrajectoryStep {
   data: Record<string, any>
 }
 
+export interface QuickAnalysisResult {
+  success: boolean
+  analysis?: string
+  timestamp?: string
+  error?: string
+}
+
+export interface DebateHistoryItem {
+  round: number
+  agent: string
+  type: string
+  content: string
+}
+
 export interface DebateResponse {
   success: boolean
   debate_id?: string
   stock_code: string
   stock_name?: string
+  mode?: 'parallel' | 'realtime_debate' | 'quick_analysis'
   bull_analysis?: AgentAnalysis
   bear_analysis?: AgentAnalysis
   final_decision?: FinalDecision
+  quick_analysis?: QuickAnalysisResult
+  debate_history?: DebateHistoryItem[]
   trajectory?: TrajectoryStep[]
   execution_time?: number
   error?: string
