@@ -1,11 +1,11 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { stockApi, agentApi } from '@/lib/api-client'
+import { stockApi, agentApi, SSEDebateEvent } from '@/lib/api-client'
 import { formatRelativeTime } from '@/lib/utils'
 import NewsDetailDrawer from '@/components/NewsDetailDrawer'
 import {
@@ -101,6 +101,18 @@ export default function StockAnalysisPage() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [newsDisplayCount, setNewsDisplayCount] = useState(30) // 默认显示30条
   const [debateMode, setDebateMode] = useState<string>('parallel') // 辩论模式
+  
+  // 流式辩论状态
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [streamPhase, setStreamPhase] = useState<string>('')
+  const [streamingContent, setStreamingContent] = useState<{
+    bull: string
+    bear: string
+    manager: string
+    quick: string
+  }>({ bull: '', bear: '', manager: '', quick: '' })
+  const [activeAgent, setActiveAgent] = useState<string | null>(null)
+  const cancelStreamRef = useRef<(() => void) | null>(null)
   const stockCode = code?.toUpperCase() || 'SH600519'
   const pureCode = extractCode(stockCode)
 
@@ -203,7 +215,7 @@ export default function StockAnalysisPage() {
     gcTime: 0, // 立即丢弃缓存 (React Query v5: cacheTime改名为gcTime)
   })
 
-  // 辩论 Mutation
+  // 辩论 Mutation（非流式备用）
   const debateMutation = useMutation({
     mutationFn: (mode: string) => agentApi.runDebate({
       stock_code: stockCode,
@@ -223,10 +235,107 @@ export default function StockAnalysisPage() {
     },
   })
 
-  const handleStartDebate = () => {
+  // 处理 SSE 事件
+  const handleSSEEvent = useCallback((event: SSEDebateEvent) => {
+    console.log('SSE Event:', event.type, event.data)
+    
+    switch (event.type) {
+      case 'phase':
+        setStreamPhase(event.data.phase || '')
+        if (event.data.phase === 'complete') {
+          toast.success('辩论分析完成！')
+        }
+        break
+        
+      case 'agent':
+        const { agent, content, is_start, is_end, is_chunk } = event.data
+        
+        if (is_start) {
+          setActiveAgent(agent || null)
+        } else if (is_end) {
+          setActiveAgent(null)
+        } else if (is_chunk && content) {
+          // 追加内容
+          setStreamingContent(prev => {
+            const key = agent === 'BullResearcher' ? 'bull' 
+                      : agent === 'BearResearcher' ? 'bear'
+                      : agent === 'InvestmentManager' ? 'manager'
+                      : agent === 'QuickAnalyst' ? 'quick'
+                      : null
+            if (key) {
+              return { ...prev, [key]: prev[key as keyof typeof prev] + content }
+            }
+            return prev
+          })
+        }
+        break
+        
+      case 'result':
+        // 最终结果
+        setDebateResult({
+          success: event.data.success || false,
+          stock_code: stockCode,
+          stock_name: stockName,
+          mode: event.data.mode as any,
+          bull_analysis: event.data.bull_analysis,
+          bear_analysis: event.data.bear_analysis,
+          final_decision: event.data.final_decision,
+          quick_analysis: event.data.quick_analysis,
+          debate_id: event.data.debate_id,
+          execution_time: event.data.execution_time
+        })
+        setIsStreaming(false)
+        break
+        
+      case 'error':
+        toast.error(`辩论失败: ${event.data.message}`)
+        setIsStreaming(false)
+        break
+    }
+  }, [stockCode, stockName])
+
+  const handleStartDebate = useCallback(() => {
+    // 重置状态
     setDebateResult(null)
-    debateMutation.mutate(debateMode)
-  }
+    setStreamingContent({ bull: '', bear: '', manager: '', quick: '' })
+    setStreamPhase('')
+    setActiveAgent(null)
+    setIsStreaming(true)
+    
+    // 取消之前的流
+    if (cancelStreamRef.current) {
+      cancelStreamRef.current()
+    }
+    
+    // 开始新的流式辩论
+    const cancel = agentApi.runDebateStream(
+      {
+        stock_code: stockCode,
+        stock_name: stockName,
+        mode: debateMode as 'parallel' | 'realtime_debate' | 'quick_analysis',
+      },
+      handleSSEEvent,
+      (error) => {
+        toast.error(`辩论失败: ${error.message}`)
+        setIsStreaming(false)
+      },
+      () => {
+        // 完成
+        setIsStreaming(false)
+      }
+    )
+    
+    cancelStreamRef.current = cancel
+  }, [stockCode, stockName, debateMode, handleSSEEvent])
+  
+  // 组件卸载时取消流
+  useEffect(() => {
+    return () => {
+      if (cancelStreamRef.current) {
+        cancelStreamRef.current()
+      }
+    }
+  }, [])
 
   // 定向爬取任务状态查询
   const { data: crawlStatus, refetch: refetchCrawlStatus } = useQuery({
@@ -879,10 +988,10 @@ export default function StockAnalysisPage() {
                   </div>
                   <Button
                     onClick={handleStartDebate}
-                    disabled={debateMutation.isPending}
+                    disabled={isStreaming || debateMutation.isPending}
                     className="bg-gradient-to-r from-emerald-500 to-rose-500 hover:from-emerald-600 hover:to-rose-600"
                   >
-                    {debateMutation.isPending ? (
+                    {isStreaming || debateMutation.isPending ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         辩论中...
@@ -908,18 +1017,33 @@ export default function StockAnalysisPage() {
             </CardContent>
           </Card>
 
-          {/* 辩论进行中的加载状态 */}
-          {debateMutation.isPending && (
+          {/* 流式辩论进行中 - 实时显示内容 */}
+          {isStreaming && (
             <>
-              {/* 快速分析模式 */}
+              {/* 阶段指示器 */}
+              <div className="flex items-center gap-2 mb-4">
+                <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                <span className="text-sm text-blue-600 font-medium">
+                  {streamPhase === 'start' && '正在初始化...'}
+                  {streamPhase === 'data_collection' && '📊 数据专员正在搜集资料...'}
+                  {streamPhase === 'analyzing' && '🚀 快速分析中...'}
+                  {streamPhase === 'parallel_analysis' && '⚡ Bull/Bear 并行分析中...'}
+                  {streamPhase === 'debate' && '🎭 多空辩论进行中...'}
+                  {streamPhase === 'decision' && '⚖️ 投资经理正在做最终决策...'}
+                  {streamPhase === 'complete' && '✅ 分析完成'}
+                </span>
+              </div>
+
+              {/* 快速分析模式 - 流式显示 */}
               {debateMode === 'quick_analysis' && (
                 <Card className="bg-gradient-to-r from-blue-50 to-cyan-50 border-none">
                   <CardHeader className="pb-3">
                     <CardTitle className="flex items-center gap-2 text-blue-700">
-                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                      <div className={`w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center ${activeAgent === 'QuickAnalyst' ? 'animate-pulse ring-2 ring-blue-400' : ''}`}>
                         <Activity className="w-5 h-5 text-blue-600" />
                       </div>
                       🚀 快速分析
+                      {activeAgent === 'QuickAnalyst' && <span className="text-xs bg-blue-200 px-2 py-0.5 rounded animate-pulse">输出中...</span>}
                     </CardTitle>
                     <CardDescription>
                       <Bot className="w-3 h-3 inline mr-1" />
@@ -927,81 +1051,35 @@ export default function StockAnalysisPage() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex flex-col items-center justify-center py-12 text-gray-500">
-                      <Loader2 className="w-10 h-10 animate-spin text-blue-500 mb-4" />
-                      <p className="text-sm font-medium">快速分析中...</p>
-                      <p className="text-xs text-gray-400 mt-1">综合多角度快速给出投资建议</p>
-                      <p className="text-xs text-gray-400 mt-2">⏱️ 预计需要 30-60 秒</p>
-                    </div>
+                    {streamingContent.quick ? (
+                      <div className="prose prose-sm max-w-none prose-headings:text-blue-800">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {streamingContent.quick}
+                        </ReactMarkdown>
+                        {activeAgent === 'QuickAnalyst' && <span className="inline-block w-2 h-4 bg-blue-500 animate-pulse ml-1" />}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                        <Loader2 className="w-10 h-10 animate-spin text-blue-500 mb-4" />
+                        <p className="text-sm font-medium">等待分析开始...</p>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               )}
 
-              {/* 实时辩论模式 */}
-              {debateMode === 'realtime_debate' && (
-                <div className="space-y-4">
-                  {/* 实时辩论状态卡片 */}
-                  <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-none">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="flex items-center gap-2 text-purple-700">
-                        <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
-                          <MessageSquare className="w-5 h-5 text-purple-600" />
-                        </div>
-                        🎭 实时辩论进行中
-                      </CardTitle>
-                      <CardDescription>
-                        数据专员 → 多空辩论 → 投资经理决策
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        {/* 辩论流程进度 */}
-                        <div className="flex items-center justify-between px-4">
-                          <div className="flex flex-col items-center">
-                            <div className="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center text-white animate-pulse">
-                              <BarChart3 className="w-4 h-4" />
-                            </div>
-                            <span className="text-xs mt-1 text-purple-600">数据搜集</span>
-                          </div>
-                          <div className="flex-1 h-0.5 bg-purple-200 mx-2"></div>
-                          <div className="flex flex-col items-center">
-                            <div className="w-8 h-8 rounded-full bg-purple-300 flex items-center justify-center text-white">
-                              <Swords className="w-4 h-4" />
-                            </div>
-                            <span className="text-xs mt-1 text-gray-400">辩论中</span>
-                          </div>
-                          <div className="flex-1 h-0.5 bg-gray-200 mx-2"></div>
-                          <div className="flex flex-col items-center">
-                            <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-400">
-                              <Scale className="w-4 h-4" />
-                            </div>
-                            <span className="text-xs mt-1 text-gray-400">决策</span>
-                          </div>
-                        </div>
-                        
-                        <div className="flex flex-col items-center justify-center py-8 text-gray-500">
-                          <Loader2 className="w-10 h-10 animate-spin text-purple-500 mb-4" />
-                          <p className="text-sm font-medium">多智能体协作中...</p>
-                          <p className="text-xs text-gray-400 mt-1">投资经理主持，多空双方交替发言</p>
-                          <p className="text-xs text-gray-400 mt-2">⏱️ 预计需要 3-5 分钟，请耐心等待</p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              )}
-
-              {/* 并行分析模式（默认） */}
-              {debateMode === 'parallel' && (
+              {/* 并行/实时辩论模式 - 流式显示 */}
+              {(debateMode === 'parallel' || debateMode === 'realtime_debate') && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* 看多分析加载中 */}
-                  <Card className="bg-white/90 border-l-4 border-l-emerald-500">
+                  {/* 看多观点 - 流式 */}
+                  <Card className={`bg-white/90 border-l-4 border-l-emerald-500 ${activeAgent === 'BullResearcher' ? 'ring-2 ring-emerald-400' : ''}`}>
                     <CardHeader className="pb-3">
                       <CardTitle className="flex items-center gap-2 text-emerald-700">
-                        <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
+                        <div className={`w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center ${activeAgent === 'BullResearcher' ? 'animate-pulse' : ''}`}>
                           <ThumbsUp className="w-4 h-4 text-emerald-600" />
                         </div>
                         看多观点
+                        {activeAgent === 'BullResearcher' && <span className="text-xs bg-emerald-200 px-2 py-0.5 rounded animate-pulse">输出中...</span>}
                       </CardTitle>
                       <CardDescription>
                         <Bot className="w-3 h-3 inline mr-1" />
@@ -1009,22 +1087,31 @@ export default function StockAnalysisPage() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="flex flex-col items-center justify-center py-12 text-gray-500">
-                        <Loader2 className="w-8 h-8 animate-spin text-emerald-500 mb-4" />
-                        <p className="text-sm">分析生成中...</p>
-                        <p className="text-xs text-gray-400 mt-1">正在从积极角度分析股票</p>
-                      </div>
+                      {streamingContent.bull ? (
+                        <div className="prose prose-sm max-w-none prose-headings:text-emerald-800 max-h-96 overflow-y-auto">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {streamingContent.bull}
+                          </ReactMarkdown>
+                          {activeAgent === 'BullResearcher' && <span className="inline-block w-2 h-4 bg-emerald-500 animate-pulse ml-1" />}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                          <Loader2 className="w-8 h-8 animate-spin text-emerald-500 mb-4" />
+                          <p className="text-sm">等待分析...</p>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
 
-                  {/* 看空分析加载中 */}
-                  <Card className="bg-white/90 border-l-4 border-l-rose-500">
+                  {/* 看空观点 - 流式 */}
+                  <Card className={`bg-white/90 border-l-4 border-l-rose-500 ${activeAgent === 'BearResearcher' ? 'ring-2 ring-rose-400' : ''}`}>
                     <CardHeader className="pb-3">
                       <CardTitle className="flex items-center gap-2 text-rose-700">
-                        <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center">
+                        <div className={`w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center ${activeAgent === 'BearResearcher' ? 'animate-pulse' : ''}`}>
                           <ThumbsDown className="w-4 h-4 text-rose-600" />
                         </div>
                         看空观点
+                        {activeAgent === 'BearResearcher' && <span className="text-xs bg-rose-200 px-2 py-0.5 rounded animate-pulse">输出中...</span>}
                       </CardTitle>
                       <CardDescription>
                         <Bot className="w-3 h-3 inline mr-1" />
@@ -1032,22 +1119,31 @@ export default function StockAnalysisPage() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="flex flex-col items-center justify-center py-12 text-gray-500">
-                        <Loader2 className="w-8 h-8 animate-spin text-rose-500 mb-4" />
-                        <p className="text-sm">分析生成中...</p>
-                        <p className="text-xs text-gray-400 mt-1">正在从风险角度分析股票</p>
-                      </div>
+                      {streamingContent.bear ? (
+                        <div className="prose prose-sm max-w-none prose-headings:text-rose-800 max-h-96 overflow-y-auto">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {streamingContent.bear}
+                          </ReactMarkdown>
+                          {activeAgent === 'BearResearcher' && <span className="inline-block w-2 h-4 bg-rose-500 animate-pulse ml-1" />}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                          <Loader2 className="w-8 h-8 animate-spin text-rose-500 mb-4" />
+                          <p className="text-sm">等待分析...</p>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
 
-                  {/* 投资经理决策加载中 */}
-                  <Card className="lg:col-span-2 bg-gradient-to-r from-blue-50 to-indigo-50 border-none">
+                  {/* 投资经理决策 - 流式 */}
+                  <Card className={`lg:col-span-2 bg-gradient-to-r from-blue-50 to-indigo-50 border-none ${activeAgent === 'InvestmentManager' ? 'ring-2 ring-indigo-400' : ''}`}>
                     <CardHeader className="pb-3">
                       <CardTitle className="flex items-center gap-2 text-indigo-700">
-                        <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
+                        <div className={`w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center ${activeAgent === 'InvestmentManager' ? 'animate-pulse' : ''}`}>
                           <Scale className="w-5 h-5 text-indigo-600" />
                         </div>
                         投资经理决策
+                        {activeAgent === 'InvestmentManager' && <span className="text-xs bg-indigo-200 px-2 py-0.5 rounded animate-pulse">决策中...</span>}
                       </CardTitle>
                       <CardDescription>
                         <Bot className="w-3 h-3 inline mr-1" />
@@ -1055,12 +1151,19 @@ export default function StockAnalysisPage() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="flex flex-col items-center justify-center py-8 text-gray-500">
-                        <Loader2 className="w-10 h-10 animate-spin text-indigo-500 mb-4" />
-                        <p className="text-sm font-medium">决策生成中...</p>
-                        <p className="text-xs text-gray-400 mt-1">正在综合看多/看空观点，给出最终投资建议</p>
-                        <p className="text-xs text-gray-400 mt-2">⏱️ 预计需要 2-3 分钟，请耐心等待</p>
-                      </div>
+                      {streamingContent.manager ? (
+                        <div className="prose prose-sm max-w-none prose-headings:text-indigo-800">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {streamingContent.manager}
+                          </ReactMarkdown>
+                          {activeAgent === 'InvestmentManager' && <span className="inline-block w-2 h-4 bg-indigo-500 animate-pulse ml-1" />}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-8 text-gray-500">
+                          <Loader2 className="w-10 h-10 animate-spin text-indigo-500 mb-4" />
+                          <p className="text-sm font-medium">等待多空分析完成后进行决策...</p>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </div>

@@ -3,9 +3,12 @@
 提供辩论功能、执行日志、性能监控等接口
 """
 import logging
+import json
+import asyncio
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, AsyncGenerator
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, or_
@@ -285,6 +288,406 @@ async def run_stock_debate(
             stock_code=request.stock_code,
             error=str(e)
         )
+
+
+# ============ SSE 流式辩论 ============
+
+async def generate_debate_stream(
+    stock_code: str,
+    stock_name: str,
+    mode: str,
+    context: str,
+    news_data: List[Dict],
+    llm_provider
+) -> AsyncGenerator[str, None]:
+    """
+    生成辩论的 SSE 流
+    
+    事件类型:
+    - phase: 阶段变化
+    - agent: 智能体发言
+    - progress: 进度更新
+    - result: 最终结果
+    - error: 错误信息
+    """
+    debate_id = f"debate_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    
+    def sse_event(event_type: str, data: Dict) -> str:
+        """格式化 SSE 事件"""
+        return f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+    
+    try:
+        # 发送开始事件
+        yield sse_event("phase", {
+            "phase": "start",
+            "message": f"开始{mode}模式分析",
+            "debate_id": debate_id
+        })
+        
+        if mode == "quick_analysis":
+            # 快速分析模式 - 使用流式输出
+            yield sse_event("phase", {"phase": "analyzing", "message": "快速分析师正在分析..."})
+            
+            prompt = f"""请对 {stock_name}({stock_code}) 进行快速投资分析。
+
+背景资料:
+{context[:2000]}
+
+相关新闻:
+{json.dumps([n.get('title', '') for n in news_data[:5]], ensure_ascii=False)}
+
+请快速给出：
+1. 核心观点（一句话）
+2. 看多因素（3点）
+3. 看空因素（3点）
+4. 投资建议（买入/持有/卖出）
+5. 风险提示"""
+            
+            messages = [
+                {"role": "system", "content": "你是一位专业的股票分析师，擅长快速分析和决策。"},
+                {"role": "user", "content": prompt}
+            ]
+            
+            full_response = ""
+            for chunk in llm_provider.stream(messages):
+                full_response += chunk
+                yield sse_event("agent", {
+                    "agent": "QuickAnalyst",
+                    "role": "快速分析师",
+                    "content": chunk,
+                    "is_chunk": True
+                })
+                await asyncio.sleep(0)  # 让出控制权
+            
+            # 发送完成事件
+            yield sse_event("result", {
+                "success": True,
+                "mode": mode,
+                "quick_analysis": {
+                    "analysis": full_response,
+                    "success": True
+                },
+                "execution_time": 0
+            })
+            
+        elif mode == "realtime_debate":
+            # 实时辩论模式
+            yield sse_event("phase", {"phase": "data_collection", "message": "数据专员正在搜集资料..."})
+            await asyncio.sleep(0.5)
+            
+            # 模拟数据搜集
+            yield sse_event("agent", {
+                "agent": "DataCollector",
+                "role": "数据专员",
+                "content": f"已搜集 {stock_name} 的相关数据：{len(news_data)} 条新闻，财务数据已就绪。",
+                "is_chunk": False
+            })
+            
+            # 辩论阶段
+            yield sse_event("phase", {"phase": "debate", "message": "开始多空辩论..."})
+            
+            # Bull 分析（流式）
+            yield sse_event("agent", {
+                "agent": "BullResearcher",
+                "role": "看多研究员",
+                "content": "",
+                "is_start": True
+            })
+            
+            bull_prompt = f"""你是看多研究员，请从积极角度分析 {stock_name}({stock_code})：
+
+背景资料: {context[:1000]}
+新闻标题: {json.dumps([n.get('title', '') for n in news_data[:3]], ensure_ascii=False)}
+
+请给出看多分析（约300字），包括：
+1. 核心看多逻辑
+2. 增长催化剂
+3. 目标预期"""
+            
+            bull_messages = [
+                {"role": "system", "content": "你是一位乐观但理性的股票研究员。"},
+                {"role": "user", "content": bull_prompt}
+            ]
+            
+            bull_analysis = ""
+            for chunk in llm_provider.stream(bull_messages):
+                bull_analysis += chunk
+                yield sse_event("agent", {
+                    "agent": "BullResearcher",
+                    "role": "看多研究员", 
+                    "content": chunk,
+                    "is_chunk": True
+                })
+                await asyncio.sleep(0)
+            
+            yield sse_event("agent", {
+                "agent": "BullResearcher",
+                "role": "看多研究员",
+                "content": "",
+                "is_end": True
+            })
+            
+            # Bear 分析（流式）
+            yield sse_event("agent", {
+                "agent": "BearResearcher",
+                "role": "看空研究员",
+                "content": "",
+                "is_start": True
+            })
+            
+            bear_prompt = f"""你是看空研究员，请从风险角度分析 {stock_name}({stock_code})：
+
+背景资料: {context[:1000]}
+新闻标题: {json.dumps([n.get('title', '') for n in news_data[:3]], ensure_ascii=False)}
+看多观点摘要: {bull_analysis[:200]}
+
+请给出看空分析（约300字），包括：
+1. 核心风险因素
+2. 反驳看多观点
+3. 下行空间"""
+
+            bear_messages = [
+                {"role": "system", "content": "你是一位谨慎的股票研究员，擅长发现风险。"},
+                {"role": "user", "content": bear_prompt}
+            ]
+            
+            bear_analysis = ""
+            for chunk in llm_provider.stream(bear_messages):
+                bear_analysis += chunk
+                yield sse_event("agent", {
+                    "agent": "BearResearcher",
+                    "role": "看空研究员",
+                    "content": chunk,
+                    "is_chunk": True
+                })
+                await asyncio.sleep(0)
+            
+            yield sse_event("agent", {
+                "agent": "BearResearcher",
+                "role": "看空研究员",
+                "content": "",
+                "is_end": True
+            })
+            
+            # 投资经理决策（流式）
+            yield sse_event("phase", {"phase": "decision", "message": "投资经理正在做最终决策..."})
+            
+            yield sse_event("agent", {
+                "agent": "InvestmentManager",
+                "role": "投资经理",
+                "content": "",
+                "is_start": True
+            })
+            
+            decision_prompt = f"""你是投资经理，请综合以下观点做出投资决策：
+
+股票: {stock_name}({stock_code})
+
+【看多观点】
+{bull_analysis}
+
+【看空观点】
+{bear_analysis}
+
+请给出最终决策（约400字），包括：
+1. 观点评估（多空双方论点质量）
+2. 综合判断
+3. **最终评级**：[强烈推荐/推荐/中性/谨慎/回避]
+4. 建议操作
+5. 风险收益比"""
+
+            decision_messages = [
+                {"role": "system", "content": "你是一位经验丰富的投资经理，善于在多空观点中找到平衡。"},
+                {"role": "user", "content": decision_prompt}
+            ]
+            
+            decision = ""
+            for chunk in llm_provider.stream(decision_messages):
+                decision += chunk
+                yield sse_event("agent", {
+                    "agent": "InvestmentManager",
+                    "role": "投资经理",
+                    "content": chunk,
+                    "is_chunk": True
+                })
+                await asyncio.sleep(0)
+            
+            yield sse_event("agent", {
+                "agent": "InvestmentManager",
+                "role": "投资经理",
+                "content": "",
+                "is_end": True
+            })
+            
+            # 提取评级
+            rating = "中性"
+            for r in ["强烈推荐", "推荐", "中性", "谨慎", "回避"]:
+                if r in decision:
+                    rating = r
+                    break
+            
+            # 发送完成事件
+            yield sse_event("result", {
+                "success": True,
+                "mode": mode,
+                "debate_id": debate_id,
+                "bull_analysis": {"analysis": bull_analysis, "success": True, "agent_name": "BullResearcher", "agent_role": "看多研究员"},
+                "bear_analysis": {"analysis": bear_analysis, "success": True, "agent_name": "BearResearcher", "agent_role": "看空研究员"},
+                "final_decision": {"decision": decision, "rating": rating, "success": True, "agent_name": "InvestmentManager", "agent_role": "投资经理"}
+            })
+            
+        else:
+            # parallel 模式 - 也使用流式，但并行展示
+            yield sse_event("phase", {"phase": "parallel_analysis", "message": "Bull/Bear 并行分析中..."})
+            
+            # 由于是并行，我们交替输出
+            bull_prompt = f"""你是看多研究员，请从积极角度分析 {stock_name}({stock_code})：
+背景资料: {context[:1500]}
+新闻: {json.dumps([n.get('title', '') for n in news_data[:5]], ensure_ascii=False)}
+请给出完整的看多分析报告。"""
+
+            bear_prompt = f"""你是看空研究员，请从风险角度分析 {stock_name}({stock_code})：
+背景资料: {context[:1500]}
+新闻: {json.dumps([n.get('title', '') for n in news_data[:5]], ensure_ascii=False)}
+请给出完整的看空分析报告。"""
+
+            # Bull 流式输出
+            yield sse_event("agent", {"agent": "BullResearcher", "role": "看多研究员", "content": "", "is_start": True})
+            bull_analysis = ""
+            for chunk in llm_provider.stream([
+                {"role": "system", "content": "你是一位乐观但理性的股票研究员。"},
+                {"role": "user", "content": bull_prompt}
+            ]):
+                bull_analysis += chunk
+                yield sse_event("agent", {"agent": "BullResearcher", "role": "看多研究员", "content": chunk, "is_chunk": True})
+                await asyncio.sleep(0)
+            yield sse_event("agent", {"agent": "BullResearcher", "role": "看多研究员", "content": "", "is_end": True})
+            
+            # Bear 流式输出
+            yield sse_event("agent", {"agent": "BearResearcher", "role": "看空研究员", "content": "", "is_start": True})
+            bear_analysis = ""
+            for chunk in llm_provider.stream([
+                {"role": "system", "content": "你是一位谨慎的股票研究员。"},
+                {"role": "user", "content": bear_prompt}
+            ]):
+                bear_analysis += chunk
+                yield sse_event("agent", {"agent": "BearResearcher", "role": "看空研究员", "content": chunk, "is_chunk": True})
+                await asyncio.sleep(0)
+            yield sse_event("agent", {"agent": "BearResearcher", "role": "看空研究员", "content": "", "is_end": True})
+            
+            # 投资经理决策
+            yield sse_event("phase", {"phase": "decision", "message": "投资经理决策中..."})
+            yield sse_event("agent", {"agent": "InvestmentManager", "role": "投资经理", "content": "", "is_start": True})
+            
+            decision_prompt = f"""综合以下多空观点，对 {stock_name} 做出投资决策：
+【看多】{bull_analysis[:800]}
+【看空】{bear_analysis[:800]}
+请给出评级[强烈推荐/推荐/中性/谨慎/回避]和决策理由。"""
+            
+            decision = ""
+            for chunk in llm_provider.stream([
+                {"role": "system", "content": "你是投资经理。"},
+                {"role": "user", "content": decision_prompt}
+            ]):
+                decision += chunk
+                yield sse_event("agent", {"agent": "InvestmentManager", "role": "投资经理", "content": chunk, "is_chunk": True})
+                await asyncio.sleep(0)
+            yield sse_event("agent", {"agent": "InvestmentManager", "role": "投资经理", "content": "", "is_end": True})
+            
+            rating = "中性"
+            for r in ["强烈推荐", "推荐", "中性", "谨慎", "回避"]:
+                if r in decision:
+                    rating = r
+                    break
+            
+            yield sse_event("result", {
+                "success": True,
+                "mode": mode,
+                "bull_analysis": {"analysis": bull_analysis, "success": True, "agent_name": "BullResearcher", "agent_role": "看多研究员"},
+                "bear_analysis": {"analysis": bear_analysis, "success": True, "agent_name": "BearResearcher", "agent_role": "看空研究员"},
+                "final_decision": {"decision": decision, "rating": rating, "success": True, "agent_name": "InvestmentManager", "agent_role": "投资经理"}
+            })
+        
+        yield sse_event("phase", {"phase": "complete", "message": "分析完成"})
+        
+    except Exception as e:
+        logger.error(f"SSE Debate error: {e}", exc_info=True)
+        yield sse_event("error", {"message": str(e)})
+
+
+@router.post("/debate/stream")
+async def run_stock_debate_stream(
+    request: DebateRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    流式辩论分析（SSE）
+    
+    使用 Server-Sent Events 实时推送辩论过程
+    """
+    logger.info(f"🎯 收到流式辩论请求: stock_code={request.stock_code}, mode={request.mode}")
+    
+    # 标准化股票代码
+    code = request.stock_code.upper()
+    if code.startswith("SH") or code.startswith("SZ"):
+        short_code = code[2:]
+    else:
+        short_code = code
+        code = f"SH{code}" if code.startswith("6") else f"SZ{code}"
+    
+    # 获取关联新闻
+    from sqlalchemy import text
+    stock_codes_filter = text(
+        "stock_codes @> ARRAY[:code1]::varchar[] OR stock_codes @> ARRAY[:code2]::varchar[]"
+    ).bindparams(code1=short_code, code2=code)
+    
+    news_query = select(News).where(stock_codes_filter).order_by(desc(News.publish_time)).limit(10)
+    result = await db.execute(news_query)
+    news_list = result.scalars().all()
+    
+    news_data = [
+        {
+            "id": n.id,
+            "title": n.title,
+            "content": n.content[:500] if n.content else "",
+            "sentiment_score": n.sentiment_score,
+            "publish_time": n.publish_time.isoformat() if n.publish_time else None
+        }
+        for n in news_list
+    ]
+    
+    # 获取额外上下文
+    try:
+        debate_context = await stock_data_service.get_debate_context(code)
+        akshare_context = debate_context.get("summary", "")
+    except Exception as e:
+        logger.warning(f"获取财务数据失败: {e}")
+        akshare_context = ""
+    
+    full_context = ""
+    if request.context:
+        full_context += f"【用户补充】{request.context}\n\n"
+    if akshare_context:
+        full_context += f"【实时数据】{akshare_context}"
+    
+    # 创建 LLM provider
+    llm_provider = get_llm_provider(
+        provider=request.provider,
+        model=request.model
+    ) if request.provider or request.model else get_llm_provider()
+    
+    mode = request.mode or "parallel"
+    stock_name = request.stock_name or code
+    
+    return StreamingResponse(
+        generate_debate_stream(code, stock_name, mode, full_context, news_data, llm_provider),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # 禁用 nginx 缓冲
+        }
+    )
 
 
 @router.get("/debate/{debate_id}", response_model=DebateResponse)

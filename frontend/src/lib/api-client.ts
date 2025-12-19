@@ -407,9 +407,32 @@ export const stockApi = {
 /**
  * 智能体相关 API - Phase 2
  */
+// SSE 事件类型
+export interface SSEDebateEvent {
+  type: 'phase' | 'agent' | 'progress' | 'result' | 'error'
+  data: {
+    phase?: string
+    message?: string
+    agent?: string
+    role?: string
+    content?: string
+    is_chunk?: boolean
+    is_start?: boolean
+    is_end?: boolean
+    success?: boolean
+    mode?: string
+    bull_analysis?: any
+    bear_analysis?: any
+    final_decision?: any
+    quick_analysis?: any
+    debate_id?: string
+    execution_time?: number
+  }
+}
+
 export const agentApi = {
   /**
-   * 触发股票辩论分析
+   * 触发股票辩论分析（非流式）
    * 注意：辩论分析需要多次LLM调用，耗时较长（可能2-5分钟）
    */
   runDebate: async (request: DebateRequest): Promise<DebateResponse> => {
@@ -417,6 +440,85 @@ export const agentApi = {
       timeout: 300000  // 5分钟超时，因为辩论需要多次LLM调用
     })
     return response.data
+  },
+
+  /**
+   * 流式辩论分析（SSE）
+   * 使用 Server-Sent Events 实时推送辩论过程
+   */
+  runDebateStream: (
+    request: DebateRequest,
+    onEvent: (event: SSEDebateEvent) => void,
+    onError?: (error: Error) => void,
+    onComplete?: () => void
+  ): (() => void) => {
+    const controller = new AbortController()
+    
+    // 使用 fetch 发送 POST 请求并处理 SSE 响应
+    fetch(`${API_BASE_URL}/agents/debate/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+        
+        const reader = response.body?.getReader()
+        if (!reader) {
+          throw new Error('No response body')
+        }
+        
+        const decoder = new TextDecoder()
+        let buffer = ''
+        
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          
+          buffer += decoder.decode(value, { stream: true })
+          
+          // 解析 SSE 事件
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || '' // 保留未完成的行
+          
+          let currentEvent = ''
+          let currentData = ''
+          
+          for (const line of lines) {
+            if (line.startsWith('event: ')) {
+              currentEvent = line.slice(7)
+            } else if (line.startsWith('data: ')) {
+              currentData = line.slice(6)
+            } else if (line === '' && currentEvent && currentData) {
+              // 完整的事件
+              try {
+                const data = JSON.parse(currentData)
+                onEvent({ type: currentEvent as SSEDebateEvent['type'], data })
+              } catch (e) {
+                console.error('Failed to parse SSE data:', currentData)
+              }
+              currentEvent = ''
+              currentData = ''
+            }
+          }
+        }
+        
+        onComplete?.()
+      })
+      .catch((error) => {
+        if (error.name !== 'AbortError') {
+          console.error('SSE error:', error)
+          onError?.(error)
+        }
+      })
+    
+    // 返回取消函数
+    return () => controller.abort()
   },
 
   /**
