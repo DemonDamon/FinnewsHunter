@@ -557,6 +557,278 @@ class StockDataService:
             current_price = close_price
         
         return kline_data[-days:] if len(kline_data) > days else kline_data
+    
+    async def get_financial_indicators(self, stock_code: str) -> Optional[Dict[str, Any]]:
+        """
+        获取股票财务指标（用于辩论分析）
+        
+        包括：PE、PB、ROE、净利润增长率等
+        
+        Args:
+            stock_code: 股票代码
+            
+        Returns:
+            财务指标字典
+        """
+        cache_key = f"financial:{stock_code}"
+        cached = self._get_cached(cache_key, ttl=3600)  # 财务数据缓存1小时
+        if cached:
+            return cached
+        
+        if not AKSHARE_AVAILABLE:
+            logger.warning("akshare not available, returning mock financial data")
+            return self._get_mock_financial_indicators(stock_code)
+        
+        try:
+            symbol = self._get_symbol(stock_code)
+            loop = asyncio.get_event_loop()
+            
+            # 方法1：从实时行情获取基础估值数据
+            spot_df = await loop.run_in_executor(
+                None,
+                lambda: ak.stock_zh_a_spot_em()
+            )
+            
+            financial_data = {}
+            
+            if spot_df is not None and not spot_df.empty:
+                row = spot_df[spot_df['代码'] == symbol]
+                if not row.empty:
+                    row = row.iloc[0]
+                    financial_data.update({
+                        "pe_ratio": self._safe_float(row.get('市盈率-动态')),
+                        "pb_ratio": self._safe_float(row.get('市净率')),
+                        "total_market_value": self._safe_float(row.get('总市值')),
+                        "circulating_market_value": self._safe_float(row.get('流通市值')),
+                        "turnover_rate": self._safe_float(row.get('换手率')),
+                        "volume_ratio": self._safe_float(row.get('量比')),
+                        "amplitude": self._safe_float(row.get('振幅')),
+                        "price_52w_high": self._safe_float(row.get('52周最高')),
+                        "price_52w_low": self._safe_float(row.get('52周最低')),
+                    })
+            
+            # 方法2：尝试获取更详细的财务摘要
+            try:
+                financial_abstract = await loop.run_in_executor(
+                    None,
+                    lambda: ak.stock_financial_abstract_ths(symbol=symbol)
+                )
+                
+                if financial_abstract is not None and not financial_abstract.empty:
+                    # 取最新一期数据
+                    latest = financial_abstract.iloc[0] if len(financial_abstract) > 0 else None
+                    if latest is not None:
+                        financial_data.update({
+                            "roe": self._safe_float(latest.get('净资产收益率')),
+                            "gross_profit_margin": self._safe_float(latest.get('毛利率')),
+                            "net_profit_margin": self._safe_float(latest.get('净利率')),
+                            "debt_ratio": self._safe_float(latest.get('资产负债率')),
+                            "revenue_yoy": self._safe_float(latest.get('营业总收入同比增长率')),
+                            "profit_yoy": self._safe_float(latest.get('净利润同比增长率')),
+                        })
+            except Exception as e:
+                logger.debug(f"Failed to fetch financial abstract for {stock_code}: {e}")
+            
+            if financial_data:
+                self._set_cache(cache_key, financial_data)
+                return financial_data
+            
+            return self._get_mock_financial_indicators(stock_code)
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch financial indicators for {stock_code}: {e}")
+            return self._get_mock_financial_indicators(stock_code)
+    
+    def _safe_float(self, value, default=None) -> Optional[float]:
+        """安全转换为浮点数"""
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            return default
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return default
+    
+    def _get_mock_financial_indicators(self, stock_code: str) -> Dict[str, Any]:
+        """返回模拟财务指标"""
+        return {
+            "pe_ratio": 25.5,
+            "pb_ratio": 3.2,
+            "roe": 15.8,
+            "total_market_value": 100000000000,  # 1000亿
+            "circulating_market_value": 80000000000,
+            "turnover_rate": 2.5,
+            "gross_profit_margin": 45.2,
+            "net_profit_margin": 22.1,
+            "debt_ratio": 35.5,
+            "revenue_yoy": 12.5,
+            "profit_yoy": 18.3,
+        }
+    
+    async def get_fund_flow(self, stock_code: str, days: int = 5) -> Optional[Dict[str, Any]]:
+        """
+        获取个股资金流向（用于辩论分析）
+        
+        包括：主力资金净流入、散户资金流向等
+        
+        Args:
+            stock_code: 股票代码
+            days: 获取最近几天的数据
+            
+        Returns:
+            资金流向数据
+        """
+        cache_key = f"fund_flow:{stock_code}:{days}"
+        cached = self._get_cached(cache_key, ttl=300)  # 资金流向缓存5分钟
+        if cached:
+            return cached
+        
+        if not AKSHARE_AVAILABLE:
+            logger.warning("akshare not available, returning mock fund flow data")
+            return self._get_mock_fund_flow(stock_code)
+        
+        try:
+            symbol = self._get_symbol(stock_code)
+            loop = asyncio.get_event_loop()
+            
+            # 获取个股资金流向
+            df = await loop.run_in_executor(
+                None,
+                lambda: ak.stock_individual_fund_flow(stock=symbol, market="sh" if symbol.startswith("6") else "sz")
+            )
+            
+            if df is None or df.empty:
+                return self._get_mock_fund_flow(stock_code)
+            
+            # 取最近几天的数据
+            df = df.head(days)
+            
+            # 汇总数据
+            total_main_net = 0
+            total_super_large_net = 0
+            total_large_net = 0
+            total_medium_net = 0
+            total_small_net = 0
+            daily_flows = []
+            
+            for _, row in df.iterrows():
+                main_net = self._safe_float(row.get('主力净流入-净额'), 0)
+                super_large_net = self._safe_float(row.get('超大单净流入-净额'), 0)
+                large_net = self._safe_float(row.get('大单净流入-净额'), 0)
+                medium_net = self._safe_float(row.get('中单净流入-净额'), 0)
+                small_net = self._safe_float(row.get('小单净流入-净额'), 0)
+                
+                total_main_net += main_net
+                total_super_large_net += super_large_net
+                total_large_net += large_net
+                total_medium_net += medium_net
+                total_small_net += small_net
+                
+                daily_flows.append({
+                    "date": str(row.get('日期', '')),
+                    "main_net": main_net,
+                    "super_large_net": super_large_net,
+                    "large_net": large_net,
+                    "medium_net": medium_net,
+                    "small_net": small_net,
+                })
+            
+            fund_flow_data = {
+                "period_days": days,
+                "total_main_net": total_main_net,
+                "total_super_large_net": total_super_large_net,
+                "total_large_net": total_large_net,
+                "total_medium_net": total_medium_net,
+                "total_small_net": total_small_net,
+                "main_flow_trend": "流入" if total_main_net > 0 else "流出",
+                "daily_flows": daily_flows,
+            }
+            
+            self._set_cache(cache_key, fund_flow_data)
+            return fund_flow_data
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch fund flow for {stock_code}: {e}")
+            return self._get_mock_fund_flow(stock_code)
+    
+    def _get_mock_fund_flow(self, stock_code: str) -> Dict[str, Any]:
+        """返回模拟资金流向数据"""
+        return {
+            "period_days": 5,
+            "total_main_net": 50000000,  # 5000万
+            "total_super_large_net": 30000000,
+            "total_large_net": 20000000,
+            "total_medium_net": -5000000,
+            "total_small_net": -10000000,
+            "main_flow_trend": "流入",
+            "daily_flows": [],
+        }
+    
+    async def get_debate_context(self, stock_code: str) -> Dict[str, Any]:
+        """
+        获取用于辩论的综合上下文数据
+        
+        整合财务指标、资金流向、实时行情等信息
+        
+        Args:
+            stock_code: 股票代码
+            
+        Returns:
+            综合上下文数据
+        """
+        # 并行获取多个数据源
+        realtime_task = self.get_realtime_quote(stock_code)
+        financial_task = self.get_financial_indicators(stock_code)
+        fund_flow_task = self.get_fund_flow(stock_code, days=5)
+        
+        realtime, financial, fund_flow = await asyncio.gather(
+            realtime_task, financial_task, fund_flow_task,
+            return_exceptions=True
+        )
+        
+        # 处理异常
+        if isinstance(realtime, Exception):
+            logger.error(f"Failed to get realtime quote: {realtime}")
+            realtime = None
+        if isinstance(financial, Exception):
+            logger.error(f"Failed to get financial indicators: {financial}")
+            financial = None
+        if isinstance(fund_flow, Exception):
+            logger.error(f"Failed to get fund flow: {fund_flow}")
+            fund_flow = None
+        
+        # 生成文本摘要
+        context_parts = []
+        
+        if realtime:
+            context_parts.append(
+                f"【实时行情】当前价: {realtime.get('price', 'N/A')}元, "
+                f"涨跌幅: {realtime.get('change_percent', 'N/A')}%, "
+                f"成交量: {realtime.get('volume', 'N/A')}"
+            )
+        
+        if financial:
+            pe = financial.get('pe_ratio')
+            pb = financial.get('pb_ratio')
+            roe = financial.get('roe')
+            profit_yoy = financial.get('profit_yoy')
+            context_parts.append(
+                f"【估值指标】PE: {pe if pe else 'N/A'}, PB: {pb if pb else 'N/A'}, "
+                f"ROE: {roe if roe else 'N/A'}%, 净利润同比: {profit_yoy if profit_yoy else 'N/A'}%"
+            )
+        
+        if fund_flow:
+            main_net = fund_flow.get('total_main_net', 0)
+            main_net_str = f"{main_net/10000:.2f}万" if abs(main_net) < 100000000 else f"{main_net/100000000:.2f}亿"
+            context_parts.append(
+                f"【资金流向】近{fund_flow.get('period_days', 5)}日主力净{fund_flow.get('main_flow_trend', 'N/A')}: {main_net_str}"
+            )
+        
+        return {
+            "realtime": realtime,
+            "financial": financial,
+            "fund_flow": fund_flow,
+            "summary": "\n".join(context_parts) if context_parts else "暂无额外数据",
+        }
 
 
 # 单例实例

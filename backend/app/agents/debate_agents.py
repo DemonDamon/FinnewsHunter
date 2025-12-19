@@ -19,11 +19,7 @@ class BullResearcherAgent(Agent):
     """
     
     def __init__(self, llm_provider=None, organization_id: str = "finnews"):
-        if llm_provider is None:
-            llm_provider = get_llm_provider()
-        
-        self._llm_provider = llm_provider
-        
+        # 先调用父类初始化（Pydantic BaseModel）
         super().__init__(
             name="BullResearcher",
             role="看多研究员",
@@ -33,6 +29,11 @@ class BullResearcherAgent(Agent):
 你的分析注重长期价值，但也关注短期催化剂。""",
             organization_id=organization_id
         )
+        
+        # 在 super().__init__() 之后设置 _llm_provider（避免被 Pydantic 清除）
+        if llm_provider is None:
+            llm_provider = get_llm_provider()
+        object.__setattr__(self, '_llm_provider', llm_provider)
         
         logger.info(f"Initialized {self.name} agent")
     
@@ -139,11 +140,7 @@ class BearResearcherAgent(Agent):
     """
     
     def __init__(self, llm_provider=None, organization_id: str = "finnews"):
-        if llm_provider is None:
-            llm_provider = get_llm_provider()
-        
-        self._llm_provider = llm_provider
-        
+        # 先调用父类初始化（Pydantic BaseModel）
         super().__init__(
             name="BearResearcher",
             role="看空研究员",
@@ -153,6 +150,11 @@ class BearResearcherAgent(Agent):
 你的分析注重风险控制，帮助投资者避免损失。""",
             organization_id=organization_id
         )
+        
+        # 在 super().__init__() 之后设置 _llm_provider（避免被 Pydantic 清除）
+        if llm_provider is None:
+            llm_provider = get_llm_provider()
+        object.__setattr__(self, '_llm_provider', llm_provider)
         
         logger.info(f"Initialized {self.name} agent")
     
@@ -260,11 +262,7 @@ class InvestmentManagerAgent(Agent):
     """
     
     def __init__(self, llm_provider=None, organization_id: str = "finnews"):
-        if llm_provider is None:
-            llm_provider = get_llm_provider()
-        
-        self._llm_provider = llm_provider
-        
+        # 先调用父类初始化（Pydantic BaseModel）
         super().__init__(
             name="InvestmentManager",
             role="投资经理",
@@ -274,6 +272,11 @@ class InvestmentManagerAgent(Agent):
 你的决策注重风险收益比，追求稳健的长期回报。""",
             organization_id=organization_id
         )
+        
+        # 在 super().__init__() 之后设置 _llm_provider（避免被 Pydantic 清除）
+        if llm_provider is None:
+            llm_provider = get_llm_provider()
+        object.__setattr__(self, '_llm_provider', llm_provider)
         
         logger.info(f"Initialized {self.name} agent")
     

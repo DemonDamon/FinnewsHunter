@@ -15,6 +15,7 @@ from ...models.news import News
 from ...models.analysis import Analysis
 from ...agents.debate_agents import create_debate_workflow
 from ...services.llm_service import get_llm_provider
+from ...services.stock_data_service import stock_data_service
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +164,23 @@ async def run_stock_debate(
         if not news_data:
             logger.warning(f"⚠️ 股票 {code} 没有关联新闻，辩论将基于空数据进行")
         
+        # 获取财务数据和资金流向（用于增强辩论上下文）
+        logger.info(f"📊 获取 {code} 的财务数据和资金流向...")
+        try:
+            debate_context = await stock_data_service.get_debate_context(code)
+            akshare_context = debate_context.get("summary", "")
+            logger.info(f"📊 获取到额外数据: {akshare_context[:100]}...")
+        except Exception as e:
+            logger.warning(f"⚠️ 获取财务数据失败: {e}")
+            akshare_context = ""
+        
+        # 合并用户提供的上下文和 akshare 数据
+        full_context = ""
+        if request.context:
+            full_context += f"【用户补充信息】\n{request.context}\n\n"
+        if akshare_context:
+            full_context += f"【实时数据】\n{akshare_context}"
+        
         # 创建 LLM provider（如果指定了自定义配置）
         llm_provider = None
         if request.provider or request.model:
@@ -181,7 +199,7 @@ async def run_stock_debate(
             stock_code=code,
             stock_name=request.stock_name or code,
             news_list=news_data,
-            context=request.context or ""
+            context=full_context
         )
         
         end_time = datetime.utcnow()
