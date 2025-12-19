@@ -419,6 +419,8 @@ export interface SSEDebateEvent {
     is_chunk?: boolean
     is_start?: boolean
     is_end?: boolean
+    round?: number
+    max_rounds?: number
     success?: boolean
     mode?: string
     bull_analysis?: any
@@ -427,6 +429,8 @@ export interface SSEDebateEvent {
     quick_analysis?: any
     debate_id?: string
     execution_time?: number
+    total_rounds?: number
+    debate_history?: any[]
   }
 }
 

@@ -371,106 +371,157 @@ async def generate_debate_stream(
             })
             
         elif mode == "realtime_debate":
-            # 实时辩论模式
-            yield sse_event("phase", {"phase": "data_collection", "message": "数据专员正在搜集资料..."})
-            await asyncio.sleep(0.5)
+            # 实时辩论模式 - 多轮交锋
+            max_rounds = 3  # 最大辩论轮数
             
-            # 模拟数据搜集
+            yield sse_event("phase", {"phase": "data_collection", "message": "数据专员正在搜集资料..."})
+            await asyncio.sleep(0.3)
+            
+            # 数据搜集
             yield sse_event("agent", {
                 "agent": "DataCollector",
                 "role": "数据专员",
-                "content": f"已搜集 {stock_name} 的相关数据：{len(news_data)} 条新闻，财务数据已就绪。",
+                "content": f"📊 已搜集 {stock_name} 的相关数据：{len(news_data)} 条新闻，财务数据已就绪。\n\n辩论即将开始，共 {max_rounds} 轮。",
                 "is_chunk": False
             })
             
-            # 辩论阶段
-            yield sse_event("phase", {"phase": "debate", "message": "开始多空辩论..."})
+            # 辩论历史（用于上下文）
+            debate_history = []
+            bull_full = ""
+            bear_full = ""
             
-            # Bull 分析（流式）
-            yield sse_event("agent", {
-                "agent": "BullResearcher",
-                "role": "看多研究员",
-                "content": "",
-                "is_start": True
-            })
-            
-            bull_prompt = f"""你是看多研究员，请从积极角度分析 {stock_name}({stock_code})：
-
-背景资料: {context[:1000]}
-新闻标题: {json.dumps([n.get('title', '') for n in news_data[:3]], ensure_ascii=False)}
-
-请给出看多分析（约300字），包括：
-1. 核心看多逻辑
-2. 增长催化剂
-3. 目标预期"""
-            
-            bull_messages = [
-                {"role": "system", "content": "你是一位乐观但理性的股票研究员。"},
-                {"role": "user", "content": bull_prompt}
-            ]
-            
-            bull_analysis = ""
-            for chunk in llm_provider.stream(bull_messages):
-                bull_analysis += chunk
+            # 多轮辩论
+            for round_num in range(1, max_rounds + 1):
+                yield sse_event("phase", {
+                    "phase": "debate",
+                    "message": f"第 {round_num}/{max_rounds} 轮辩论",
+                    "round": round_num,
+                    "max_rounds": max_rounds
+                })
+                
+                # === Bull 发言 ===
                 yield sse_event("agent", {
                     "agent": "BullResearcher",
-                    "role": "看多研究员", 
-                    "content": chunk,
-                    "is_chunk": True
+                    "role": "看多研究员",
+                    "content": "",
+                    "is_start": True,
+                    "round": round_num
                 })
-                await asyncio.sleep(0)
-            
-            yield sse_event("agent", {
-                "agent": "BullResearcher",
-                "role": "看多研究员",
-                "content": "",
-                "is_end": True
-            })
-            
-            # Bear 分析（流式）
-            yield sse_event("agent", {
-                "agent": "BearResearcher",
-                "role": "看空研究员",
-                "content": "",
-                "is_start": True
-            })
-            
-            bear_prompt = f"""你是看空研究员，请从风险角度分析 {stock_name}({stock_code})：
+                
+                if round_num == 1:
+                    # 第一轮：开场陈述
+                    bull_prompt = f"""你是看多研究员，正在参与关于 {stock_name}({stock_code}) 的多空辩论。
 
-背景资料: {context[:1000]}
-新闻标题: {json.dumps([n.get('title', '') for n in news_data[:3]], ensure_ascii=False)}
-看多观点摘要: {bull_analysis[:200]}
+背景资料: {context[:800]}
+新闻: {json.dumps([n.get('title', '') for n in news_data[:3]], ensure_ascii=False)}
 
-请给出看空分析（约300字），包括：
-1. 核心风险因素
-2. 反驳看多观点
-3. 下行空间"""
+这是第1轮辩论，请做开场陈述（约150字）：
+1. 表明你的核心看多观点
+2. 给出2-3个关键论据"""
+                else:
+                    # 后续轮次：反驳对方
+                    last_bear = debate_history[-1]["content"] if debate_history else ""
+                    bull_prompt = f"""你是看多研究员，正在与看空研究员辩论 {stock_name}。
 
-            bear_messages = [
-                {"role": "system", "content": "你是一位谨慎的股票研究员，擅长发现风险。"},
-                {"role": "user", "content": bear_prompt}
-            ]
-            
-            bear_analysis = ""
-            for chunk in llm_provider.stream(bear_messages):
-                bear_analysis += chunk
+这是第{round_num}轮辩论。
+
+对方（看空研究员）刚才说：
+"{last_bear[:300]}"
+
+请反驳对方观点并补充新论据（约120字）：
+1. 指出对方论据的漏洞
+2. 补充新的看多理由"""
+                
+                bull_messages = [
+                    {"role": "system", "content": "你是一位辩论中的看多研究员。言简意赅，有理有据，语气自信但不傲慢。"},
+                    {"role": "user", "content": bull_prompt}
+                ]
+                
+                bull_response = ""
+                for chunk in llm_provider.stream(bull_messages):
+                    bull_response += chunk
+                    yield sse_event("agent", {
+                        "agent": "BullResearcher",
+                        "role": "看多研究员",
+                        "content": chunk,
+                        "is_chunk": True,
+                        "round": round_num
+                    })
+                    await asyncio.sleep(0)
+                
+                bull_full += f"\n\n**【第{round_num}轮】**\n{bull_response}"
+                debate_history.append({"agent": "Bull", "round": round_num, "content": bull_response})
+                
+                yield sse_event("agent", {
+                    "agent": "BullResearcher",
+                    "role": "看多研究员",
+                    "content": "",
+                    "is_end": True,
+                    "round": round_num
+                })
+                
+                # === Bear 发言（反驳） ===
                 yield sse_event("agent", {
                     "agent": "BearResearcher",
                     "role": "看空研究员",
-                    "content": chunk,
-                    "is_chunk": True
+                    "content": "",
+                    "is_start": True,
+                    "round": round_num
                 })
-                await asyncio.sleep(0)
+                
+                if round_num == 1:
+                    bear_prompt = f"""你是看空研究员，正在与看多研究员辩论 {stock_name}({stock_code})。
+
+背景资料: {context[:800]}
+
+对方（看多研究员）刚才说：
+"{bull_response[:300]}"
+
+这是第1轮辩论，请反驳对方并陈述你的看空观点（约150字）：
+1. 指出对方论据的问题
+2. 给出2-3个风险因素"""
+                else:
+                    bear_prompt = f"""你是看空研究员，正在与看多研究员辩论 {stock_name}。
+
+这是第{round_num}轮辩论。
+
+对方（看多研究员）刚才说：
+"{bull_response[:300]}"
+
+请反驳对方观点并补充新论据（约120字）：
+1. 驳斥对方的新论据
+2. 强化你的风险警示"""
+                
+                bear_messages = [
+                    {"role": "system", "content": "你是一位辩论中的看空研究员。言简意赅，善于发现风险，语气谨慎但有说服力。"},
+                    {"role": "user", "content": bear_prompt}
+                ]
+                
+                bear_response = ""
+                for chunk in llm_provider.stream(bear_messages):
+                    bear_response += chunk
+                    yield sse_event("agent", {
+                        "agent": "BearResearcher",
+                        "role": "看空研究员",
+                        "content": chunk,
+                        "is_chunk": True,
+                        "round": round_num
+                    })
+                    await asyncio.sleep(0)
+                
+                bear_full += f"\n\n**【第{round_num}轮】**\n{bear_response}"
+                debate_history.append({"agent": "Bear", "round": round_num, "content": bear_response})
+                
+                yield sse_event("agent", {
+                    "agent": "BearResearcher",
+                    "role": "看空研究员",
+                    "content": "",
+                    "is_end": True,
+                    "round": round_num
+                })
             
-            yield sse_event("agent", {
-                "agent": "BearResearcher",
-                "role": "看空研究员",
-                "content": "",
-                "is_end": True
-            })
-            
-            # 投资经理决策（流式）
-            yield sse_event("phase", {"phase": "decision", "message": "投资经理正在做最终决策..."})
+            # === 投资经理总结决策 ===
+            yield sse_event("phase", {"phase": "decision", "message": "辩论结束，投资经理正在做最终决策..."})
             
             yield sse_event("agent", {
                 "agent": "InvestmentManager",
@@ -479,25 +530,25 @@ async def generate_debate_stream(
                 "is_start": True
             })
             
-            decision_prompt = f"""你是投资经理，请综合以下观点做出投资决策：
+            # 整理辩论历史
+            debate_summary = "\n".join([
+                f"【第{h['round']}轮-{'看多' if h['agent']=='Bull' else '看空'}】{h['content'][:150]}..."
+                for h in debate_history
+            ])
+            
+            decision_prompt = f"""你是投资经理，刚刚主持了一场关于 {stock_name}({stock_code}) 的多空辩论。
 
-股票: {stock_name}({stock_code})
+辩论回顾：
+{debate_summary}
 
-【看多观点】
-{bull_analysis}
-
-【看空观点】
-{bear_analysis}
-
-请给出最终决策（约400字），包括：
-1. 观点评估（多空双方论点质量）
-2. 综合判断
+请做出最终投资决策（约200字）：
+1. 评价双方辩论表现
+2. 指出最有说服力的论点
 3. **最终评级**：[强烈推荐/推荐/中性/谨慎/回避]
-4. 建议操作
-5. 风险收益比"""
-
+4. 给出操作建议"""
+            
             decision_messages = [
-                {"role": "system", "content": "你是一位经验丰富的投资经理，善于在多空观点中找到平衡。"},
+                {"role": "system", "content": "你是一位经验丰富的投资经理，善于在多空观点中做出理性决策。"},
                 {"role": "user", "content": decision_prompt}
             ]
             
@@ -531,9 +582,11 @@ async def generate_debate_stream(
                 "success": True,
                 "mode": mode,
                 "debate_id": debate_id,
-                "bull_analysis": {"analysis": bull_analysis, "success": True, "agent_name": "BullResearcher", "agent_role": "看多研究员"},
-                "bear_analysis": {"analysis": bear_analysis, "success": True, "agent_name": "BearResearcher", "agent_role": "看空研究员"},
-                "final_decision": {"decision": decision, "rating": rating, "success": True, "agent_name": "InvestmentManager", "agent_role": "投资经理"}
+                "total_rounds": max_rounds,
+                "bull_analysis": {"analysis": bull_full.strip(), "success": True, "agent_name": "BullResearcher", "agent_role": "看多研究员"},
+                "bear_analysis": {"analysis": bear_full.strip(), "success": True, "agent_name": "BearResearcher", "agent_role": "看空研究员"},
+                "final_decision": {"decision": decision, "rating": rating, "success": True, "agent_name": "InvestmentManager", "agent_role": "投资经理"},
+                "debate_history": debate_history
             })
             
         else:

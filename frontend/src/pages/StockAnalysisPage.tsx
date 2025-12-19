@@ -112,6 +112,7 @@ export default function StockAnalysisPage() {
     quick: string
   }>({ bull: '', bear: '', manager: '', quick: '' })
   const [activeAgent, setActiveAgent] = useState<string | null>(null)
+  const [currentRound, setCurrentRound] = useState<{ round: number; maxRounds: number } | null>(null)
   const cancelStreamRef = useRef<(() => void) | null>(null)
   const stockCode = code?.toUpperCase() || 'SH600519'
   const pureCode = extractCode(stockCode)
@@ -242,16 +243,33 @@ export default function StockAnalysisPage() {
     switch (event.type) {
       case 'phase':
         setStreamPhase(event.data.phase || '')
+        // 更新轮次信息
+        if (event.data.round && event.data.max_rounds) {
+          setCurrentRound({ round: event.data.round, maxRounds: event.data.max_rounds })
+        }
         if (event.data.phase === 'complete') {
           toast.success('辩论分析完成！')
         }
         break
         
       case 'agent':
-        const { agent, content, is_start, is_end, is_chunk } = event.data
+        const { agent, content, is_start, is_end, is_chunk, round } = event.data
         
         if (is_start) {
           setActiveAgent(agent || null)
+          // 新一轮开始时，添加轮次标记
+          if (round && debateMode === 'realtime_debate') {
+            setStreamingContent(prev => {
+              const key = agent === 'BullResearcher' ? 'bull' 
+                        : agent === 'BearResearcher' ? 'bear'
+                        : null
+              if (key && round > 1) {
+                // 添加分隔线
+                return { ...prev, [key]: prev[key as keyof typeof prev] + `\n\n---\n**【第${round}轮】**\n` }
+              }
+              return prev
+            })
+          }
         } else if (is_end) {
           setActiveAgent(null)
         } else if (is_chunk && content) {
@@ -285,14 +303,16 @@ export default function StockAnalysisPage() {
           execution_time: event.data.execution_time
         })
         setIsStreaming(false)
+        setCurrentRound(null)
         break
         
       case 'error':
         toast.error(`辩论失败: ${event.data.message}`)
         setIsStreaming(false)
+        setCurrentRound(null)
         break
     }
-  }, [stockCode, stockName])
+  }, [stockCode, stockName, debateMode])
 
   const handleStartDebate = useCallback(() => {
     // 重置状态
@@ -300,6 +320,7 @@ export default function StockAnalysisPage() {
     setStreamingContent({ bull: '', bear: '', manager: '', quick: '' })
     setStreamPhase('')
     setActiveAgent(null)
+    setCurrentRound(null)
     setIsStreaming(true)
     
     // 取消之前的流
@@ -1021,17 +1042,41 @@ export default function StockAnalysisPage() {
           {isStreaming && (
             <>
               {/* 阶段指示器 */}
-              <div className="flex items-center gap-2 mb-4">
-                <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
-                <span className="text-sm text-blue-600 font-medium">
-                  {streamPhase === 'start' && '正在初始化...'}
-                  {streamPhase === 'data_collection' && '📊 数据专员正在搜集资料...'}
-                  {streamPhase === 'analyzing' && '🚀 快速分析中...'}
-                  {streamPhase === 'parallel_analysis' && '⚡ Bull/Bear 并行分析中...'}
-                  {streamPhase === 'debate' && '🎭 多空辩论进行中...'}
-                  {streamPhase === 'decision' && '⚖️ 投资经理正在做最终决策...'}
-                  {streamPhase === 'complete' && '✅ 分析完成'}
-                </span>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                  <span className="text-sm text-blue-600 font-medium">
+                    {streamPhase === 'start' && '正在初始化...'}
+                    {streamPhase === 'data_collection' && '📊 数据专员正在搜集资料...'}
+                    {streamPhase === 'analyzing' && '🚀 快速分析中...'}
+                    {streamPhase === 'parallel_analysis' && '⚡ Bull/Bear 并行分析中...'}
+                    {streamPhase === 'debate' && '🎭 多空辩论进行中...'}
+                    {streamPhase === 'decision' && '⚖️ 投资经理正在做最终决策...'}
+                    {streamPhase === 'complete' && '✅ 分析完成'}
+                  </span>
+                </div>
+                {/* 轮次指示器 - 仅实时辩论模式 */}
+                {currentRound && debateMode === 'realtime_debate' && (
+                  <div className="flex items-center gap-2">
+                    <div className="flex gap-1">
+                      {Array.from({ length: currentRound.maxRounds }, (_, i) => (
+                        <div
+                          key={i}
+                          className={`w-3 h-3 rounded-full transition-colors ${
+                            i < currentRound.round
+                              ? 'bg-purple-500'
+                              : i === currentRound.round - 1
+                              ? 'bg-purple-500 animate-pulse'
+                              : 'bg-gray-200'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-sm text-purple-600 font-medium">
+                      第 {currentRound.round}/{currentRound.maxRounds} 轮
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* 快速分析模式 - 流式显示 */}
