@@ -111,6 +111,20 @@ class BullResearcherAgent(Agent):
                 "error": str(e)
             }
     
+    async def debate_round(self, prompt: str) -> str:
+        """
+        辩论回合发言（用于实时辩论模式）
+        """
+        try:
+            response = self._llm_provider.invoke([
+                {"role": "system", "content": f"你是{self.role}，{self.backstory}。你正在参与一场多空辩论，请用专业但有说服力的语气发言。"},
+                {"role": "user", "content": prompt}
+            ])
+            return response.content if hasattr(response, 'content') else str(response)
+        except Exception as e:
+            logger.error(f"Bull debate round failed: {e}")
+            return f"[发言出错: {e}]"
+    
     def _summarize_news(self, news_list: List[Dict[str, Any]]) -> str:
         """汇总新闻信息"""
         if not news_list:
@@ -253,6 +267,20 @@ class BearResearcherAgent(Agent):
             summaries.append(f"{i}. {title} {sentiment_text}")
         
         return "\n".join(summaries)
+    
+    async def debate_round(self, prompt: str) -> str:
+        """
+        辩论回合发言（用于实时辩论模式）
+        """
+        try:
+            response = self._llm_provider.invoke([
+                {"role": "system", "content": f"你是{self.role}，{self.backstory}。你正在参与一场多空辩论，请用专业但有说服力的语气发言。"},
+                {"role": "user", "content": prompt}
+            ])
+            return response.content if hasattr(response, 'content') else str(response)
+        except Exception as e:
+            logger.error(f"Bear debate round failed: {e}")
+            return f"[发言出错: {e}]"
 
 
 class InvestmentManagerAgent(Agent):

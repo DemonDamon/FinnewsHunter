@@ -410,9 +410,12 @@ export const stockApi = {
 export const agentApi = {
   /**
    * 触发股票辩论分析
+   * 注意：辩论分析需要多次LLM调用，耗时较长（可能2-5分钟）
    */
   runDebate: async (request: DebateRequest): Promise<DebateResponse> => {
-    const response = await apiClient.post<DebateResponse>('/agents/debate', request)
+    const response = await apiClient.post<DebateResponse>('/agents/debate', request, {
+      timeout: 300000  // 5分钟超时，因为辩论需要多次LLM调用
+    })
     return response.data
   },
 

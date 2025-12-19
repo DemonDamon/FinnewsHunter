@@ -45,6 +45,7 @@ import KLineChart from '@/components/KLineChart'
 import type { DebateResponse } from '@/types/api'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { DebateModeSelector } from '@/components/DebateConfig'
 
 // 从代码中提取纯数字代码
 const extractCode = (fullCode: string): string => {
@@ -99,6 +100,7 @@ export default function StockAnalysisPage() {
   const [selectedNewsId, setSelectedNewsId] = useState<number | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [newsDisplayCount, setNewsDisplayCount] = useState(30) // 默认显示30条
+  const [debateMode, setDebateMode] = useState<string>('parallel') // 辩论模式
   const stockCode = code?.toUpperCase() || 'SH600519'
   const pureCode = extractCode(stockCode)
 
@@ -856,40 +858,51 @@ export default function StockAnalysisPage() {
           {/* 触发辩论按钮 */}
           <Card className="bg-gradient-to-r from-emerald-50 to-rose-50 border-none">
             <CardContent className="py-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="flex -space-x-2">
-                    <div className="w-12 h-12 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-lg">
-                      <ThumbsUp className="w-6 h-6" />
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="flex -space-x-2">
+                      <div className="w-12 h-12 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-lg">
+                        <ThumbsUp className="w-6 h-6" />
+                      </div>
+                      <div className="w-12 h-12 rounded-full bg-rose-500 flex items-center justify-center text-white shadow-lg">
+                        <ThumbsDown className="w-6 h-6" />
+                      </div>
                     </div>
-                    <div className="w-12 h-12 rounded-full bg-rose-500 flex items-center justify-center text-white shadow-lg">
-                      <ThumbsDown className="w-6 h-6" />
+                    <div>
+                      <h3 className="font-semibold text-gray-900">Bull vs Bear 智能体辩论</h3>
+                      <p className="text-sm text-gray-500">
+                        看多研究员 vs 看空研究员，投资经理综合裁决
+                      </p>
                     </div>
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-gray-900">Bull vs Bear 智能体辩论</h3>
-                    <p className="text-sm text-gray-500">
-                      看多研究员 vs 看空研究员，投资经理综合裁决
-                    </p>
-                  </div>
+                  <Button
+                    onClick={handleStartDebate}
+                    disabled={debateMutation.isPending}
+                    className="bg-gradient-to-r from-emerald-500 to-rose-500 hover:from-emerald-600 hover:to-rose-600"
+                  >
+                    {debateMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        辩论中...
+                      </>
+                    ) : (
+                      <>
+                        <Swords className="w-4 h-4 mr-2" />
+                        开始辩论
+                      </>
+                    )}
+                  </Button>
                 </div>
-                <Button
-                  onClick={handleStartDebate}
-                  disabled={debateMutation.isPending}
-                  className="bg-gradient-to-r from-emerald-500 to-rose-500 hover:from-emerald-600 hover:to-rose-600"
-                >
-                  {debateMutation.isPending ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      辩论中...
-                    </>
-                  ) : (
-                    <>
-                      <Swords className="w-4 h-4 mr-2" />
-                      开始辩论
-                    </>
-                  )}
-                </Button>
+                {/* 辩论模式选择器 */}
+                <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
+                  <span className="text-sm text-gray-500">分析模式:</span>
+                  <DebateModeSelector
+                    value={debateMode}
+                    onChange={setDebateMode}
+                    disabled={debateMutation.isPending}
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>

@@ -1,0 +1,153 @@
+# 多智能体协作模式配置
+# 支持多种辩论/分析模式，可通过前端或API选择
+
+# 默认模式
+default_mode: parallel
+
+modes:
+  # ============ 并行分析模式（当前默认） ============
+  parallel:
+    name: "并行分析模式"
+    description: "Bull/Bear并行分析，投资经理汇总决策"
+    icon: "⚡"
+    
+    # 参与的智能体
+    agents:
+      - name: BullResearcher
+        role: "看多研究员"
+        description: "从积极角度分析股票，发现投资机会"
+      - name: BearResearcher
+        role: "看空研究员"
+        description: "从风险角度分析股票，识别潜在问题"
+      - name: InvestmentManager
+        role: "投资经理"
+        description: "综合双方观点，做出最终投资决策"
+    
+    # 执行流程
+    flow:
+      type: parallel_then_summarize
+      steps:
+        - name: data_preparation
+          description: "准备新闻和财务数据"
+          parallel: false
+        - name: researcher_analysis
+          description: "Bull/Bear并行分析"
+          parallel: true
+          agents: [BullResearcher, BearResearcher]
+        - name: manager_decision
+          description: "投资经理综合决策"
+          parallel: false
+          agents: [InvestmentManager]
+    
+    # 规则配置
+    rules:
+      max_time: 300          # 最长执行时间（秒）
+      require_news: true     # 是否需要新闻数据
+      require_financial: true # 是否需要财务数据
+      min_news_count: 1      # 最少新闻数量
+
+  # ============ 实时辩论模式 ============
+  realtime_debate:
+    name: "实时辩论模式"
+    description: "四人实时对话，投资经理主持，多空双方交替发言"
+    icon: "🎭"
+    
+    # 参与的智能体
+    agents:
+      - name: DataCollector
+        role: "数据专员"
+        description: "搜集和整理相关数据资料"
+      - name: BullResearcher
+        role: "多方辩手"
+        description: "支持买入，提出看多论点"
+      - name: BearResearcher
+        role: "空方辩手"
+        description: "建议卖出，提出看空论点"
+      - name: InvestmentManager
+        role: "投资经理（主持人）"
+        description: "主持辩论，随时提问，最终裁决"
+    
+    # 执行流程
+    flow:
+      type: orchestrated_debate
+      steps:
+        - name: opening
+          description: "投资经理开场，下发分析任务"
+          agents: [InvestmentManager]
+        - name: data_collection
+          description: "数据专员搜集资料"
+          agents: [DataCollector]
+        - name: debate_rounds
+          description: "多空双方辩论"
+          type: alternating
+          agents: [BullResearcher, BearResearcher]
+          max_rounds: 5
+        - name: closing
+          description: "投资经理总结决策"
+          agents: [InvestmentManager]
+    
+    # 规则配置
+    rules:
+      max_rounds: 5            # 最大辩论回合数
+      max_time: 600            # 最长执行时间（秒）
+      round_time_limit: 60     # 每回合时间限制（秒）
+      manager_can_interrupt: true  # 投资经理是否可以打断
+      require_data_collection: true  # 是否需要先搜集数据
+      early_decision: true     # 是否允许提前做决策
+      
+    # 辩论规则
+    debate_rules:
+      opening_statement: true   # 是否需要开场陈述
+      rebuttal_required: true   # 是否必须反驳对方
+      evidence_required: true   # 是否需要提供证据
+      interrupt_cooldown: 30    # 打断冷却时间（秒）
+
+  # ============ 快速分析模式 ============
+  quick_analysis:
+    name: "快速分析模式"
+    description: "单一分析师快速给出建议，适合时间紧迫场景"
+    icon: "🚀"
+    
+    agents:
+      - name: QuickAnalyst
+        role: "快速分析师"
+        description: "综合多角度快速给出投资建议"
+    
+    flow:
+      type: single_agent
+      steps:
+        - name: quick_analysis
+          description: "快速综合分析"
+          agents: [QuickAnalyst]
+    
+    rules:
+      max_time: 60
+      require_news: false
+      require_financial: true
+
+# ============ 全局配置 ============
+global:
+  # LLM配置
+  llm:
+    default_provider: bailian
+    default_model: qwen-plus
+    temperature: 0.7
+    max_tokens: 4096
+  
+  # 数据源配置
+  data_sources:
+    news:
+      - type: database
+        priority: 1
+      - type: bochaai
+        priority: 2
+    financial:
+      - type: akshare
+        priority: 1
+  
+  # 输出配置
+  output:
+    format: markdown
+    include_trajectory: true
+    include_timestamps: true
+
