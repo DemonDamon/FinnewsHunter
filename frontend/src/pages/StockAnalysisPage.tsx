@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { stockApi, agentApi, SSEDebateEvent } from '@/lib/api-client'
 import { formatRelativeTime } from '@/lib/utils'
 import NewsDetailDrawer from '@/components/NewsDetailDrawer'
+import DebateChatRoom, { ChatMessage, ChatRole } from '@/components/DebateChatRoom'
 import {
   TrendingUp,
   TrendingDown,
@@ -113,6 +114,8 @@ export default function StockAnalysisPage() {
   }>({ bull: '', bear: '', manager: '', quick: '' })
   const [activeAgent, setActiveAgent] = useState<string | null>(null)
   const [currentRound, setCurrentRound] = useState<{ round: number; maxRounds: number } | null>(null)
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const currentMessageIdRef = useRef<string | null>(null)
   const cancelStreamRef = useRef<(() => void) | null>(null)
   const stockCode = code?.toUpperCase() || 'SH600519'
   const pureCode = extractCode(stockCode)
@@ -236,6 +239,18 @@ export default function StockAnalysisPage() {
     },
   })
 
+  // Agent 名称到聊天角色的映射
+  const agentToRole = useCallback((agent: string): ChatRole => {
+    switch (agent) {
+      case 'BullResearcher': return 'bull'
+      case 'BearResearcher': return 'bear'
+      case 'InvestmentManager': return 'manager'
+      case 'DataCollector': return 'data_collector'
+      case 'QuickAnalyst': return 'manager' // 快速分析师用经理角色
+      default: return 'system'
+    }
+  }, [])
+
   // 处理 SSE 事件
   const handleSSEEvent = useCallback((event: SSEDebateEvent) => {
     console.log('SSE Event:', event.type, event.data)
@@ -246,25 +261,67 @@ export default function StockAnalysisPage() {
         // 更新轮次信息
         if (event.data.round && event.data.max_rounds) {
           setCurrentRound({ round: event.data.round, maxRounds: event.data.max_rounds })
+          
+          // 实时辩论模式：添加轮次系统消息
+          if (debateMode === 'realtime_debate') {
+            setChatMessages(prev => [...prev, {
+              id: `system-round-${event.data.round}`,
+              role: 'system' as ChatRole,
+              content: `📢 第 ${event.data.round}/${event.data.max_rounds} 轮辩论开始`,
+              timestamp: new Date()
+            }])
+          }
         }
         if (event.data.phase === 'complete') {
           toast.success('辩论分析完成！')
+          // 添加完成消息
+          if (debateMode === 'realtime_debate') {
+            setChatMessages(prev => [...prev, {
+              id: 'system-complete',
+              role: 'system' as ChatRole,
+              content: '✅ 辩论结束，投资经理已做出最终决策',
+              timestamp: new Date()
+            }])
+          }
+        }
+        if (event.data.phase === 'data_collection' && debateMode === 'realtime_debate') {
+          setChatMessages(prev => [...prev, {
+            id: 'system-start',
+            role: 'system' as ChatRole,
+            content: '🎬 辩论开始，数据专员正在准备资料...',
+            timestamp: new Date()
+          }])
         }
         break
         
       case 'agent':
         const { agent, content, is_start, is_end, is_chunk, round } = event.data
+        const chatRole = agentToRole(agent || '')
         
         if (is_start) {
           setActiveAgent(agent || null)
-          // 新一轮开始时，添加轮次标记
-          if (round && debateMode === 'realtime_debate') {
+          
+          // 实时辩论模式：创建新消息
+          if (debateMode === 'realtime_debate') {
+            const newMsgId = `msg-${Date.now()}-${agent}`
+            currentMessageIdRef.current = newMsgId
+            setChatMessages(prev => [...prev, {
+              id: newMsgId,
+              role: chatRole,
+              content: '',
+              timestamp: new Date(),
+              round: round,
+              isStreaming: true
+            }])
+          }
+          
+          // 旧逻辑：分栏模式的轮次标记
+          if (round && debateMode !== 'realtime_debate') {
             setStreamingContent(prev => {
               const key = agent === 'BullResearcher' ? 'bull' 
                         : agent === 'BearResearcher' ? 'bear'
                         : null
               if (key && round > 1) {
-                // 添加分隔线
                 return { ...prev, [key]: prev[key as keyof typeof prev] + `\n\n---\n**【第${round}轮】**\n` }
               }
               return prev
@@ -272,8 +329,27 @@ export default function StockAnalysisPage() {
           }
         } else if (is_end) {
           setActiveAgent(null)
+          
+          // 实时辩论模式：标记消息完成
+          if (debateMode === 'realtime_debate' && currentMessageIdRef.current) {
+            setChatMessages(prev => prev.map(msg => 
+              msg.id === currentMessageIdRef.current 
+                ? { ...msg, isStreaming: false }
+                : msg
+            ))
+            currentMessageIdRef.current = null
+          }
         } else if (is_chunk && content) {
-          // 追加内容
+          // 实时辩论模式：追加到当前消息
+          if (debateMode === 'realtime_debate' && currentMessageIdRef.current) {
+            setChatMessages(prev => prev.map(msg => 
+              msg.id === currentMessageIdRef.current 
+                ? { ...msg, content: msg.content + content }
+                : msg
+            ))
+          }
+          
+          // 旧逻辑：分栏模式
           setStreamingContent(prev => {
             const key = agent === 'BullResearcher' ? 'bull' 
                       : agent === 'BearResearcher' ? 'bear'
@@ -285,6 +361,16 @@ export default function StockAnalysisPage() {
             }
             return prev
           })
+        }
+        
+        // 处理 DataCollector 的非流式消息
+        if (agent === 'DataCollector' && content && !is_chunk && debateMode === 'realtime_debate') {
+          setChatMessages(prev => [...prev, {
+            id: `data-collector-${Date.now()}`,
+            role: 'data_collector' as ChatRole,
+            content: content,
+            timestamp: new Date()
+          }])
         }
         break
         
@@ -310,9 +396,32 @@ export default function StockAnalysisPage() {
         toast.error(`辩论失败: ${event.data.message}`)
         setIsStreaming(false)
         setCurrentRound(null)
+        // 添加错误消息
+        if (debateMode === 'realtime_debate') {
+          setChatMessages(prev => [...prev, {
+            id: 'system-error',
+            role: 'system' as ChatRole,
+            content: `❌ 发生错误: ${event.data.message}`,
+            timestamp: new Date()
+          }])
+        }
         break
     }
-  }, [stockCode, stockName, debateMode])
+  }, [stockCode, stockName, debateMode, agentToRole])
+
+  // 处理用户发送消息
+  const handleUserSendMessage = useCallback((content: string) => {
+    // 添加用户消息到聊天
+    setChatMessages(prev => [...prev, {
+      id: `user-${Date.now()}`,
+      role: 'user' as ChatRole,
+      content: content,
+      timestamp: new Date()
+    }])
+    
+    // TODO: 可以将用户消息发送给后端进行响应
+    // 目前只是展示消息
+  }, [])
 
   const handleStartDebate = useCallback(() => {
     // 重置状态
@@ -321,6 +430,8 @@ export default function StockAnalysisPage() {
     setStreamPhase('')
     setActiveAgent(null)
     setCurrentRound(null)
+    setChatMessages([]) // 重置聊天消息
+    currentMessageIdRef.current = null
     setIsStreaming(true)
     
     // 取消之前的流
@@ -1041,43 +1152,23 @@ export default function StockAnalysisPage() {
           {/* 流式辩论进行中 - 实时显示内容 */}
           {isStreaming && (
             <>
-              {/* 阶段指示器 */}
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
-                  <span className="text-sm text-blue-600 font-medium">
-                    {streamPhase === 'start' && '正在初始化...'}
-                    {streamPhase === 'data_collection' && '📊 数据专员正在搜集资料...'}
-                    {streamPhase === 'analyzing' && '🚀 快速分析中...'}
-                    {streamPhase === 'parallel_analysis' && '⚡ Bull/Bear 并行分析中...'}
-                    {streamPhase === 'debate' && '🎭 多空辩论进行中...'}
-                    {streamPhase === 'decision' && '⚖️ 投资经理正在做最终决策...'}
-                    {streamPhase === 'complete' && '✅ 分析完成'}
-                  </span>
-                </div>
-                {/* 轮次指示器 - 仅实时辩论模式 */}
-                {currentRound && debateMode === 'realtime_debate' && (
+              {/* 阶段指示器 - 仅非聊天室模式显示 */}
+              {debateMode !== 'realtime_debate' && (
+                <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <div className="flex gap-1">
-                      {Array.from({ length: currentRound.maxRounds }, (_, i) => (
-                        <div
-                          key={i}
-                          className={`w-3 h-3 rounded-full transition-colors ${
-                            i < currentRound.round
-                              ? 'bg-purple-500'
-                              : i === currentRound.round - 1
-                              ? 'bg-purple-500 animate-pulse'
-                              : 'bg-gray-200'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                    <span className="text-sm text-purple-600 font-medium">
-                      第 {currentRound.round}/{currentRound.maxRounds} 轮
+                    <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                    <span className="text-sm text-blue-600 font-medium">
+                      {streamPhase === 'start' && '正在初始化...'}
+                      {streamPhase === 'data_collection' && '📊 数据专员正在搜集资料...'}
+                      {streamPhase === 'analyzing' && '🚀 快速分析中...'}
+                      {streamPhase === 'parallel_analysis' && '⚡ Bull/Bear 并行分析中...'}
+                      {streamPhase === 'debate' && '🎭 多空辩论进行中...'}
+                      {streamPhase === 'decision' && '⚖️ 投资经理正在做最终决策...'}
+                      {streamPhase === 'complete' && '✅ 分析完成'}
                     </span>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* 快速分析模式 - 流式显示 */}
               {debateMode === 'quick_analysis' && (
@@ -1113,8 +1204,20 @@ export default function StockAnalysisPage() {
                 </Card>
               )}
 
-              {/* 并行/实时辩论模式 - 流式显示 */}
-              {(debateMode === 'parallel' || debateMode === 'realtime_debate') && (
+              {/* 实时辩论模式 - 聊天室界面 */}
+              {debateMode === 'realtime_debate' && (
+                <DebateChatRoom
+                  messages={chatMessages}
+                  onSendMessage={handleUserSendMessage}
+                  isDebating={isStreaming}
+                  currentRound={currentRound}
+                  activeAgent={activeAgent}
+                  stockName={stockName}
+                />
+              )}
+
+              {/* 并行模式 - 分栏显示 */}
+              {debateMode === 'parallel' && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* 看多观点 - 流式 */}
                   <Card className={`bg-white/90 border-l-4 border-l-emerald-500 ${activeAgent === 'BullResearcher' ? 'ring-2 ring-emerald-400' : ''}`}>
@@ -1251,21 +1354,49 @@ export default function StockAnalysisPage() {
                 </Card>
               )}
 
-              {/* 实时辩论结果 或 并行分析结果 */}
-              {(debateResult.mode === 'realtime_debate' || debateResult.mode === 'parallel' || !debateResult.mode) && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* 辩论模式标识 */}
-                  {debateResult.mode === 'realtime_debate' && (
-                    <div className="lg:col-span-2 mb-2">
-                      <Badge className="bg-purple-500">🎭 实时辩论模式</Badge>
-                      {debateResult.debate_history && (
-                        <span className="ml-2 text-sm text-gray-500">
-                          共 {Math.max(...debateResult.debate_history.map(h => h.round))} 轮辩论
-                        </span>
-                      )}
-                    </div>
+              {/* 实时辩论结果 - 显示聊天室 */}
+              {debateResult.mode === 'realtime_debate' && chatMessages.length > 0 && (
+                <div className="space-y-4">
+                  <DebateChatRoom
+                    messages={chatMessages}
+                    onSendMessage={handleUserSendMessage}
+                    isDebating={false}
+                    currentRound={null}
+                    activeAgent={null}
+                    stockName={stockName}
+                  />
+                  {/* 投资经理决策摘要 */}
+                  {debateResult.final_decision && (
+                    <Card className="bg-gradient-to-br from-blue-50 to-purple-50 border-blue-200">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-blue-800">
+                          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                            <Scale className="w-5 h-5 text-blue-600" />
+                          </div>
+                          📊 投资决策摘要
+                          {debateResult.final_decision?.rating && (
+                            <Badge 
+                              className={`ml-2 ${
+                                debateResult.final_decision.rating === '强烈推荐' || debateResult.final_decision.rating === '推荐'
+                                  ? 'bg-emerald-500' 
+                                  : debateResult.final_decision.rating === '中性'
+                                  ? 'bg-amber-500'
+                                  : 'bg-rose-500'
+                              }`}
+                            >
+                              {debateResult.final_decision.rating}
+                            </Badge>
+                          )}
+                        </CardTitle>
+                      </CardHeader>
+                    </Card>
                   )}
-                  
+                </div>
+              )}
+
+              {/* 并行分析结果 */}
+              {(debateResult.mode === 'parallel' || !debateResult.mode) && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* 看多观点 */}
                   <Card className="bg-white/90 border-l-4 border-l-emerald-500">
                     <CardHeader className="pb-3">
