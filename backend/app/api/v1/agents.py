@@ -743,6 +743,150 @@ async def run_stock_debate_stream(
     )
 
 
+# ============ 追问功能 ============
+
+class FollowUpRequest(BaseModel):
+    """追问请求"""
+    stock_code: str = Field(..., description="股票代码")
+    stock_name: Optional[str] = Field(None, description="股票名称")
+    question: str = Field(..., description="用户问题")
+    target_agent: Optional[str] = Field(None, description="目标角色: bull, bear, manager")
+    context: Optional[str] = Field(None, description="之前的辩论摘要")
+
+
+async def generate_followup_stream(
+    stock_code: str,
+    stock_name: str,
+    question: str,
+    target_agent: str,
+    context: str,
+    llm_provider
+) -> AsyncGenerator[str, None]:
+    """
+    生成追问回复的 SSE 流
+    """
+    def sse_event(event_type: str, data: Dict) -> str:
+        return f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+    
+    # 确定回复角色
+    agent_config = {
+        'bull': {
+            'agent': 'BullResearcher',
+            'role': '多方辩手',
+            'system': '你是一位看多研究员，擅长从积极角度分析股票。回答用户问题时保持乐观但理性的态度。'
+        },
+        'bear': {
+            'agent': 'BearResearcher', 
+            'role': '空方辩手',
+            'system': '你是一位看空研究员，擅长发现风险。回答用户问题时保持谨慎，重点指出潜在风险。'
+        },
+        'manager': {
+            'agent': 'InvestmentManager',
+            'role': '投资经理',
+            'system': '你是一位经验丰富的投资经理，擅长综合分析和给出投资建议。回答用户问题时客观、专业。'
+        }
+    }
+    
+    config = agent_config.get(target_agent, agent_config['manager'])
+    
+    try:
+        yield sse_event("agent", {
+            "agent": config['agent'],
+            "role": config['role'],
+            "content": "",
+            "is_start": True
+        })
+        
+        prompt = f"""你正在参与关于 {stock_name}({stock_code}) 的投资讨论。
+
+之前的讨论背景：
+{context[:1500] if context else '暂无'}
+
+用户现在问你：
+"{question}"
+
+请以{config['role']}的身份回答（约150-200字）："""
+
+        messages = [
+            {"role": "system", "content": config['system']},
+            {"role": "user", "content": prompt}
+        ]
+        
+        full_response = ""
+        for chunk in llm_provider.stream(messages):
+            full_response += chunk
+            yield sse_event("agent", {
+                "agent": config['agent'],
+                "role": config['role'],
+                "content": chunk,
+                "is_chunk": True
+            })
+            await asyncio.sleep(0)
+        
+        yield sse_event("agent", {
+            "agent": config['agent'],
+            "role": config['role'],
+            "content": "",
+            "is_end": True
+        })
+        
+        yield sse_event("complete", {"success": True})
+        
+    except Exception as e:
+        logger.error(f"Followup error: {e}", exc_info=True)
+        yield sse_event("error", {"message": str(e)})
+
+
+@router.post("/debate/followup")
+async def debate_followup(request: FollowUpRequest):
+    """
+    辩论追问（SSE）
+    
+    用户可以在辩论结束后继续提问
+    - 默认由投资经理回答
+    - 如果问题中包含 @多方 或 @bull，由多方辩手回答
+    - 如果问题中包含 @空方 或 @bear，由空方辩手回答
+    """
+    logger.info(f"🎯 收到追问请求: {request.question[:50]}...")
+    
+    # 解析目标角色
+    question = request.question
+    target = request.target_agent or 'manager'
+    
+    # 从问题中解析 @ 提及
+    if '@多方' in question or '@bull' in question.lower() or '@看多' in question:
+        target = 'bull'
+        question = question.replace('@多方', '').replace('@bull', '').replace('@Bull', '').replace('@看多', '').strip()
+    elif '@空方' in question or '@bear' in question.lower() or '@看空' in question:
+        target = 'bear'
+        question = question.replace('@空方', '').replace('@bear', '').replace('@Bear', '').replace('@看空', '').strip()
+    elif '@经理' in question or '@manager' in question.lower() or '@投资经理' in question:
+        target = 'manager'
+        question = question.replace('@经理', '').replace('@manager', '').replace('@Manager', '').replace('@投资经理', '').strip()
+    
+    # 创建 LLM provider
+    llm_provider = get_llm_provider()
+    
+    stock_name = request.stock_name or request.stock_code
+    
+    return StreamingResponse(
+        generate_followup_stream(
+            request.stock_code,
+            stock_name,
+            question,
+            target,
+            request.context or "",
+            llm_provider
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+
 @router.get("/debate/{debate_id}", response_model=DebateResponse)
 async def get_debate_result(debate_id: str):
     """

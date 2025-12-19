@@ -409,6 +409,62 @@ export default function StockAnalysisPage() {
     }
   }, [stockCode, stockName, debateMode, agentToRole])
 
+  // 处理追问 SSE 事件
+  const handleFollowUpEvent = useCallback((event: SSEDebateEvent) => {
+    console.log('FollowUp Event:', event.type, event.data)
+    
+    switch (event.type) {
+      case 'agent':
+        const { agent, content, is_start, is_end, is_chunk } = event.data
+        const chatRole = agentToRole(agent || '')
+        
+        if (is_start) {
+          setActiveAgent(agent || null)
+          // 创建新消息
+          const newMsgId = `followup-${Date.now()}-${agent}`
+          currentMessageIdRef.current = newMsgId
+          setChatMessages(prev => [...prev, {
+            id: newMsgId,
+            role: chatRole,
+            content: '',
+            timestamp: new Date(),
+            isStreaming: true
+          }])
+        } else if (is_end) {
+          setActiveAgent(null)
+          // 标记消息完成
+          if (currentMessageIdRef.current) {
+            setChatMessages(prev => prev.map(msg => 
+              msg.id === currentMessageIdRef.current 
+                ? { ...msg, isStreaming: false }
+                : msg
+            ))
+            currentMessageIdRef.current = null
+          }
+          setIsStreaming(false)
+        } else if (is_chunk && content) {
+          // 追加到当前消息
+          if (currentMessageIdRef.current) {
+            setChatMessages(prev => prev.map(msg => 
+              msg.id === currentMessageIdRef.current 
+                ? { ...msg, content: msg.content + content }
+                : msg
+            ))
+          }
+        }
+        break
+        
+      case 'complete':
+        setIsStreaming(false)
+        break
+        
+      case 'error':
+        toast.error(`回复失败: ${event.data.message}`)
+        setIsStreaming(false)
+        break
+    }
+  }, [agentToRole])
+
   // 处理用户发送消息
   const handleUserSendMessage = useCallback((content: string) => {
     // 添加用户消息到聊天
@@ -419,9 +475,46 @@ export default function StockAnalysisPage() {
       timestamp: new Date()
     }])
     
-    // TODO: 可以将用户消息发送给后端进行响应
-    // 目前只是展示消息
-  }, [])
+    // 角色名称映射
+    const roleNames: Record<string, string> = {
+      bull: '多方辩手',
+      bear: '空方辩手', 
+      manager: '投资经理',
+      data_collector: '数据专员',
+      user: '用户',
+      system: '系统'
+    }
+    
+    // 构建上下文（从之前的聊天记录中提取）
+    const contextSummary = chatMessages
+      .filter(m => m.role !== 'system' && m.role !== 'user')
+      .slice(-6) // 最近6条消息
+      .map(m => `【${roleNames[m.role] || m.role}】${m.content.slice(0, 200)}`)
+      .join('\n')
+    
+    // 开始流式请求
+    setIsStreaming(true)
+    
+    const cancel = agentApi.followUp(
+      {
+        stock_code: stockCode,
+        stock_name: stockName,
+        question: content,
+        context: contextSummary
+      },
+      handleFollowUpEvent,
+      (error) => {
+        toast.error(`回复失败: ${error.message}`)
+        setIsStreaming(false)
+      },
+      () => {
+        setIsStreaming(false)
+      }
+    )
+    
+    // 保存取消函数
+    cancelStreamRef.current = cancel
+  }, [stockCode, stockName, chatMessages, handleFollowUpEvent])
 
   const handleStartDebate = useCallback(() => {
     // 重置状态
