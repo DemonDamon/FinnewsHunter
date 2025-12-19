@@ -257,14 +257,28 @@ class LLMService:
 _llm_service: Optional[LLMService] = None
 
 
-def get_llm_provider() -> Union[LiteLLMProvider, BailianProvider]:
+def get_llm_provider(
+    provider: Optional[str] = None,
+    model: Optional[str] = None
+) -> Union[LiteLLMProvider, BailianProvider]:
     """
     获取 LLM 提供者实例（用于 AgenticX Agent）
+    
+    Args:
+        provider: 可选的提供商名称（如 openai, bailian, ollama）
+        model: 可选的模型名称
     
     Returns:
         LiteLLMProvider 或 BailianProvider 实例
     """
     global _llm_service
+    
+    # 如果指定了 provider 或 model，创建新的实例
+    if provider or model:
+        custom_service = LLMService(provider=provider, model=model)
+        return custom_service.llm_provider
+    
+    # 否则使用全局实例
     if _llm_service is None:
         _llm_service = LLMService()
     return _llm_service.llm_provider
