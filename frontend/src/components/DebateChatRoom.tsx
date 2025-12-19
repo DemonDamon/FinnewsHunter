@@ -1,8 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Send, User, TrendingUp, TrendingDown, Briefcase, Loader2, Bot } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/utils'
@@ -184,10 +182,7 @@ const DebateChatRoom: React.FC<DebateChatRoomProps> = ({
   // 自动滚动到底部
   useEffect(() => {
     if (scrollRef.current) {
-      const scrollElement = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]')
-      if (scrollElement) {
-        scrollElement.scrollTop = scrollElement.scrollHeight
-      }
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [messages])
   
@@ -277,7 +272,10 @@ const DebateChatRoom: React.FC<DebateChatRoomProps> = ({
       </div>
       
       {/* 消息区域 */}
-      <ScrollArea className="flex-1 px-4" ref={scrollRef}>
+      <div 
+        ref={scrollRef}
+        className="flex-1 px-4 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent"
+      >
         <div className="py-4">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 py-20">
@@ -304,7 +302,7 @@ const DebateChatRoom: React.FC<DebateChatRoomProps> = ({
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
       
       {/* 输入区域 */}
       <div className="px-4 py-3 bg-white border-t">
@@ -312,14 +310,15 @@ const DebateChatRoom: React.FC<DebateChatRoomProps> = ({
           <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white flex-shrink-0">
             <User className="w-4 h-4" />
           </div>
-          <Input
+          <input
             ref={inputRef}
+            type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={isDebating ? "辩论进行中，您可以提问或评论..." : "输入消息参与辩论..."}
             disabled={disabled}
-            className="flex-1 rounded-full bg-gray-50 border-gray-200 focus:border-blue-300"
+            className="flex-1 px-4 py-2 rounded-full bg-gray-50 border border-gray-200 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           />
           <Button
             onClick={handleSend}
