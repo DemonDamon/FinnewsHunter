@@ -894,8 +894,83 @@ export default function StockAnalysisPage() {
             </CardContent>
           </Card>
 
+          {/* 辩论进行中的加载状态 */}
+          {debateMutation.isPending && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* 看多分析加载中 */}
+              <Card className="bg-white/90 border-l-4 border-l-emerald-500">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-emerald-700">
+                    <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
+                      <ThumbsUp className="w-4 h-4 text-emerald-600" />
+                    </div>
+                    看多观点
+                  </CardTitle>
+                  <CardDescription>
+                    <Bot className="w-3 h-3 inline mr-1" />
+                    BullResearcher · 看多研究员
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                    <Loader2 className="w-8 h-8 animate-spin text-emerald-500 mb-4" />
+                    <p className="text-sm">分析生成中...</p>
+                    <p className="text-xs text-gray-400 mt-1">正在从积极角度分析股票</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* 看空分析加载中 */}
+              <Card className="bg-white/90 border-l-4 border-l-rose-500">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-rose-700">
+                    <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center">
+                      <ThumbsDown className="w-4 h-4 text-rose-600" />
+                    </div>
+                    看空观点
+                  </CardTitle>
+                  <CardDescription>
+                    <Bot className="w-3 h-3 inline mr-1" />
+                    BearResearcher · 看空研究员
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                    <Loader2 className="w-8 h-8 animate-spin text-rose-500 mb-4" />
+                    <p className="text-sm">分析生成中...</p>
+                    <p className="text-xs text-gray-400 mt-1">正在从风险角度分析股票</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* 投资经理决策加载中 */}
+              <Card className="lg:col-span-2 bg-gradient-to-r from-blue-50 to-indigo-50 border-none">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-indigo-700">
+                    <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
+                      <Scale className="w-5 h-5 text-indigo-600" />
+                    </div>
+                    投资经理决策
+                  </CardTitle>
+                  <CardDescription>
+                    <Bot className="w-3 h-3 inline mr-1" />
+                    InvestmentManager · 投资经理
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-col items-center justify-center py-8 text-gray-500">
+                    <Loader2 className="w-10 h-10 animate-spin text-indigo-500 mb-4" />
+                    <p className="text-sm font-medium">决策生成中...</p>
+                    <p className="text-xs text-gray-400 mt-1">正在综合看多/看空观点，给出最终投资建议</p>
+                    <p className="text-xs text-gray-400 mt-2">⏱️ 预计需要 30-60 秒，请耐心等待</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
           {/* 辩论结果 */}
-          {debateResult && debateResult.success && (
+          {!debateMutation.isPending && debateResult && debateResult.success && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* 看多观点 */}
               <Card className="bg-white/90 border-l-4 border-l-emerald-500">
