@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 # 配置目录
@@ -103,12 +103,11 @@ class GlobalConfig(BaseModel):
 
 class DebateModesConfig(BaseModel):
     """辩论模式总配置"""
+    model_config = ConfigDict(populate_by_name=True)
+    
     default_mode: str = "parallel"
     modes: Dict[str, DebateModeConfig]
     global_config: GlobalConfig = Field(default_factory=GlobalConfig, alias="global")
-    
-    class Config:
-        populate_by_name = True
 
 
 def load_debate_modes_config() -> DebateModesConfig:

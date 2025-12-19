@@ -13,7 +13,7 @@ from datetime import datetime
 from enum import Enum
 
 from ..config import get_mode_config, get_default_mode, DebateModeConfig
-from ..llm.provider import get_llm_provider
+from ..services.llm_service import get_llm_provider
 
 logger = logging.getLogger(__name__)
 

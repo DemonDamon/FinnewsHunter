@@ -11,7 +11,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 from agenticx.core.agent import Agent
-from ..llm.provider import get_llm_provider
+from ..services.llm_service import get_llm_provider
 
 logger = logging.getLogger(__name__)
 
