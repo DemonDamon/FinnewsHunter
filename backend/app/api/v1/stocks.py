@@ -411,6 +411,64 @@ async def get_stock_news(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/{stock_code}/news")
+async def delete_stock_news(
+    stock_code: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    清除股票的所有关联新闻
+    
+    - **stock_code**: 股票代码
+    """
+    # 标准化股票代码
+    code = stock_code.upper()
+    if code.startswith("SH") or code.startswith("SZ"):
+        short_code = code[2:]
+    else:
+        short_code = code
+        code = f"SH{code}" if code.startswith("6") else f"SZ{code}"
+    
+    try:
+        # 构建查询 - 使用 PostgreSQL 原生 ARRAY 查询语法
+        stock_codes_filter = text(
+            "stock_codes @> ARRAY[:code1]::varchar[] OR stock_codes @> ARRAY[:code2]::varchar[]"
+        ).bindparams(code1=short_code, code2=code)
+        
+        # 先查询要删除的新闻ID列表（用于同时删除关联的分析记录）
+        news_query = select(News.id).where(stock_codes_filter)
+        news_result = await db.execute(news_query)
+        news_ids = [row[0] for row in news_result.all()]
+        
+        deleted_count = len(news_ids)
+        
+        if deleted_count > 0:
+            # 删除关联的分析记录
+            analysis_delete = await db.execute(
+                text("DELETE FROM analyses WHERE news_id = ANY(:news_ids)").bindparams(news_ids=news_ids)
+            )
+            logger.info(f"Deleted {analysis_delete.rowcount} analysis records for stock {stock_code}")
+            
+            # 删除新闻记录
+            news_delete = await db.execute(
+                text("DELETE FROM news WHERE id = ANY(:news_ids)").bindparams(news_ids=news_ids)
+            )
+            await db.commit()
+            
+            logger.info(f"Deleted {deleted_count} news for stock {stock_code}")
+        
+        return {
+            "success": True,
+            "message": f"已清除 {deleted_count} 条新闻",
+            "deleted_count": deleted_count
+        }
+    
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Failed to delete news for stock {stock_code}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{stock_code}/sentiment-trend", response_model=List[SentimentTrendPoint])
 async def get_sentiment_trend(
     stock_code: str,
@@ -657,14 +715,34 @@ async def start_targeted_crawl(
         
         logger.info(f"触发定向爬取任务: {request.stock_name}({code}), 时间范围: {request.days}天")
         
-        # 触发 Celery 任务
-        celery_task = targeted_stock_crawl_task.apply_async(
-            args=(code, request.stock_name, request.days)
+        # 先在数据库中创建任务记录（PENDING状态），这样前端轮询时能立即看到
+        task_record = CrawlTask(
+            mode=CrawlMode.TARGETED,
+            status=TaskStatus.PENDING,
+            source="targeted",
+            config={
+                "stock_code": code,
+                "stock_name": request.stock_name,
+                "days": request.days,
+            },
         )
+        db.add(task_record)
+        await db.commit()
+        await db.refresh(task_record)
+        
+        # 触发 Celery 任务，传入任务记录ID
+        celery_task = targeted_stock_crawl_task.apply_async(
+            args=(code, request.stock_name, request.days, task_record.id)
+        )
+        
+        # 更新 celery_task_id
+        task_record.celery_task_id = celery_task.id
+        await db.commit()
         
         return TargetedCrawlResponse(
             success=True,
             message=f"定向爬取任务已启动: {request.stock_name}({code})",
+            task_id=task_record.id,
             celery_task_id=celery_task.id
         )
     

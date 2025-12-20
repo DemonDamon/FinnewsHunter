@@ -159,7 +159,7 @@ class BochaAISearchTool:
         stock_code: Optional[str] = None,
         days: int = 30,
         count: int = 100,
-        max_age_days: int = 90,
+        max_age_days: int = 365,
     ) -> List[SearchResult]:
         """
         搜索股票相关新闻
@@ -169,25 +169,29 @@ class BochaAISearchTool:
             stock_code: 股票代码（可选，如"600519"）
             days: 搜索时间范围（天），用于API freshness参数
             count: 返回结果数量（支持超过50条，会自动分页请求）
-            max_age_days: 最大新闻年龄（天），默认90天（3个月），超过此时间的新闻将被过滤
+            max_age_days: 最大新闻年龄（天），默认365天（1年），超过此时间的新闻将被过滤
             
         Returns:
-            搜索结果列表（按时间从新到旧排序，只返回最近3个月内的新闻）
+            搜索结果列表（按时间从新到旧排序，只返回最近1年内的新闻）
         """
-        # 构建搜索查询
-        query_parts = [stock_name, "股票", "新闻"]
+        # 构建搜索查询 - 使用引号提高精确度
+        # 优先使用股票全名（带引号），提高搜索精确度
+        query_parts = [f'"{stock_name}"']  # 用引号包裹股票名称，提高精确匹配
+        
         if stock_code:
             # 提取纯数字代码
             pure_code = stock_code.upper()
             if pure_code.startswith("SH") or pure_code.startswith("SZ"):
                 pure_code = pure_code[2:]
-            query_parts.append(pure_code)
+            # 股票代码也用引号包裹
+            query_parts.append(f'"{pure_code}"')
         
-        query = " ".join(query_parts)
+        # 组合查询：使用 OR 连接，匹配股票名称或代码即可
+        query = " OR ".join(query_parts)
         
-        # 确定时间范围 - 使用 "month" 让 API 优先返回最近的结果
-        # 然后在本地进行更精确的时间过滤（默认3个月）
-        freshness = "month"
+        # 确定时间范围 - 使用 "year" 让 API 返回一年内的结果
+        # 然后在本地进行更精确的时间过滤（默认1年）
+        freshness = "year"
         
         # 财经网站列表（用于优先搜索）
         finance_sites = (
@@ -276,7 +280,7 @@ class BochaAISearchTool:
         
         all_results.sort(key=parse_date, reverse=True)
         
-        logger.info(f"BochaAI 搜索股票新闻完成: {stock_name}, 返回 {len(all_results)} 条结果 (共请求{request_count}次, 仅保留最近{max_age_days}天内)")
+        logger.info(f"BochaAI 搜索股票新闻完成: {stock_name}, 返回 {len(all_results)} 条结果 (共请求{request_count}次, 仅保留最近{max_age_days}天即{max_age_days//30}个月内)")
         
         return all_results[:count]  # 确保不超过请求数量
 

@@ -49,7 +49,13 @@ class BullResearcherAgent(Agent):
         """
         news_summary = self._summarize_news(news_list)
         
+        # 获取当前系统时间
+        current_time = datetime.now().strftime("%Y年%m月%d日 %H:%M")
+        
         prompt = f"""你是一位看多研究员，请从积极角度分析以下股票：
+
+【当前时间】
+{current_time}
 
 【股票信息】
 代码：{stock_code}
@@ -184,7 +190,13 @@ class BearResearcherAgent(Agent):
         """
         news_summary = self._summarize_news(news_list)
         
+        # 获取当前系统时间
+        current_time = datetime.now().strftime("%Y年%m月%d日 %H:%M")
+        
         prompt = f"""你是一位看空研究员，请从风险角度分析以下股票：
+
+【当前时间】
+{current_time}
 
 【股票信息】
 代码：{stock_code}
@@ -319,7 +331,13 @@ class InvestmentManagerAgent(Agent):
         """
         综合双方观点，做出投资决策
         """
+        # 获取当前系统时间
+        current_time = datetime.now().strftime("%Y年%m月%d日 %H:%M")
+        
         prompt = f"""你是一位投资经理，请综合以下看多和看空观点，做出投资决策：
+
+【当前时间】
+{current_time}
 
 【股票信息】
 代码：{stock_code}

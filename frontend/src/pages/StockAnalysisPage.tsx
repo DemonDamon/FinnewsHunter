@@ -30,6 +30,10 @@ import {
   CheckCircle2,
   AlertCircle,
   ChevronDown,
+  Copy,
+  FileDown,
+  Settings,
+  Trash2,
 } from 'lucide-react'
 import {
   XAxis,
@@ -100,8 +104,10 @@ export default function StockAnalysisPage() {
   const [crawlTask, setCrawlTask] = useState<CrawlTaskState>({ status: 'idle' })
   const [selectedNewsId, setSelectedNewsId] = useState<number | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [newsDisplayCount, setNewsDisplayCount] = useState(30) // 默认显示30条
+  const [newsDisplayCount, setNewsDisplayCount] = useState(12) // 默认显示12条
+  const [newsExpanded, setNewsExpanded] = useState(true) // 新闻是否展开
   const [debateMode, setDebateMode] = useState<string>('parallel') // 辩论模式
+  const [showModelSelector, setShowModelSelector] = useState(false) // 模型选择器显示状态
   
   // 流式辩论状态
   const [isStreaming, setIsStreaming] = useState(false)
@@ -567,7 +573,7 @@ export default function StockAnalysisPage() {
     queryKey: ['stock', 'targeted-crawl-status', stockCode],
     queryFn: () => stockApi.getTargetedCrawlStatus(stockCode),
     enabled: crawlTask.status === 'running' || crawlTask.status === 'pending',
-    refetchInterval: crawlTask.status === 'running' ? 2000 : false, // 运行中时每2秒轮询
+    refetchInterval: (crawlTask.status === 'running' || crawlTask.status === 'pending') ? 2000 : false, // pending/running 时每2秒轮询
     staleTime: 0,
   })
 
@@ -575,6 +581,17 @@ export default function StockAnalysisPage() {
   useEffect(() => {
     // 只在有状态且当前任务正在进行时处理
     if (crawlStatus && (crawlTask.status === 'running' || crawlTask.status === 'pending')) {
+      // 重要：检查 task_id 是否匹配，避免使用旧任务的状态
+      const isMatchingTask = !crawlTask.taskId || !crawlStatus.task_id || crawlTask.taskId === crawlStatus.task_id
+      
+      if (!isMatchingTask) {
+        console.warn('Task ID mismatch, ignoring status update', { 
+          currentTaskId: crawlTask.taskId, 
+          statusTaskId: crawlStatus.task_id 
+        })
+        return
+      }
+      
       if (crawlStatus.status === 'completed') {
         setCrawlTask({ 
           status: 'completed', 
@@ -595,17 +612,17 @@ export default function StockAnalysisPage() {
           error: crawlStatus.error_message || '爬取失败'
         })
         toast.error(`定向爬取失败: ${crawlStatus.error_message || '未知错误'}`)
-      } else if (crawlStatus.status === 'running') {
+      } else if (crawlStatus.status === 'running' || crawlStatus.status === 'pending') {
         // 更新进度和真实的 taskId
         setCrawlTask(prev => ({
           ...prev,
-          status: 'running',
+          status: crawlStatus.status as CrawlTaskStatus,
           taskId: crawlStatus.task_id || prev.taskId,
           progress: crawlStatus.progress || prev.progress
         }))
       }
     }
-  }, [crawlStatus, crawlTask.status, stockCode, queryClient])
+  }, [crawlStatus, crawlTask.status, crawlTask.taskId, stockCode, queryClient])
 
   // 页面加载时检查是否有进行中的任务
   useEffect(() => {
@@ -636,16 +653,15 @@ export default function StockAnalysisPage() {
     mutationFn: () => stockApi.startTargetedCrawl(stockCode, stockName),
     onSuccess: (data) => {
       if (data.success) {
-        // 任务启动成功，设置为 running 状态
-        // task_id 可能为空（因为 Celery 任务是异步创建的），使用临时标记
+        // 任务启动成功，设置为 pending 状态（后端已创建任务记录）
         setCrawlTask({ 
-          status: 'running', 
-          taskId: data.task_id || Date.now(),  // 使用 task_id 或临时 ID
-          progress: { current: 0, total: 100, message: '开始爬取...' }
+          status: 'pending', 
+          taskId: data.task_id!,  // 现在 task_id 一定存在
+          progress: { current: 0, total: 100, message: '任务已创建，等待执行...' }
         })
         toast.success('定向爬取任务已启动')
-        // 延迟开始轮询，等待后端创建任务记录
-        setTimeout(() => refetchCrawlStatus(), 2000)
+        // 立即开始轮询（不需要延迟，因为任务记录已创建）
+        refetchCrawlStatus()
       } else if (data.task_id) {
         // 已有正在进行的任务，恢复到该任务的状态
         setCrawlTask({ 
@@ -671,6 +687,32 @@ export default function StockAnalysisPage() {
     // 重置状态，清除之前的 taskId
     setCrawlTask({ status: 'pending', taskId: undefined })
     targetedCrawlMutation.mutate()
+  }
+
+  // 清除新闻 Mutation
+  const clearNewsMutation = useMutation({
+    mutationFn: () => stockApi.clearStockNews(stockCode),
+    onSuccess: (data) => {
+      if (data.success) {
+        toast.success(`已清除 ${data.deleted_count || 0} 条新闻`)
+        // 强制刷新新闻列表
+        queryClient.resetQueries({ queryKey: ['stock', 'news', stockCode] })
+        queryClient.resetQueries({ queryKey: ['stock', 'overview', stockCode] })
+        queryClient.refetchQueries({ queryKey: ['stock', 'news', stockCode], type: 'all' })
+        queryClient.refetchQueries({ queryKey: ['stock', 'overview', stockCode], type: 'all' })
+      } else {
+        toast.error(`清除失败: ${data.message}`)
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(`清除失败: ${error.message}`)
+    },
+  })
+
+  const handleClearNews = () => {
+    if (window.confirm(`确定要清除「${stockName}」的所有新闻吗？此操作不可恢复！`)) {
+      clearNewsMutation.mutate()
+    }
   }
 
   // 情感趋势指示器
@@ -699,6 +741,29 @@ export default function StockAnalysisPage() {
     if (score < -0.3) return '强烈利空'
     if (score < -0.1) return '利空'
     return '中性'
+  }
+
+  // 复制内容到剪贴板
+  const handleCopyContent = (content: string, label: string) => {
+    navigator.clipboard.writeText(content).then(() => {
+      toast.success(`${label}已复制到剪贴板`)
+    }).catch(() => {
+      toast.error('复制失败')
+    })
+  }
+
+  // 导出内容到本地文件
+  const handleExportToFile = (content: string, filename: string) => {
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    toast.success('文件已导出')
   }
 
   return (
@@ -949,17 +1014,61 @@ export default function StockAnalysisPage() {
       <Card className="bg-white/90">
           <CardHeader>
             <div className="flex items-start justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <Newspaper className="w-5 h-5 text-blue-500" />
-                  关联新闻
-                </CardTitle>
-                <CardDescription className="mt-1.5">
-                  包含 {stockCode} 的相关财经新闻
-                </CardDescription>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Newspaper className="w-5 h-5 text-blue-500" />
+                      关联新闻
+                    </CardTitle>
+                    <CardDescription className="mt-1.5">
+                      包含 {stockCode} 的相关财经新闻 {newsList && `（共${newsList.length}条）`}
+                    </CardDescription>
+                  </div>
+                  {/* 展开/折叠按钮 */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setNewsExpanded(!newsExpanded)
+                      if (newsExpanded) {
+                        // 折叠时重置为12条
+                        setNewsDisplayCount(12)
+                      }
+                    }}
+                    className="gap-2"
+                  >
+                    <ChevronDown className={`w-4 h-4 transition-transform ${newsExpanded ? '' : 'rotate-180'}`} />
+                    {newsExpanded ? '折叠' : '展开'}
+                  </Button>
+                </div>
               </div>
-              {/* 定向爬取按钮 */}
+              {/* 定向爬取按钮组 */}
               <div className="flex items-center gap-2">
+                {/* 一键清除按钮 - 仅在有新闻时显示 */}
+                {hasHistoryNews && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleClearNews}
+                    disabled={clearNewsMutation.isPending || crawlTask.status === 'running' || crawlTask.status === 'pending'}
+                    className="gap-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                    title="清除该股票的所有新闻"
+                  >
+                    {clearNewsMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>清除中...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-4 h-4" />
+                        <span>清除数据</span>
+                      </>
+                    )}
+                  </Button>
+                )}
+                
                 {crawlTask.status === 'completed' && (
                   <span className="flex items-center gap-1 text-xs text-emerald-600">
                     <CheckCircle2 className="w-3.5 h-3.5" />
@@ -1005,9 +1114,10 @@ export default function StockAnalysisPage() {
                 <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
               </div>
             ) : newsList && newsList.length > 0 ? (
-              <div className="space-y-4">
-                {/* 卡片 Grid 布局 */}
-                <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+              newsExpanded ? (
+                <div className="space-y-4">
+                  {/* 卡片 Grid 布局 */}
+                  <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                   {displayedNews.map((news) => (
                     <Card
                       key={news.id}
@@ -1074,27 +1184,32 @@ export default function StockAnalysisPage() {
                   ))}
                 </div>
                 
-                {/* 展示更多按钮 */}
-                {hasMoreNews && (
-                  <div className="text-center pt-4">
-                    <Button
-                      variant="outline"
-                      onClick={() => setNewsDisplayCount(prev => prev + 30)}
-                      className="gap-2 hover:bg-blue-50"
-                    >
-                      <ChevronDown className="w-4 h-4" />
-                      展示更多 ({(newsList?.length || 0) - newsDisplayCount} 条)
-                    </Button>
-                  </div>
-                )}
-                
-                {/* 已显示全部提示 */}
-                {!hasMoreNews && newsList && newsList.length > 30 && (
-                  <div className="text-center pt-4 text-sm text-gray-400">
-                    已显示全部 {newsList.length} 条新闻
-                  </div>
-                )}
-              </div>
+                  {/* 继续扩展按钮 */}
+                  {hasMoreNews && (
+                    <div className="text-center pt-4">
+                      <Button
+                        variant="outline"
+                        onClick={() => setNewsDisplayCount(prev => prev + 12)}
+                        className="gap-2 hover:bg-blue-50"
+                      >
+                        <ChevronDown className="w-4 h-4" />
+                        继续扩展 (还有 {(newsList?.length || 0) - newsDisplayCount} 条)
+                      </Button>
+                    </div>
+                  )}
+                  
+                  {/* 已显示全部提示 */}
+                  {!hasMoreNews && newsList && newsList.length > 12 && (
+                    <div className="text-center pt-4 text-sm text-gray-400">
+                      已显示全部 {newsList.length} 条新闻
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <p className="text-sm">新闻已折叠，点击"展开"查看</p>
+                </div>
+              )
             ) : (
               <div className="text-center py-12 text-gray-500">
                 <Newspaper className="w-12 h-12 mx-auto opacity-50 mb-3" />
@@ -1315,17 +1430,57 @@ export default function StockAnalysisPage() {
                   {/* 看多观点 - 流式 */}
                   <Card className={`bg-white/90 border-l-4 border-l-emerald-500 ${activeAgent === 'BullResearcher' ? 'ring-2 ring-emerald-400' : ''}`}>
                     <CardHeader className="pb-3">
-                      <CardTitle className="flex items-center gap-2 text-emerald-700">
-                        <div className={`w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center ${activeAgent === 'BullResearcher' ? 'animate-pulse' : ''}`}>
-                          <ThumbsUp className="w-4 h-4 text-emerald-600" />
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          <CardTitle className="flex items-center gap-2 text-emerald-700">
+                            <div className={`w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center ${activeAgent === 'BullResearcher' ? 'animate-pulse' : ''}`}>
+                              <ThumbsUp className="w-4 h-4 text-emerald-600" />
+                            </div>
+                            看多观点
+                            {activeAgent === 'BullResearcher' && <span className="text-xs bg-emerald-200 px-2 py-0.5 rounded animate-pulse">输出中...</span>}
+                          </CardTitle>
+                          <CardDescription>
+                            <Bot className="w-3 h-3 inline mr-1" />
+                            BullResearcher · 看多研究员
+                          </CardDescription>
                         </div>
-                        看多观点
-                        {activeAgent === 'BullResearcher' && <span className="text-xs bg-emerald-200 px-2 py-0.5 rounded animate-pulse">输出中...</span>}
-                      </CardTitle>
-                      <CardDescription>
-                        <Bot className="w-3 h-3 inline mr-1" />
-                        BullResearcher · 看多研究员
-                      </CardDescription>
+                        {/* 操作按钮组 */}
+                        {streamingContent.bull && (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleCopyContent(streamingContent.bull, '看多观点')}
+                              className="h-8 px-2"
+                              title="复制"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleExportToFile(
+                                streamingContent.bull, 
+                                `${stockName}_看多观点_${new Date().toISOString().slice(0,10)}.md`
+                              )}
+                              className="h-8 px-2"
+                              title="导出"
+                            >
+                              <FileDown className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleStartDebate}
+                              disabled={isStreaming}
+                              className="h-8 px-2"
+                              title="重新生成"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
                     </CardHeader>
                     <CardContent>
                       {streamingContent.bull ? (
@@ -1347,17 +1502,57 @@ export default function StockAnalysisPage() {
                   {/* 看空观点 - 流式 */}
                   <Card className={`bg-white/90 border-l-4 border-l-rose-500 ${activeAgent === 'BearResearcher' ? 'ring-2 ring-rose-400' : ''}`}>
                     <CardHeader className="pb-3">
-                      <CardTitle className="flex items-center gap-2 text-rose-700">
-                        <div className={`w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center ${activeAgent === 'BearResearcher' ? 'animate-pulse' : ''}`}>
-                          <ThumbsDown className="w-4 h-4 text-rose-600" />
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          <CardTitle className="flex items-center gap-2 text-rose-700">
+                            <div className={`w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center ${activeAgent === 'BearResearcher' ? 'animate-pulse' : ''}`}>
+                              <ThumbsDown className="w-4 h-4 text-rose-600" />
+                            </div>
+                            看空观点
+                            {activeAgent === 'BearResearcher' && <span className="text-xs bg-rose-200 px-2 py-0.5 rounded animate-pulse">输出中...</span>}
+                          </CardTitle>
+                          <CardDescription>
+                            <Bot className="w-3 h-3 inline mr-1" />
+                            BearResearcher · 看空研究员
+                          </CardDescription>
                         </div>
-                        看空观点
-                        {activeAgent === 'BearResearcher' && <span className="text-xs bg-rose-200 px-2 py-0.5 rounded animate-pulse">输出中...</span>}
-                      </CardTitle>
-                      <CardDescription>
-                        <Bot className="w-3 h-3 inline mr-1" />
-                        BearResearcher · 看空研究员
-                      </CardDescription>
+                        {/* 操作按钮组 */}
+                        {streamingContent.bear && (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleCopyContent(streamingContent.bear, '看空观点')}
+                              className="h-8 px-2"
+                              title="复制"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleExportToFile(
+                                streamingContent.bear, 
+                                `${stockName}_看空观点_${new Date().toISOString().slice(0,10)}.md`
+                              )}
+                              className="h-8 px-2"
+                              title="导出"
+                            >
+                              <FileDown className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleStartDebate}
+                              disabled={isStreaming}
+                              className="h-8 px-2"
+                              title="重新生成"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
                     </CardHeader>
                     <CardContent>
                       {streamingContent.bear ? (
@@ -1379,17 +1574,57 @@ export default function StockAnalysisPage() {
                   {/* 投资经理决策 - 流式 */}
                   <Card className={`lg:col-span-2 bg-gradient-to-r from-blue-50 to-indigo-50 border-none ${activeAgent === 'InvestmentManager' ? 'ring-2 ring-indigo-400' : ''}`}>
                     <CardHeader className="pb-3">
-                      <CardTitle className="flex items-center gap-2 text-indigo-700">
-                        <div className={`w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center ${activeAgent === 'InvestmentManager' ? 'animate-pulse' : ''}`}>
-                          <Scale className="w-5 h-5 text-indigo-600" />
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          <CardTitle className="flex items-center gap-2 text-indigo-700">
+                            <div className={`w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center ${activeAgent === 'InvestmentManager' ? 'animate-pulse' : ''}`}>
+                              <Scale className="w-5 h-5 text-indigo-600" />
+                            </div>
+                            投资经理决策
+                            {activeAgent === 'InvestmentManager' && <span className="text-xs bg-indigo-200 px-2 py-0.5 rounded animate-pulse">决策中...</span>}
+                          </CardTitle>
+                          <CardDescription>
+                            <Bot className="w-3 h-3 inline mr-1" />
+                            InvestmentManager · 投资经理
+                          </CardDescription>
                         </div>
-                        投资经理决策
-                        {activeAgent === 'InvestmentManager' && <span className="text-xs bg-indigo-200 px-2 py-0.5 rounded animate-pulse">决策中...</span>}
-                      </CardTitle>
-                      <CardDescription>
-                        <Bot className="w-3 h-3 inline mr-1" />
-                        InvestmentManager · 投资经理
-                      </CardDescription>
+                        {/* 操作按钮组 */}
+                        {streamingContent.manager && (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleCopyContent(streamingContent.manager, '投资经理决策')}
+                              className="h-8 px-2"
+                              title="复制"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleExportToFile(
+                                streamingContent.manager, 
+                                `${stockName}_投资经理决策_${new Date().toISOString().slice(0,10)}.md`
+                              )}
+                              className="h-8 px-2"
+                              title="导出"
+                            >
+                              <FileDown className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleStartDebate}
+                              disabled={isStreaming}
+                              className="h-8 px-2"
+                              title="重新生成"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
                     </CardHeader>
                     <CardContent>
                       {streamingContent.manager ? (
@@ -1493,16 +1728,53 @@ export default function StockAnalysisPage() {
                   {/* 看多观点 */}
                   <Card className="bg-white/90 border-l-4 border-l-emerald-500">
                     <CardHeader className="pb-3">
-                      <CardTitle className="flex items-center gap-2 text-emerald-700">
-                        <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
-                          <ThumbsUp className="w-4 h-4 text-emerald-600" />
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          <CardTitle className="flex items-center gap-2 text-emerald-700">
+                            <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
+                              <ThumbsUp className="w-4 h-4 text-emerald-600" />
+                            </div>
+                            看多观点
+                          </CardTitle>
+                          <CardDescription>
+                            <Bot className="w-3 h-3 inline mr-1" />
+                            {debateResult.bull_analysis?.agent_name || 'BullResearcher'} · {debateResult.bull_analysis?.agent_role || '看多研究员'}
+                          </CardDescription>
                         </div>
-                        看多观点
-                      </CardTitle>
-                      <CardDescription>
-                        <Bot className="w-3 h-3 inline mr-1" />
-                        {debateResult.bull_analysis?.agent_name || 'BullResearcher'} · {debateResult.bull_analysis?.agent_role || '看多研究员'}
-                      </CardDescription>
+                        {/* 操作按钮组 */}
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleCopyContent(debateResult.bull_analysis?.analysis || '', '看多观点')}
+                            className="h-8 px-2"
+                            title="复制"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleExportToFile(
+                              debateResult.bull_analysis?.analysis || '', 
+                              `${stockName}_看多观点_${new Date().toISOString().slice(0,10)}.md`
+                            )}
+                            className="h-8 px-2"
+                            title="导出"
+                          >
+                            <FileDown className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleStartDebate}
+                            className="h-8 px-2"
+                            title="重新生成"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
                     </CardHeader>
                     <CardContent>
                       <div className="prose prose-sm max-w-none prose-headings:text-emerald-800 prose-headings:font-semibold">
@@ -1516,16 +1788,53 @@ export default function StockAnalysisPage() {
                   {/* 看空观点 */}
                   <Card className="bg-white/90 border-l-4 border-l-rose-500">
                     <CardHeader className="pb-3">
-                      <CardTitle className="flex items-center gap-2 text-rose-700">
-                        <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center">
-                          <ThumbsDown className="w-4 h-4 text-rose-600" />
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          <CardTitle className="flex items-center gap-2 text-rose-700">
+                            <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center">
+                              <ThumbsDown className="w-4 h-4 text-rose-600" />
+                            </div>
+                            看空观点
+                          </CardTitle>
+                          <CardDescription>
+                            <Bot className="w-3 h-3 inline mr-1" />
+                            {debateResult.bear_analysis?.agent_name || 'BearResearcher'} · {debateResult.bear_analysis?.agent_role || '看空研究员'}
+                          </CardDescription>
                         </div>
-                        看空观点
-                      </CardTitle>
-                      <CardDescription>
-                        <Bot className="w-3 h-3 inline mr-1" />
-                        {debateResult.bear_analysis?.agent_name || 'BearResearcher'} · {debateResult.bear_analysis?.agent_role || '看空研究员'}
-                      </CardDescription>
+                        {/* 操作按钮组 */}
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleCopyContent(debateResult.bear_analysis?.analysis || '', '看空观点')}
+                            className="h-8 px-2"
+                            title="复制"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleExportToFile(
+                              debateResult.bear_analysis?.analysis || '', 
+                              `${stockName}_看空观点_${new Date().toISOString().slice(0,10)}.md`
+                            )}
+                            className="h-8 px-2"
+                            title="导出"
+                          >
+                            <FileDown className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleStartDebate}
+                            className="h-8 px-2"
+                            title="重新生成"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
                     </CardHeader>
                     <CardContent>
                       <div className="prose prose-sm max-w-none prose-headings:text-rose-800 prose-headings:font-semibold">
@@ -1539,36 +1848,73 @@ export default function StockAnalysisPage() {
                   {/* 最终决策 */}
                   <Card className="lg:col-span-2 bg-gradient-to-br from-blue-50 to-purple-50 border-blue-200">
                     <CardHeader>
-                      <CardTitle className="flex items-center gap-2 text-blue-800">
-                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                          <Scale className="w-5 h-5 text-blue-600" />
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          <CardTitle className="flex items-center gap-2 text-blue-800">
+                            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                              <Scale className="w-5 h-5 text-blue-600" />
+                            </div>
+                            投资经理决策
+                            {debateResult.final_decision?.rating && (
+                              <Badge 
+                                className={`ml-2 ${
+                                  debateResult.final_decision.rating === '强烈推荐' || debateResult.final_decision.rating === '推荐'
+                                    ? 'bg-emerald-500'
+                                    : debateResult.final_decision.rating === '回避' || debateResult.final_decision.rating === '谨慎'
+                                    ? 'bg-rose-500'
+                                    : 'bg-amber-500'
+                                }`}
+                              >
+                                {debateResult.final_decision.rating}
+                              </Badge>
+                            )}
+                          </CardTitle>
+                          <CardDescription className="flex items-center gap-4">
+                            <span>
+                              <Bot className="w-3 h-3 inline mr-1" />
+                              {debateResult.final_decision?.agent_name || 'InvestmentManager'} · {debateResult.final_decision?.agent_role || '投资经理'}
+                            </span>
+                            {debateResult.execution_time && (
+                              <span className="text-xs bg-blue-100 px-2 py-0.5 rounded">
+                                耗时 {debateResult.execution_time.toFixed(1)}s
+                              </span>
+                            )}
+                          </CardDescription>
                         </div>
-                        投资经理决策
-                        {debateResult.final_decision?.rating && (
-                          <Badge 
-                            className={`ml-2 ${
-                              debateResult.final_decision.rating === '强烈推荐' || debateResult.final_decision.rating === '推荐'
-                                ? 'bg-emerald-500'
-                                : debateResult.final_decision.rating === '回避' || debateResult.final_decision.rating === '谨慎'
-                                ? 'bg-rose-500'
-                                : 'bg-amber-500'
-                            }`}
+                        {/* 操作按钮组 */}
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleCopyContent(debateResult.final_decision?.decision || '', '投资经理决策')}
+                            className="h-8 px-2"
+                            title="复制"
                           >
-                            {debateResult.final_decision.rating}
-                          </Badge>
-                        )}
-                      </CardTitle>
-                      <CardDescription className="flex items-center gap-4">
-                        <span>
-                          <Bot className="w-3 h-3 inline mr-1" />
-                          {debateResult.final_decision?.agent_name || 'InvestmentManager'} · {debateResult.final_decision?.agent_role || '投资经理'}
-                        </span>
-                        {debateResult.execution_time && (
-                          <span className="text-xs bg-blue-100 px-2 py-0.5 rounded">
-                            耗时 {debateResult.execution_time.toFixed(1)}s
-                          </span>
-                        )}
-                      </CardDescription>
+                            <Copy className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleExportToFile(
+                              debateResult.final_decision?.decision || '', 
+                              `${stockName}_投资经理决策_${new Date().toISOString().slice(0,10)}.md`
+                            )}
+                            className="h-8 px-2"
+                            title="导出"
+                          >
+                            <FileDown className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleStartDebate}
+                            className="h-8 px-2"
+                            title="重新生成"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
                     </CardHeader>
                     <CardContent>
                       <div className="prose prose-sm max-w-none prose-headings:text-blue-800 prose-headings:font-semibold">

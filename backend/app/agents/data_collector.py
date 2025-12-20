@@ -279,7 +279,13 @@ class QuickAnalystAgent(Agent):
         context: str
     ) -> Dict[str, Any]:
         """快速分析"""
+        # 获取当前系统时间
+        current_time = datetime.now().strftime("%Y年%m月%d日 %H:%M")
+        
         prompt = f"""请对 {stock_name}({stock_code}) 进行快速投资分析。
+
+【当前时间】
+{current_time}
 
 背景资料:
 {context}

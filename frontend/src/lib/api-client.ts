@@ -402,6 +402,18 @@ export const stockApi = {
     const response = await apiClient.get(`/stocks/${stockCode}/targeted-crawl/status`)
     return response.data
   },
+
+  /**
+   * 清除股票新闻
+   */
+  clearStockNews: async (stockCode: string): Promise<{
+    success: boolean
+    message: string
+    deleted_count?: number
+  }> => {
+    const response = await apiClient.delete(`/stocks/${stockCode}/news`)
+    return response.data
+  },
 }
 
 /**

@@ -424,7 +424,8 @@ def targeted_stock_crawl_task(
     self,
     stock_code: str,
     stock_name: str,
-    days: int = 30
+    days: int = 30,
+    task_record_id: int = None
 ):
     """
     定向爬取某只股票的相关新闻
@@ -437,6 +438,7 @@ def targeted_stock_crawl_task(
         stock_code: 股票代码（如 SH600519）
         stock_name: 股票名称（如 贵州茅台）
         days: 搜索时间范围（天），默认30天
+        task_record_id: 数据库中的任务记录ID（如果已创建）
     """
     db = get_sync_db_session()
     task_record = None
@@ -450,22 +452,37 @@ def targeted_stock_crawl_task(
             pure_code = code
             code = f"SH{code}" if code.startswith("6") else f"SZ{code}"
         
-        # 1. 创建任务记录
-        task_record = CrawlTask(
-            celery_task_id=self.request.id,
-            mode=CrawlMode.TARGETED,
-            status=TaskStatus.RUNNING,
-            source="targeted",
-            config={
-                "stock_code": code,
-                "stock_name": stock_name,
-                "days": days,
-            },
-            started_at=datetime.utcnow(),
-        )
-        db.add(task_record)
-        db.commit()
-        db.refresh(task_record)
+        # 1. 获取或创建任务记录
+        if task_record_id:
+            # 从数据库中获取已创建的任务记录
+            task_record = db.query(CrawlTask).filter(CrawlTask.id == task_record_id).first()
+            if task_record:
+                # 更新为 RUNNING 状态
+                task_record.status = TaskStatus.RUNNING
+                task_record.started_at = datetime.utcnow()
+                db.commit()
+                db.refresh(task_record)
+            else:
+                logger.warning(f"Task record {task_record_id} not found, creating new one")
+                task_record_id = None
+        
+        if not task_record:
+            # 如果没有传入 task_record_id 或者找不到，创建新记录（兼容旧逻辑）
+            task_record = CrawlTask(
+                celery_task_id=self.request.id,
+                mode=CrawlMode.TARGETED,
+                status=TaskStatus.RUNNING,
+                source="targeted",
+                config={
+                    "stock_code": code,
+                    "stock_name": stock_name,
+                    "days": days,
+                },
+                started_at=datetime.utcnow(),
+            )
+            db.add(task_record)
+            db.commit()
+            db.refresh(task_record)
         
         logger.info(f"[Task {task_record.id}] 🎯 开始定向爬取: {stock_name}({code}), 时间范围: {days}天")
         
@@ -483,7 +500,7 @@ def targeted_stock_crawl_task(
                 stock_code=pure_code,
                 days=days,
                 count=100,  # 获取100条新闻
-                max_age_days=90  # 只获取最近3个月的新闻
+                max_age_days=365  # 扩大到1年内的新闻（很多股票近期可能没有新闻）
             )
             
             logger.info(f"[Task {task_record.id}] 📰 BochaAI 搜索到 {len(search_results)} 条结果")
@@ -492,6 +509,8 @@ def targeted_stock_crawl_task(
             enhanced_crawler = EnhancedCrawler(use_cache=True)
             
             # 转换搜索结果为 NewsItem，并二次爬取完整内容
+            bochaai_matched = 0
+            bochaai_filtered = 0
             for idx, result in enumerate(search_results):
                 # 解析发布时间
                 publish_time = None
@@ -519,6 +538,16 @@ def targeted_stock_crawl_task(
                 except Exception as e:
                     logger.warning(f"[Task {task_record.id}] ⚠️ 二次爬取失败: {e}, 使用摘要")
                 
+                # 【重要】相关性过滤：检查标题或内容是否包含股票名称或代码
+                title_match = (stock_name in result.title or pure_code in result.title or code in result.title)
+                content_match = (stock_name in full_content or pure_code in full_content or code in full_content)
+                
+                if not (title_match or content_match):
+                    bochaai_filtered += 1
+                    logger.debug(f"[Task {task_record.id}] ❌ 过滤不相关新闻: {result.title[:50]}...")
+                    continue
+                
+                bochaai_matched += 1
                 news_item = NewsItem(
                     title=result.title,
                     content=full_content,  # 使用完整内容
@@ -529,6 +558,8 @@ def targeted_stock_crawl_task(
                     raw_html=raw_html,  # 原始 HTML
                 )
                 all_news.append(news_item)
+            
+            logger.info(f"[Task {task_record.id}] 🔍 BochaAI 搜索到 {len(search_results)} 条，匹配 {bochaai_matched} 条，过滤 {bochaai_filtered} 条")
         else:
             logger.warning(f"[Task {task_record.id}] ⚠️ BochaAI API Key 未配置，跳过搜索引擎搜索")
         
@@ -566,9 +597,9 @@ def targeted_stock_crawl_task(
                 # 过滤包含股票名称或代码的新闻
                 matched_count = 0
                 for news in crawler_news:
-                    # 检查标题或内容是否包含股票名称或代码
-                    title_match = (stock_name in news.title or pure_code in news.title)
-                    content_match = (stock_name in (news.content or '') or pure_code in (news.content or ''))
+                    # 检查标题或内容是否包含股票名称或代码（包括带前缀和不带前缀的代码）
+                    title_match = (stock_name in news.title or pure_code in news.title or code in news.title)
+                    content_match = (stock_name in (news.content or '') or pure_code in (news.content or '') or code in (news.content or ''))
                     
                     if title_match or content_match:
                         # 添加股票代码关联
