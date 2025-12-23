@@ -27,13 +27,37 @@ async def lifespan(app: FastAPI):
     logger.info(f"Environment: {'Development' if settings.DEBUG else 'Production'}")
     logger.info(f"LLM Provider: {settings.LLM_PROVIDER}/{settings.LLM_MODEL}")
     
-    # 这里可以添加初始化逻辑，如连接数据库、初始化服务等
-    # 注意：数据库表的创建应该通过独立脚本完成，不应在启动时自动执行
+    # 初始化 Neo4j 知识图谱（仅创建约束和索引，不构建具体图谱）
+    try:
+        from .core.neo4j_client import get_neo4j_client
+        from .knowledge.graph_service import get_graph_service
+        
+        logger.info("🔍 初始化 Neo4j 知识图谱...")
+        neo4j_client = get_neo4j_client()
+        
+        if neo4j_client.health_check():
+            logger.info("✅ Neo4j 连接正常")
+            # 初始化约束和索引（由 graph_service 自动完成）
+            graph_service = get_graph_service()
+            logger.info("✅ Neo4j 约束和索引已就绪")
+            logger.info("💡 提示: 首次定向爬取时会自动为股票构建知识图谱")
+        else:
+            logger.warning("⚠️ Neo4j 连接失败，知识图谱功能将不可用（不影响其他功能）")
+    except Exception as e:
+        logger.warning(f"⚠️ Neo4j 初始化失败: {e}，知识图谱功能将不可用（不影响其他功能）")
     
     yield
     
     # 关闭时执行
     logger.info("=== FinnewsHunter Shutting Down ===")
+    
+    # 关闭 Neo4j 连接
+    try:
+        from .core.neo4j_client import close_neo4j_client
+        close_neo4j_client()
+        logger.info("✅ Neo4j 连接已关闭")
+    except:
+        pass
 
 
 # 创建 FastAPI 应用
