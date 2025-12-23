@@ -417,6 +417,75 @@ export const stockApi = {
 }
 
 /**
+ * 知识图谱 API
+ */
+export const knowledgeGraphApi = {
+  /**
+   * 获取公司知识图谱
+   */
+  getCompanyGraph: async (stockCode: string): Promise<{
+    stock_code: string
+    stock_name: string
+    graph_exists: boolean
+    stats?: Record<string, number>
+    name_variants: string[]
+    businesses: Array<{
+      name: string
+      type: string
+      status: string
+      description?: string
+    }>
+    industries: string[]
+    products: string[]
+    concepts: string[]
+    search_queries: string[]
+  }> => {
+    const response = await apiClient.get(`/knowledge-graph/${stockCode}`)
+    return response.data
+  },
+
+  /**
+   * 构建公司知识图谱
+   */
+  buildGraph: async (stockCode: string, forceRebuild: boolean = false): Promise<{
+    success: boolean
+    message: string
+    graph_stats?: Record<string, number>
+  }> => {
+    const response = await apiClient.post(`/knowledge-graph/${stockCode}/build`, {
+      force_rebuild: forceRebuild
+    })
+    return response.data
+  },
+
+  /**
+   * 更新公司知识图谱
+   */
+  updateGraph: async (stockCode: string): Promise<{
+    success: boolean
+    message: string
+    graph_stats?: Record<string, number>
+  }> => {
+    const response = await apiClient.post(`/knowledge-graph/${stockCode}/update`, {
+      update_from_news: true,
+      news_limit: 20
+    })
+    return response.data
+  },
+
+  /**
+   * 删除公司知识图谱
+   */
+  deleteGraph: async (stockCode: string): Promise<{
+    success: boolean
+    message: string
+  }> => {
+    const response = await apiClient.delete(`/knowledge-graph/${stockCode}`)
+    return response.data
+  },
+}
+
+/**
  * 智能体相关 API - Phase 2
  */
 // SSE 事件类型
