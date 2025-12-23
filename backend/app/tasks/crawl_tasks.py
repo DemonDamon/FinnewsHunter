@@ -5,8 +5,9 @@ import logging
 import json
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
-from sqlalchemy import select, create_engine
+from sqlalchemy import select, create_engine, text
 from sqlalchemy.orm import Session
+import asyncio
 
 from ..core.celery_app import celery_app
 from ..core.config import settings
@@ -428,11 +429,13 @@ def targeted_stock_crawl_task(
     task_record_id: int = None
 ):
     """
-    定向爬取某只股票的相关新闻
+    定向爬取某只股票的相关新闻（精简版 - 只使用 BochaAI）
     
-    数据来源：
-    1. BochaAI 搜索引擎 API
-    2. 东方财富等财经网站（可扩展）
+    数据来源：BochaAI 搜索引擎 API
+    
+    图谱构建逻辑：
+    - 有历史新闻数据 → 先构建/使用图谱 → 基于图谱扩展关键词搜索
+    - 无历史新闻数据 → 先用 BochaAI 爬取 → 爬取完成后异步构建图谱
     
     Args:
         stock_code: 股票代码（如 SH600519）
@@ -454,10 +457,8 @@ def targeted_stock_crawl_task(
         
         # 1. 获取或创建任务记录
         if task_record_id:
-            # 从数据库中获取已创建的任务记录
             task_record = db.query(CrawlTask).filter(CrawlTask.id == task_record_id).first()
             if task_record:
-                # 更新为 RUNNING 状态
                 task_record.status = TaskStatus.RUNNING
                 task_record.started_at = datetime.utcnow()
                 db.commit()
@@ -467,7 +468,6 @@ def targeted_stock_crawl_task(
                 task_record_id = None
         
         if not task_record:
-            # 如果没有传入 task_record_id 或者找不到，创建新记录（兼容旧逻辑）
             task_record = CrawlTask(
                 celery_task_id=self.request.id,
                 mode=CrawlMode.TARGETED,
@@ -489,140 +489,282 @@ def targeted_stock_crawl_task(
         start_time = datetime.utcnow()
         all_news = []
         search_results = []
-        filtered_news = []
         
-        # 2. 使用 BochaAI 搜索引擎搜索新闻
-        if bochaai_search.is_available():
-            logger.info(f"[Task {task_record.id}] 🔍 使用 BochaAI 搜索...")
+        # ========================================
+        # 【核心逻辑】先用 akshare 获取股票基础信息，构建简单图谱
+        # ========================================
+        task_record.progress = {"current": 5, "total": 100, "message": "获取股票基础信息..."}
+        db.commit()
+        
+        from ..knowledge.knowledge_extractor import AkshareKnowledgeExtractor
+        
+        # 1. 从 akshare 获取公司基础信息
+        logger.info(f"[Task {task_record.id}] 🔍 从 akshare 获取 {stock_name}({pure_code}) 基础信息...")
+        akshare_info = None
+        try:
+            akshare_info = AkshareKnowledgeExtractor.extract_company_info(pure_code)
+            if akshare_info:
+                logger.info(f"[Task {task_record.id}] ✅ akshare 返回: 行业={akshare_info.get('industry')}, 主营={akshare_info.get('main_business', '')[:50]}...")
+            else:
+                logger.warning(f"[Task {task_record.id}] ⚠️ akshare 未返回数据，将使用股票名称生成关键词")
+        except Exception as e:
+            logger.warning(f"[Task {task_record.id}] ⚠️ akshare 查询失败: {e}，将使用股票名称生成关键词")
+        
+        # 2. 构建简单图谱并生成搜索关键词
+        task_record.progress = {"current": 10, "total": 100, "message": "构建知识图谱..."}
+        db.commit()
+        
+        simple_graph = AkshareKnowledgeExtractor.build_simple_graph_from_info(
+            stock_code=code,
+            stock_name=stock_name,
+            akshare_info=akshare_info
+        )
+        
+        # 获取分层关键词
+        core_keywords = simple_graph.get("core_keywords", [stock_name])
+        extension_keywords = simple_graph.get("extension_keywords", [])
+        
+        logger.info(
+            f"[Task {task_record.id}] 📋 关键词分层: "
+            f"核心={len(core_keywords)}个{core_keywords[:4]}, "
+            f"扩展={len(extension_keywords)}个{extension_keywords[:4]}"
+        )
+        logger.info(f"[Task {task_record.id}] 🔑 完整核心关键词列表: {core_keywords}")
+        logger.info(f"[Task {task_record.id}] 🔑 完整扩展关键词列表: {extension_keywords}")
+        
+        # ========================================
+        # 【搜索阶段】使用组合关键词调用 BochaAI 搜索
+        # ========================================
+        task_record.progress = {"current": 20, "total": 100, "message": "BochaAI 组合搜索中..."}
+        db.commit()
+        
+        if not bochaai_search.is_available():
+            logger.error(f"[Task {task_record.id}] ❌ BochaAI API Key 未配置，无法执行搜索")
+            raise ValueError("BochaAI API Key 未配置")
+        
+        # ========================================
+        # 【组合搜索策略】
+        # 1. 必须搜索：核心关键词（公司名、代码）
+        # 2. 可选组合：核心词 + 扩展词（行业、业务、人名）
+        # ========================================
+        all_search_results = []
+        search_queries = []
+        
+        # 策略1：核心关键词单独搜索（取前3个最重要的）
+        for core_kw in core_keywords[:3]:
+            # 跳过纯数字代码（单独搜会很泛）
+            if not (core_kw.isdigit() or core_kw.startswith("SH") or core_kw.startswith("SZ")):
+                search_queries.append(core_kw)
+        
+        # 策略2：核心词 + 扩展词组合搜索（最多3个组合）
+        if extension_keywords:
+            # 取最主要的核心词（通常是股票简称）
+            main_core = core_keywords[0] if core_keywords else stock_name
             
-            search_results = bochaai_search.search_stock_news(
-                stock_name=stock_name,
-                stock_code=pure_code,
-                days=days,
-                count=100,  # 获取100条新闻
-                max_age_days=365  # 扩大到1年内的新闻（很多股票近期可能没有新闻）
-            )
-            
-            logger.info(f"[Task {task_record.id}] 📰 BochaAI 搜索到 {len(search_results)} 条结果")
-            
-            # 创建增强爬虫实例，用于二次爬取完整内容
-            enhanced_crawler = EnhancedCrawler(use_cache=True)
-            
-            # 转换搜索结果为 NewsItem，并二次爬取完整内容
-            bochaai_matched = 0
-            bochaai_filtered = 0
-            for idx, result in enumerate(search_results):
-                # 解析发布时间
-                publish_time = None
-                if result.date_published:
-                    try:
-                        # 尝试解析 ISO 格式
-                        publish_time = datetime.fromisoformat(
-                            result.date_published.replace('Z', '+00:00')
-                        )
-                    except (ValueError, AttributeError):
-                        pass
-                
-                # 二次爬取完整内容
-                full_content = result.snippet  # 默认使用摘要
-                raw_html = None  # 原始 HTML
+            for ext_kw in extension_keywords[:3]:
+                # 组合搜索：如 "*ST国华 软件开发"
+                combined_query = f"{main_core} {ext_kw}"
+                search_queries.append(combined_query)
+        
+        # 限制总查询数（避免过多请求）
+        search_queries = search_queries[:5]
+        
+        logger.info(f"[Task {task_record.id}] 🚀 生成 {len(search_queries)} 个搜索查询:")
+        for i, q in enumerate(search_queries):
+            logger.info(f"  [{i+1}] {q}")
+        
+        # 执行搜索
+        for query in search_queries:
+            try:
+                logger.info(f"[Task {task_record.id}] 🔍 搜索: '{query}'")
+                kw_results = bochaai_search.search_stock_news(
+                    stock_name=query,  # 使用组合查询
+                    stock_code=pure_code,
+                    days=days,
+                    count=50,  # 每个查询最多 50 条
+                    max_age_days=365
+                )
+                logger.info(f"[Task {task_record.id}] 📰 查询 '{query}' 搜索到 {len(kw_results)} 条结果")
+                all_search_results.extend(kw_results)
+            except Exception as e:
+                logger.warning(f"[Task {task_record.id}] ⚠️ 查询 '{query}' 搜索失败: {e}")
+        
+        # 去重（按 URL）
+        seen_urls = set()
+        search_results = []
+        for r in all_search_results:
+            if r.url not in seen_urls:
+                seen_urls.add(r.url)
+                search_results.append(r)
+        
+        logger.info(f"[Task {task_record.id}] 📊 合并 {len(all_search_results)} 条，去重后 {len(search_results)} 条")
+        
+        # ========================================
+        # 【处理阶段】转换搜索结果为 NewsItem
+        # ========================================
+        task_record.progress = {"current": 50, "total": 100, "message": "处理搜索结果..."}
+        db.commit()
+        
+        bochaai_matched = 0
+        bochaai_filtered = 0
+        
+        # 检查是否应该启用宽松过滤模式
+        # 如果核心关键词太少（<= 2个），或者搜索结果很少（<10条），使用宽松过滤
+        use_relaxed_filter = len(core_keywords) <= 2 or len(search_results) < 10
+        if use_relaxed_filter:
+            logger.info(f"[Task {task_record.id}] 🔓 启用宽松过滤模式（核心词={len(core_keywords)}个, 结果={len(search_results)}条）")
+        
+        # 打印 BochaAI 返回的前 10 条数据用于调试
+        logger.info(f"[Task {task_record.id}] 📋 BochaAI 返回数据预览 (前10条):")
+        for i, r in enumerate(search_results[:10]):
+            logger.info(f"  [{i+1}] 标题: {r.title[:60]}...")
+            logger.info(f"      来源: {r.site_name}, 日期: {r.date_published}")
+            logger.info(f"      URL: {r.url[:80]}...")
+        
+        for idx, result in enumerate(search_results):
+            # 解析发布时间
+            publish_time = None
+            if result.date_published:
                 try:
-                    logger.info(f"[Task {task_record.id}] 🔗 [{idx+1}/{len(search_results)}] 爬取完整内容: {result.url[:60]}...")
-                    article = enhanced_crawler.crawl(result.url, engine='auto')
-                    if article and article.content and len(article.content) > len(result.snippet):
-                        full_content = article.content
-                        raw_html = article.html_content  # 保存原始 HTML
-                        logger.info(f"[Task {task_record.id}] ✅ 获取完整内容: {len(full_content)} 字符, HTML: {len(raw_html) if raw_html else 0} 字符")
-                    else:
-                        logger.warning(f"[Task {task_record.id}] ⚠️ 完整内容获取失败或内容更短，使用摘要")
-                except Exception as e:
-                    logger.warning(f"[Task {task_record.id}] ⚠️ 二次爬取失败: {e}, 使用摘要")
-                
-                # 【重要】相关性过滤：检查标题或内容是否包含股票名称或代码
-                title_match = (stock_name in result.title or pure_code in result.title or code in result.title)
-                content_match = (stock_name in full_content or pure_code in full_content or code in full_content)
-                
-                if not (title_match or content_match):
-                    bochaai_filtered += 1
-                    logger.debug(f"[Task {task_record.id}] ❌ 过滤不相关新闻: {result.title[:50]}...")
+                    publish_time = datetime.fromisoformat(
+                        result.date_published.replace('Z', '+00:00')
+                    )
+                except (ValueError, AttributeError):
+                    pass
+            
+            # 【注意】不再二次爬取完整内容，直接使用摘要（提升速度）
+            full_content = result.snippet
+            
+            # 相关性过滤：必须包含至少一个核心关键词
+            text_to_check = result.title + " " + result.snippet
+            text_to_check_lower = text_to_check.lower()
+            
+            # 检查是否匹配任何核心关键词
+            is_match = False
+            matched_keyword = None
+            for kw in core_keywords:
+                if not kw or len(kw) < 2:
                     continue
                 
-                bochaai_matched += 1
-                news_item = NewsItem(
-                    title=result.title,
-                    content=full_content,  # 使用完整内容
-                    url=result.url,
-                    source=result.site_name or "web_search",
-                    publish_time=publish_time,
-                    stock_codes=[pure_code, code],  # 关联股票代码
-                    raw_html=raw_html,  # 原始 HTML
-                )
-                all_news.append(news_item)
+                kw_lower = kw.lower()
+                
+                # 宽松匹配策略：
+                # 1. 完整匹配（大小写不敏感）
+                if kw in text_to_check or kw_lower in text_to_check_lower:
+                    is_match = True
+                    matched_keyword = kw
+                    break
+                
+                # 2. 去除特殊字符后匹配（处理 *ST 等情况）
+                import re
+                kw_clean = re.sub(r'[*\s]', '', kw)
+                if len(kw_clean) >= 2 and kw_clean.lower() in text_to_check_lower:
+                    is_match = True
+                    matched_keyword = f"{kw} (cleaned: {kw_clean})"
+                    break
             
-            logger.info(f"[Task {task_record.id}] 🔍 BochaAI 搜索到 {len(search_results)} 条，匹配 {bochaai_matched} 条，过滤 {bochaai_filtered} 条")
-        else:
-            logger.warning(f"[Task {task_record.id}] ⚠️ BochaAI API Key 未配置，跳过搜索引擎搜索")
-        
-        # 3. 使用多个爬虫作为补充来源
-        # 定义要使用的爬虫列表（爬虫名称, 爬取页数, 图标）
-        crawler_configs = [
-            ("eastmoney", 3, "💎"),  # 东方财富
-            ("sina", 2, "🌐"),       # 新浪财经
-            ("tencent", 2, "🐧"),    # 腾讯财经
-            ("163", 2, "📧"),        # 网易财经
-            ("nbd", 2, "📰"),        # 每日经济新闻
-            ("yicai", 2, "🎯"),      # 第一财经
-            ("caijing", 2, "📈"),    # 财经网
-            ("jingji21", 2, "📉"),   # 21经济网
-            ("eeo", 2, "📊"),        # 经济观察网
-            ("jwview", 2, "💰"),     # 金融界
-        ]
-        
-        total_crawlers = len(crawler_configs)
-        for idx, (crawler_name, pages, icon) in enumerate(crawler_configs):
-            try:
-                logger.info(f"[Task {task_record.id}] {icon} [{idx+1}/{total_crawlers}] 使用 {crawler_name} 爬虫...")
-                
-                # 更新进度
-                task_record.progress = {
-                    "current": idx + 1,
-                    "total": total_crawlers,
-                    "message": f"正在爬取 {crawler_name}..."
-                }
-                db.commit()
-                
-                crawler = get_crawler_tool(crawler_name)
-                crawler_news = crawler.crawl(start_page=1, end_page=pages)
-                
-                # 过滤包含股票名称或代码的新闻
-                matched_count = 0
-                for news in crawler_news:
-                    # 检查标题或内容是否包含股票名称或代码（包括带前缀和不带前缀的代码）
-                    title_match = (stock_name in news.title or pure_code in news.title or code in news.title)
-                    content_match = (stock_name in (news.content or '') or pure_code in (news.content or '') or code in (news.content or ''))
-                    
-                    if title_match or content_match:
-                        # 添加股票代码关联
-                        if not news.stock_codes:
-                            news.stock_codes = []
-                        if pure_code not in news.stock_codes:
-                            news.stock_codes.append(pure_code)
-                        if code not in news.stock_codes:
-                            news.stock_codes.append(code)
-                        filtered_news.append(news)
-                        matched_count += 1
-                
-                logger.info(f"[Task {task_record.id}] {icon} {crawler_name} 爬取 {len(crawler_news)} 条，匹配 {matched_count} 条")
-                
-            except Exception as e:
-                logger.warning(f"[Task {task_record.id}] ⚠️ {crawler_name} 爬取失败: {e}")
+            if not is_match:
+                # 宽松模式下，如果标题包含股票代码数字，也认为相关
+                if use_relaxed_filter and pure_code in text_to_check:
+                    is_match = True
+                    matched_keyword = f"{pure_code} (relaxed mode)"
+                    logger.debug(f"[Task {task_record.id}] 🔓 宽松模式匹配: {result.title[:40]}... (包含代码)")
+                else:
+                    bochaai_filtered += 1
+                    # 打印前 5 条被过滤的原因
+                    if bochaai_filtered <= 5:
+                        logger.info(f"[Task {task_record.id}] ❌ 过滤[{idx+1}]: 不包含核心关键词")
+                        logger.info(f"      标题: {result.title[:80]}")
+                        logger.info(f"      摘要: {result.snippet[:100]}...")
+                        logger.info(f"      核心词: {core_keywords}")
+                    continue
+            
+            # 如果宽松模式跳过了上面的 continue，需要确保 is_match 为 True
+            if not is_match:
                 continue
+            
+            logger.debug(f"[Task {task_record.id}] ✅ 匹配核心词 '{matched_keyword}': {result.title[:40]}...")
+            
+            bochaai_matched += 1
+            news_item = NewsItem(
+                title=result.title,
+                content=full_content,
+                url=result.url,
+                source=result.site_name or "web_search",
+                publish_time=publish_time,
+                stock_codes=[pure_code, code],
+                raw_html=None,
+            )
+            all_news.append(news_item)
+            
+            # 每处理 20 条更新一次进度
+            if (idx + 1) % 20 == 0:
+                progress_pct = 50 + int((idx + 1) / len(search_results) * 30)
+                task_record.progress = {"current": progress_pct, "total": 100, "message": f"处理中 {idx+1}/{len(search_results)}..."}
+                db.commit()
         
-        # 合并所有爬虫获取的新闻
-        all_news.extend(filtered_news)
-        logger.info(f"[Task {task_record.id}] 📰 多爬虫共过滤出 {len(filtered_news)} 条相关新闻")
+        logger.info(f"[Task {task_record.id}] 🔍 搜索到 {len(search_results)} 条，匹配 {bochaai_matched} 条，过滤 {bochaai_filtered} 条")
         
-        # 4. 去重并保存
+        # ========================================
+        # 【交互式爬虫补充】如果相关性匹配结果太少，使用交互式爬虫补充
+        # ========================================
+        if bochaai_matched < 5:  # 匹配结果太少时启动交互式爬虫
+            logger.info(f"[Task {task_record.id}] 🌐 相关结果较少({bochaai_matched}条)，启用交互式爬虫补充...")
+            
+            try:
+                from ..tools.interactive_crawler import create_interactive_crawler
+                
+                # 使用核心关键词进行搜索
+                # 取最主要的核心词（通常是股票简称）
+                interactive_query = core_keywords[0] if core_keywords else stock_name
+                
+                logger.info(f"[Task {task_record.id}] 🔍 使用交互式爬虫搜索: '{interactive_query}'")
+                
+                crawler = create_interactive_crawler(headless=True)
+                interactive_results = crawler.interactive_search(
+                    interactive_query,
+                    engines=["bing"],  # 优先 Bing（更稳定）
+                    num_results=15,
+                    headless=True
+                )
+                
+                logger.info(f"[Task {task_record.id}] ✅ 交互式爬虫返回 {len(interactive_results)} 条结果")
+                
+                # 爬取页面内容
+                interactive_crawled = crawler.crawl_search_results(
+                    interactive_results,
+                    max_results=5
+                )
+                
+                logger.info(f"[Task {task_record.id}] 📄 交互式爬虫爬取成功: {len(interactive_crawled)} 个页面")
+                
+                # 添加到新闻列表
+                for page in interactive_crawled:
+                    if page['url'] not in {item.url for item in all_news}:
+                        news_item = NewsItem(
+                            title=page['title'],
+                            content=page['content'][:500],  # 只取前 500 字作为摘要
+                            url=page['url'],
+                            source=page.get('source', 'web_search'),
+                            publish_time=None,  # 交互爬虫没有发布时间
+                            stock_codes=[pure_code, code],
+                            raw_html=None,
+                        )
+                        all_news.append(news_item)
+                        bochaai_matched += 1
+                
+                logger.info(f"[Task {task_record.id}] 📊 交互式爬虫补充后总计: {bochaai_matched} 条匹配结果")
+                
+            except ImportError:
+                logger.warning(f"[Task {task_record.id}] ⚠️ 交互式爬虫模块不可用，跳过补充搜索")
+            except Exception as e:
+                logger.error(f"[Task {task_record.id}] ❌ 交互式爬虫补充失败: {e}", exc_info=True)
+        
+        # ========================================
+        # 【保存阶段】去重并保存新闻
+        # ========================================
+        task_record.progress = {"current": 80, "total": 100, "message": "保存新闻..."}
+        db.commit()
         saved_count = 0
         duplicate_count = 0
         
@@ -667,7 +809,24 @@ def targeted_stock_crawl_task(
             f"(重复: {duplicate_count})"
         )
         
-        # 5. 更新任务状态
+        # ========================================
+        # 【图谱更新阶段】异步构建完整图谱（基于 Neo4j）
+        # ========================================
+        task_record.progress = {"current": 90, "total": 100, "message": "触发异步图谱构建..."}
+        db.commit()
+        
+        if saved_count > 0:
+            # 有新闻保存成功后，触发异步图谱构建任务
+            logger.info(f"[Task {task_record.id}] 🧠 触发异步图谱构建任务...")
+            try:
+                build_knowledge_graph_task.delay(code, stock_name)
+                logger.info(f"[Task {task_record.id}] ✅ 异步图谱构建任务已触发")
+            except Exception as e:
+                logger.error(f"[Task {task_record.id}] ❌ 触发异步图谱构建失败: {e}")
+        
+        # ========================================
+        # 【完成阶段】更新任务状态
+        # ========================================
         end_time = datetime.utcnow()
         execution_time = (end_time - start_time).total_seconds()
         
@@ -682,9 +841,11 @@ def targeted_stock_crawl_task(
             "total_found": len(all_news),
             "saved": saved_count,
             "duplicates": duplicate_count,
+            "akshare_info": bool(akshare_info),  # 是否获取到 akshare 数据
+            "core_keywords": core_keywords[:5],  # 核心关键词
+            "search_queries": search_queries,  # 实际搜索的查询
             "sources": {
                 "bochaai": len(search_results),
-                "eastmoney": len(filtered_news),
             }
         }
         task_record.progress = {
@@ -727,6 +888,95 @@ def targeted_stock_crawl_task(
             db.commit()
         
         raise
+    
+    finally:
+        db.close()
+
+
+@celery_app.task(bind=True, name="app.tasks.crawl_tasks.build_knowledge_graph_task")
+def build_knowledge_graph_task(self, stock_code: str, stock_name: str):
+    """
+    异步构建知识图谱任务
+    
+    在无历史新闻数据的股票首次爬取完成后触发。
+    从数据库中的新闻数据 + akshare 基础信息构建知识图谱。
+    
+    Args:
+        stock_code: 股票代码（如 SH600519）
+        stock_name: 股票名称（如 贵州茅台）
+    """
+    db = get_sync_db_session()
+    
+    try:
+        code = stock_code.upper()
+        if code.startswith("SH") or code.startswith("SZ"):
+            pure_code = code[2:]
+        else:
+            pure_code = code
+            code = f"SH{code}" if code.startswith("6") else f"SZ{code}"
+        
+        logger.info(f"[GraphTask] 🏗️ 开始异步构建知识图谱: {stock_name}({code})")
+        
+        from ..knowledge.graph_service import get_graph_service
+        from ..knowledge.knowledge_extractor import (
+            create_knowledge_extractor,
+            AkshareKnowledgeExtractor
+        )
+        
+        graph_service = get_graph_service()
+        
+        # 1. 检查图谱是否已存在（避免重复构建）
+        existing_graph = graph_service.get_company_graph(code)
+        if existing_graph:
+            logger.info(f"[GraphTask] ✅ 图谱已存在，跳过构建")
+            return {"status": "skipped", "reason": "graph_exists"}
+        
+        # 2. 从 akshare 获取基础公司信息
+        akshare_info = AkshareKnowledgeExtractor.extract_company_info(code)
+        
+        if akshare_info:
+            extractor = create_knowledge_extractor()
+            base_graph = asyncio.run(
+                extractor.extract_from_akshare(code, stock_name, akshare_info)
+            )
+            graph_service.build_company_graph(base_graph)
+            logger.info(f"[GraphTask] ✅ 基础图谱构建完成")
+        else:
+            logger.warning(f"[GraphTask] ⚠️ akshare 未返回数据")
+        
+        # 3. 从数据库新闻中提取信息更新图谱
+        recent_news = db.execute(
+            text("""
+                SELECT title, content FROM news 
+                WHERE stock_codes @> ARRAY[:code]::varchar[] 
+                ORDER BY publish_time DESC LIMIT 50
+            """).bindparams(code=pure_code)
+        ).fetchall()
+        
+        if recent_news:
+            news_data = [{"title": n[0], "content": n[1]} for n in recent_news]
+            extractor = create_knowledge_extractor()
+            
+            extracted_info = asyncio.run(
+                extractor.extract_from_news(code, stock_name, news_data)
+            )
+            
+            if any(extracted_info.values()):
+                graph_service.update_from_news(code, "", extracted_info)
+                logger.info(f"[GraphTask] ✅ 从新闻更新图谱完成")
+        
+        logger.info(f"[GraphTask] ✅ 知识图谱构建完成: {stock_name}({code})")
+        
+        return {
+            "status": "completed",
+            "stock_code": code,
+            "stock_name": stock_name,
+            "news_count": len(recent_news) if recent_news else 0,
+        }
+        
+    except Exception as e:
+        logger.error(f"[GraphTask] ❌ 知识图谱构建失败: {e}", exc_info=True)
+        return {"status": "failed", "error": str(e)}
     
     finally:
         db.close()
