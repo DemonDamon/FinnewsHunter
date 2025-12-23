@@ -172,26 +172,27 @@ class BochaAISearchTool:
             max_age_days: 最大新闻年龄（天），默认365天（1年），超过此时间的新闻将被过滤
             
         Returns:
-            搜索结果列表（按时间从新到旧排序，只返回最近1年内的新闻）
+            搜索结果列表（按时间从新到旧排序，只返回最近max_age_days天内的新闻）
         """
-        # 构建搜索查询 - 使用引号提高精确度
-        # 优先使用股票全名（带引号），提高搜索精确度
-        query_parts = [f'"{stock_name}"']  # 用引号包裹股票名称，提高精确匹配
+        # 构建搜索查询 - 简洁明确，添加"最新"关键词优先获取新内容
+        query = f"{stock_name} 最新"
         
-        if stock_code:
-            # 提取纯数字代码
-            pure_code = stock_code.upper()
-            if pure_code.startswith("SH") or pure_code.startswith("SZ"):
-                pure_code = pure_code[2:]
-            # 股票代码也用引号包裹
-            query_parts.append(f'"{pure_code}"')
+        # BochaAI API 支持的 freshness 参数值：
+        # - noLimit: 不限制
+        # - oneDay: 一天内
+        # - oneWeek: 一周内  
+        # - oneMonth: 一月内
+        # 注意：不支持 "year"、"day"、"week" 等其他值！
         
-        # 组合查询：使用 OR 连接，匹配股票名称或代码即可
-        query = " OR ".join(query_parts)
-        
-        # 确定时间范围 - 使用 "year" 让 API 返回一年内的结果
-        # 然后在本地进行更精确的时间过滤（默认1年）
-        freshness = "year"
+        # 根据请求天数确定 freshness 参数
+        if days <= 1:
+            freshness = "oneDay"
+        elif days <= 7:
+            freshness = "oneWeek"
+        elif days <= 30:
+            freshness = "oneMonth"
+        else:
+            freshness = "noLimit"  # 超过30天用 noLimit，本地再过滤
         
         # 财经网站列表（用于优先搜索）
         finance_sites = (
@@ -232,35 +233,36 @@ class BochaAISearchTool:
                 logger.info(f"BochaAI 第{request_count+1}次请求未返回结果，停止分页")
                 break
             
-            # 严格过滤：只保留最近 max_age_days 天内的新闻
+            # 时间过滤：保留有日期且在范围内的新闻，以及无日期但可能相关的新闻
             for result in batch_results:
-                # 必须有发布日期，没有日期的新闻直接过滤
-                if not result.date_published:
-                    logger.debug(f"过滤无日期新闻: {result.title[:30]}...")
-                    continue
-                
-                try:
-                    # 尝试解析发布时间
-                    pub_date = datetime.fromisoformat(
-                        result.date_published.replace('Z', '+00:00')
-                    )
-                    # 转换为无时区的时间进行比较
-                    if pub_date.tzinfo:
-                        pub_date = pub_date.replace(tzinfo=None)
-                    
-                    # 检查是否在指定时间范围内（默认3个月）
-                    if pub_date < cutoff_date:
-                        logger.debug(f"过滤超过{max_age_days}天的新闻: {result.title[:30]}... ({result.date_published})")
-                        continue
-                    
-                    all_results.append(result)
-                    
-                    if len(all_results) >= count:
-                        break
+                # 如果有发布日期，检查是否在时间范围内
+                if result.date_published:
+                    try:
+                        # 尝试解析发布时间
+                        pub_date = datetime.fromisoformat(
+                            result.date_published.replace('Z', '+00:00')
+                        )
+                        # 转换为无时区的时间进行比较
+                        if pub_date.tzinfo:
+                            pub_date = pub_date.replace(tzinfo=None)
                         
-                except (ValueError, AttributeError) as e:
-                    # 无法解析日期的新闻也过滤掉（避免老旧新闻混入）
-                    logger.debug(f"无法解析日期，过滤新闻: {result.title[:30]}... (date: {result.date_published})")
+                        # 检查是否在指定时间范围内
+                        if pub_date < cutoff_date:
+                            logger.debug(f"过滤超过{max_age_days}天的新闻: {result.title[:30]}... ({result.date_published})")
+                            continue
+                            
+                    except (ValueError, AttributeError) as e:
+                        # 日期解析失败，但仍然保留（可能是新闻）
+                        logger.debug(f"无法解析日期，但仍保留: {result.title[:30]}...")
+                else:
+                    # 无日期的新闻也保留（可能是相关新闻）
+                    logger.debug(f"无日期新闻，保留: {result.title[:30]}...")
+                
+                # 添加到结果中
+                all_results.append(result)
+                
+                if len(all_results) >= count:
+                    break
             
             offset += batch_size
             request_count += 1
