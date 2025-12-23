@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { stockApi, agentApi, SSEDebateEvent } from '@/lib/api-client'
+import { stockApi, agentApi, knowledgeGraphApi, SSEDebateEvent } from '@/lib/api-client'
 import { formatRelativeTime } from '@/lib/utils'
 import NewsDetailDrawer from '@/components/NewsDetailDrawer'
 import DebateChatRoom, { ChatMessage, ChatRole } from '@/components/DebateChatRoom'
@@ -34,6 +34,9 @@ import {
   FileDown,
   Settings,
   Trash2,
+  Network,
+  Building2,
+  StopCircle,
 } from 'lucide-react'
 import {
   XAxis,
@@ -108,6 +111,7 @@ export default function StockAnalysisPage() {
   const [newsExpanded, setNewsExpanded] = useState(true) // 新闻是否展开
   const [debateMode, setDebateMode] = useState<string>('parallel') // 辩论模式
   const [showModelSelector, setShowModelSelector] = useState(false) // 模型选择器显示状态
+  const [showKnowledgeGraph, setShowKnowledgeGraph] = useState(true) // 是否展示知识图谱
   
   // 流式辩论状态
   const [isStreaming, setIsStreaming] = useState(false)
@@ -197,6 +201,13 @@ export default function StockAnalysisPage() {
     queryKey: ['stock', 'sentiment-trend', stockCode],
     queryFn: () => stockApi.getSentimentTrend(stockCode, 30),
     staleTime: 5 * 60 * 1000,
+  })
+
+  // 获取知识图谱
+  const { data: knowledgeGraph, isLoading: kgLoading, refetch: refetchKG } = useQuery({
+    queryKey: ['knowledge-graph', stockCode],
+    queryFn: () => knowledgeGraphApi.getCompanyGraph(stockCode),
+    staleTime: 10 * 60 * 1000, // 缓存10分钟
   })
 
   // 获取K线数据 - 支持多周期和复权类型
@@ -689,6 +700,14 @@ export default function StockAnalysisPage() {
     targetedCrawlMutation.mutate()
   }
 
+  const handleStopCrawl = () => {
+    if (window.confirm('确定要停止当前的爬取任务吗？')) {
+      // 停止任务（设置为 idle 状态）
+      setCrawlTask({ status: 'idle' })
+      toast.info('已停止爬取任务')
+    }
+  }
+
   // 清除新闻 Mutation
   const clearNewsMutation = useMutation({
     mutationFn: () => stockApi.clearStockNews(stockCode),
@@ -800,6 +819,104 @@ export default function StockAnalysisPage() {
         </Button>
         </div>
       </div>
+
+      {/* 知识图谱卡片 */}
+      {showKnowledgeGraph && knowledgeGraph && knowledgeGraph.graph_exists && (
+        <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
+          <CardHeader>
+            <div className="flex items-start justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-purple-800">
+                  <Network className="w-5 h-5 text-purple-600" />
+                  知识图谱 · 智能检索
+                </CardTitle>
+                <CardDescription className="mt-1.5">
+                  基于多维度关键词并发检索，提升召回率
+                </CardDescription>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => refetchKG()}
+                className="h-8 px-2"
+                title="刷新图谱"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${kgLoading ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {/* 名称变体 */}
+            {knowledgeGraph.name_variants && knowledgeGraph.name_variants.length > 0 && (
+              <div>
+                <p className="text-xs text-gray-500 mb-1">名称变体</p>
+                <div className="flex flex-wrap gap-1">
+                  {knowledgeGraph.name_variants.map((variant, idx) => (
+                    <Badge key={idx} variant="outline" className="text-xs bg-white">
+                      {variant}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* 业务线 */}
+            {knowledgeGraph.businesses && knowledgeGraph.businesses.length > 0 && (
+              <div>
+                <p className="text-xs text-gray-500 mb-1">主营业务</p>
+                <div className="flex flex-wrap gap-1">
+                  {knowledgeGraph.businesses
+                    .filter(b => b.status === 'active')
+                    .slice(0, 5)
+                    .map((business, idx) => (
+                      <Badge 
+                        key={idx} 
+                        className={`text-xs ${
+                          business.type === 'new' 
+                            ? 'bg-emerald-100 text-emerald-700' 
+                            : 'bg-blue-100 text-blue-700'
+                        }`}
+                        title={business.description || business.name}
+                      >
+                        {business.type === 'new' && '🆕 '}
+                        {business.name}
+                      </Badge>
+                    ))}
+                </div>
+              </div>
+            )}
+            
+            {/* 关联概念 */}
+            {knowledgeGraph.concepts && knowledgeGraph.concepts.length > 0 && (
+              <div>
+                <p className="text-xs text-gray-500 mb-1">关联概念</p>
+                <div className="flex flex-wrap gap-1">
+                  {knowledgeGraph.concepts.slice(0, 6).map((concept, idx) => (
+                    <Badge key={idx} className="text-xs bg-purple-100 text-purple-700">
+                      {concept}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* 检索策略 */}
+            {knowledgeGraph.search_queries && knowledgeGraph.search_queries.length > 0 && (
+              <div>
+                <p className="text-xs text-gray-500 mb-1">并发检索查询（{knowledgeGraph.search_queries.length}条）</p>
+                <div className="text-xs text-gray-600 bg-white rounded p-2 max-h-20 overflow-y-auto">
+                  {knowledgeGraph.search_queries.slice(0, 3).map((query, idx) => (
+                    <div key={idx} className="truncate">• {query}</div>
+                  ))}
+                  {knowledgeGraph.search_queries.length > 3 && (
+                    <div className="text-gray-400">... 还有 {knowledgeGraph.search_queries.length - 3} 条</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* 概览卡片 */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -1081,15 +1198,14 @@ export default function StockAnalysisPage() {
                     爬取失败
                   </span>
                 )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleStartCrawl}
-                  disabled={crawlTask.status === 'running' || crawlTask.status === 'pending' || targetedCrawlMutation.isPending}
-                  className="gap-2"
-                >
-                  {crawlTask.status === 'running' || crawlTask.status === 'pending' ? (
-                    <>
+                {crawlTask.status === 'running' || crawlTask.status === 'pending' ? (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled
+                      className="gap-2"
+                    >
                       <Loader2 className="w-4 h-4 animate-spin" />
                       <span>爬取中...</span>
                       {crawlTask.progress && (
@@ -1097,14 +1213,29 @@ export default function StockAnalysisPage() {
                           {crawlTask.progress.message || `${crawlTask.progress.current}%`}
                         </span>
                       )}
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4" />
-                      {hasHistoryNews ? '更新爬取' : '定向爬取'}
-                    </>
-                  )}
-                </Button>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleStopCrawl}
+                      className="gap-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                    >
+                      <StopCircle className="w-4 h-4" />
+                      <span>停止</span>
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleStartCrawl}
+                    disabled={targetedCrawlMutation.isPending}
+                    className="gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    {hasHistoryNews ? '更新爬取' : '定向爬取'}
+                  </Button>
+                )}
               </div>
             </div>
           </CardHeader>
