@@ -18,6 +18,9 @@ celery>=5.3.0
 # ===== 向量数据库 =====
 pymilvus>=2.3.0
 
+# ===== 图数据库 =====
+neo4j>=5.14.0  # Neo4j Python驱动
+
 # ===== 网络请求与爬虫 =====
 requests>=2.31.0
 beautifulsoup4>=4.12.0

@@ -67,6 +67,11 @@ class Settings(BaseSettings):
     MILVUS_COLLECTION_NAME: str = Field(default="finnews_embeddings")
     MILVUS_DIM: int = Field(default=1536)  # OpenAI embedding dimension
     
+    # Neo4j 知识图谱配置
+    NEO4J_URI: str = Field(default="bolt://localhost:7687", description="Neo4j 连接URI")
+    NEO4J_USER: str = Field(default="neo4j", description="Neo4j 用户名")
+    NEO4J_PASSWORD: str = Field(default="finnews_neo4j_password", description="Neo4j 密码")
+    
     # LLM 配置
     LLM_PROVIDER: str = Field(default="bailian")  # 默认提供商
     LLM_MODEL: str = Field(default="qwen-plus")
