@@ -33,6 +33,26 @@ from ..tools.crawler_enhanced import EnhancedCrawler, crawl_url
 logger = logging.getLogger(__name__)
 
 
+def clean_text_for_db(text: str) -> str:
+    """
+    清理文本中不适合存入数据库的字符
+    
+    PostgreSQL 不允许在文本字段中存储 NUL 字符 (\x00)
+    
+    Args:
+        text: 原始文本
+        
+    Returns:
+        清理后的文本
+    """
+    if text is None:
+        return None
+    if not isinstance(text, str):
+        return text
+    # 移除 NUL 字符
+    return text.replace('\x00', '').replace('\0', '')
+
+
 def get_crawler_tool(source: str):
     """
     爬虫工厂函数
@@ -181,15 +201,15 @@ def realtime_crawl_task(self, source: str = "sina", force_refresh: bool = False)
                 logger.debug(f"[Task {task_record.id}] ⏭️  跳过重复新闻: {news_item.title[:30]}...")
                 continue
             
-            # 创建新记录
+            # 创建新记录（清理 NUL 字符，PostgreSQL 不允许存储）
             news = News(
-                title=news_item.title,
-                content=news_item.content,
-                raw_html=news_item.raw_html,  # 保存原始 HTML
-                url=news_item.url,
-                source=news_item.source,
+                title=clean_text_for_db(news_item.title),
+                content=clean_text_for_db(news_item.content),
+                raw_html=clean_text_for_db(news_item.raw_html),  # 保存原始 HTML
+                url=clean_text_for_db(news_item.url),
+                source=clean_text_for_db(news_item.source),
                 publish_time=news_item.publish_time,
-                author=news_item.author,
+                author=clean_text_for_db(news_item.author),
                 keywords=news_item.keywords,
                 stock_codes=news_item.stock_codes,
             )
@@ -348,14 +368,15 @@ def cold_start_crawl_task(
                     ).scalar_one_or_none()
                     
                     if not existing:
+                        # 清理 NUL 字符，PostgreSQL 不允许存储
                         news = News(
-                            title=news_item.title,
-                            content=news_item.content,
-                            raw_html=news_item.raw_html,  # 保存原始 HTML
-                            url=news_item.url,
-                            source=news_item.source,
+                            title=clean_text_for_db(news_item.title),
+                            content=clean_text_for_db(news_item.content),
+                            raw_html=clean_text_for_db(news_item.raw_html),  # 保存原始 HTML
+                            url=clean_text_for_db(news_item.url),
+                            source=clean_text_for_db(news_item.source),
                             publish_time=news_item.publish_time,
-                            author=news_item.author,
+                            author=clean_text_for_db(news_item.author),
                             keywords=news_item.keywords,
                             stock_codes=news_item.stock_codes,
                         )
@@ -721,37 +742,82 @@ def targeted_stock_crawl_task(
                 logger.info(f"[Task {task_record.id}] 🔍 使用交互式爬虫搜索: '{interactive_query}'")
                 
                 crawler = create_interactive_crawler(headless=True)
+                # 使用百度资讯搜索（专门获取新闻，比 Bing 更稳定）
                 interactive_results = crawler.interactive_search(
                     interactive_query,
-                    engines=["bing"],  # 优先 Bing（更稳定）
+                    engines=["baidu_news", "sogou"],  # 百度资讯 + 搜狗
                     num_results=15,
-                    headless=True
+                    search_type="news"  # 新闻搜索
                 )
                 
                 logger.info(f"[Task {task_record.id}] ✅ 交互式爬虫返回 {len(interactive_results)} 条结果")
                 
-                # 爬取页面内容
-                interactive_crawled = crawler.crawl_search_results(
-                    interactive_results,
-                    max_results=5
-                )
+                # 现在使用 news.baidu.com 入口，返回的是真实的第三方链接
+                # 可以安全爬取这些页面获取完整内容（除了需要 JS 渲染的网站）
                 
-                logger.info(f"[Task {task_record.id}] 📄 交互式爬虫爬取成功: {len(interactive_crawled)} 个页面")
+                # 需要 JS 渲染的网站列表（无法用 requests 爬取）
+                JS_RENDERED_SITES = [
+                    'baijiahao.baidu.com',  # 百家号需要 JS 渲染
+                    'mbd.baidu.com',        # 百度移动版
+                    'xueqiu.com',           # 雪球
+                    'mp.weixin.qq.com',     # 微信公众号
+                ]
                 
-                # 添加到新闻列表
-                for page in interactive_crawled:
-                    if page['url'] not in {item.url for item in all_news}:
-                        news_item = NewsItem(
-                            title=page['title'],
-                            content=page['content'][:500],  # 只取前 500 字作为摘要
-                            url=page['url'],
-                            source=page.get('source', 'web_search'),
-                            publish_time=None,  # 交互爬虫没有发布时间
-                            stock_codes=[pure_code, code],
-                            raw_html=None,
-                        )
-                        all_news.append(news_item)
-                        bochaai_matched += 1
+                for result in interactive_results[:10]:  # 最多取 10 条
+                    url = result.get('url', '')
+                    title = result.get('title', '')
+                    snippet = result.get('snippet', '')
+                    
+                    # 跳过无效结果
+                    if not url or not title:
+                        continue
+                    # 跳过已存在的 URL
+                    if url in {item.url for item in all_news}:
+                        continue
+                    # 跳过百度跳转链接
+                    if 'baidu.com/link?' in url:
+                        logger.debug(f"跳过百度跳转链接: {url}")
+                        continue
+                    
+                    # 检查是否是需要 JS 渲染的网站
+                    needs_js_render = any(site in url for site in JS_RENDERED_SITES)
+                    
+                    page_content = ""
+                    raw_html = None
+                    
+                    if needs_js_render:
+                        # JS 渲染网站：直接使用搜索结果的摘要
+                        logger.debug(f"  ⚠️ JS渲染网站，使用搜索摘要: {url[:50]}...")
+                        page_content = snippet if snippet else title
+                    else:
+                        # 普通网站：尝试爬取页面获取完整内容
+                        try:
+                            page_data = crawler.crawl_page(url)
+                            if page_data:
+                                page_content = page_data.get('text', '') or page_data.get('content', '')
+                                raw_html = page_data.get('html', '')
+                                # 如果爬取的标题更完整，使用爬取的标题
+                                if page_data.get('title') and len(page_data.get('title', '')) > len(title):
+                                    title = page_data.get('title', title)
+                                logger.debug(f"  ✅ 成功爬取页面: {title[:30]}...")
+                        except Exception as e:
+                            logger.debug(f"  ⚠️ 爬取页面失败 {url}: {e}")
+                    
+                    # 如果爬取失败，使用搜索结果的摘要
+                    if not page_content:
+                        page_content = snippet if snippet else title
+                    
+                    news_item = NewsItem(
+                        title=title,
+                        content=page_content,
+                        url=url,
+                        source=result.get('news_source') or result.get('source', 'baidu_news'),
+                        publish_time=None,  # 交互爬虫没有发布时间
+                        stock_codes=[pure_code, code],
+                        raw_html=raw_html,  # JS 渲染网站不保存乱码 HTML
+                    )
+                    all_news.append(news_item)
+                    bochaai_matched += 1
                 
                 logger.info(f"[Task {task_record.id}] 📊 交互式爬虫补充后总计: {bochaai_matched} 条匹配结果")
                 
@@ -786,15 +852,15 @@ def targeted_stock_crawl_task(
                     db.commit()
                 continue
             
-            # 创建新记录
+            # 创建新记录（清理 NUL 字符，PostgreSQL 不允许存储）
             news = News(
-                title=news_item.title,
-                content=news_item.content,
-                raw_html=news_item.raw_html,  # 保存原始 HTML
-                url=news_item.url,
-                source=news_item.source,
+                title=clean_text_for_db(news_item.title),
+                content=clean_text_for_db(news_item.content),
+                raw_html=clean_text_for_db(news_item.raw_html),  # 保存原始 HTML
+                url=clean_text_for_db(news_item.url),
+                source=clean_text_for_db(news_item.source),
                 publish_time=news_item.publish_time,
-                author=news_item.author,
+                author=clean_text_for_db(news_item.author),
                 keywords=news_item.keywords,
                 stock_codes=news_item.stock_codes or [pure_code, code],
             )
