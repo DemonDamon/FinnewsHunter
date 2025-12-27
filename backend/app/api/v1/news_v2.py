@@ -270,6 +270,75 @@ async def get_news_detail(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class RecrawlResponse(BaseModel):
+    """重新爬取响应"""
+    success: bool
+    message: str
+    content_length: int = 0
+    html_length: int = 0
+
+
+@router.post("/{news_id}/recrawl", response_model=RecrawlResponse, summary="重新爬取新闻内容")
+async def recrawl_news(
+    news_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    重新爬取指定新闻的完整内容
+    
+    用于补充缺失的原始 HTML 或更新被截断的正文
+    """
+    try:
+        # 获取新闻
+        query = select(News).where(News.id == news_id)
+        result = await db.execute(query)
+        news = result.scalar_one_or_none()
+        
+        if not news:
+            raise HTTPException(status_code=404, detail="新闻不存在")
+        
+        if not news.url:
+            raise HTTPException(status_code=400, detail="新闻缺少 URL，无法重新爬取")
+        
+        # 使用交互式爬虫重新爬取
+        from ...tools.interactive_crawler import create_interactive_crawler
+        
+        crawler = create_interactive_crawler()
+        page_data = crawler.crawl_page(news.url)
+        
+        if not page_data:
+            return RecrawlResponse(
+                success=False,
+                message="爬取失败，页面可能需要 JS 渲染或已失效",
+            )
+        
+        # 更新数据库
+        new_content = page_data.get('content', '') or page_data.get('text', '')
+        new_html = page_data.get('html', '')
+        
+        if new_content:
+            news.content = new_content
+        if new_html:
+            news.raw_html = new_html
+        
+        await db.commit()
+        
+        return RecrawlResponse(
+            success=True,
+            message="重新爬取成功",
+            content_length=len(new_content) if new_content else 0,
+            html_length=len(new_html) if new_html else 0,
+        )
+        
+    except HTTPException:
+        raise
+    except ImportError:
+        raise HTTPException(status_code=500, detail="交互式爬虫模块不可用")
+    except Exception as e:
+        logger.error(f"重新爬取失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/", response_model=List[NewsResponse], summary="获取新闻列表（带筛选）")
 async def get_news_list(
     source: Optional[str] = Query(None, description="新闻源筛选"),

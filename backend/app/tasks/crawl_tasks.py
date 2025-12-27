@@ -707,14 +707,33 @@ def targeted_stock_crawl_task(
             logger.debug(f"[Task {task_record.id}] ✅ 匹配核心词 '{matched_keyword}': {result.title[:40]}...")
             
             bochaai_matched += 1
+            
+            # 尝试爬取页面获取完整 HTML（只对前 15 条匹配结果爬取，避免任务太慢）
+            raw_html = None
+            crawled_content = None
+            if bochaai_matched <= 15:
+                try:
+                    from ..tools.interactive_crawler import InteractiveCrawler
+                    page_crawler = InteractiveCrawler(timeout=10)
+                    page_data = page_crawler.crawl_page(result.url)
+                    if page_data:
+                        raw_html = page_data.get('html')
+                        crawled_content = page_data.get('content') or page_data.get('text')
+                        logger.debug(f"[Task {task_record.id}] 📄 爬取成功: {result.url[:50]}... | HTML {len(raw_html) if raw_html else 0}字符")
+                except Exception as e:
+                    logger.debug(f"[Task {task_record.id}] ⚠️ 爬取页面失败 {result.url[:50]}...: {e}")
+            
+            # 优先使用爬取的完整内容
+            final_content = crawled_content if crawled_content and len(crawled_content) > len(full_content) else full_content
+            
             news_item = NewsItem(
                 title=result.title,
-                content=full_content,
+                content=final_content,
                 url=result.url,
                 source=result.site_name or "web_search",
                 publish_time=publish_time,
                 stock_codes=[pure_code, code],
-                raw_html=None,
+                raw_html=raw_html,
             )
             all_news.append(news_item)
             

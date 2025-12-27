@@ -765,14 +765,17 @@ class InteractiveCrawler:
             
             # 清理文本
             text_content = re.sub(r'\n{3,}', '\n\n', text_content)
-            text_content = text_content[:5000]  # 限制长度，但保留更多内容
+            # 不再截断内容，保留完整正文（数据库字段应该支持长文本）
+            # text_content = text_content[:5000]  # 移除截断
+            
+            logger.debug(f"📄 爬取完成: {title[:40]}... | 正文{len(text_content)}字符 | HTML{len(raw_html) if raw_html else 0}字符")
             
             return {
                 "url": url,
                 "title": title,
-                "content": text_content,
+                "content": text_content,  # 完整正文
                 "text": text_content,  # 兼容字段
-                "html": raw_html[:50000] if raw_html else None  # 原始 HTML（限制大小）
+                "html": raw_html if raw_html else None  # 完整原始 HTML
             }
             
         except requests.exceptions.Timeout:
