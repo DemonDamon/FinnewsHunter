@@ -1,6 +1,9 @@
 """
 辩论智能体 - Phase 2
 实现 Bull vs Bear 多智能体辩论机制
+
+支持动态搜索：智能体可以在发言中请求额外数据
+格式: [SEARCH: "查询内容" source:数据源]
 """
 import logging
 from typing import List, Dict, Any, Optional
@@ -11,11 +14,20 @@ from ..services.llm_service import get_llm_provider
 
 logger = logging.getLogger(__name__)
 
+# 数据请求提示词片段（用于启用动态搜索的场景）
+DATA_REQUEST_HINT = """
+【数据请求】如果需要更多数据支撑你的论点，可以在发言末尾添加搜索请求：
+- [SEARCH: "具体数据需求" source:akshare]  -- 财务/行情数据
+- [SEARCH: "新闻关键词" source:bochaai]  -- 最新新闻
+- [SEARCH: "搜索内容"]  -- 自动选择最佳数据源
+请只在确实需要时使用，每次最多1-2个请求。"""
+
 
 class BullResearcherAgent(Agent):
     """
     看多研究员智能体
     职责：基于新闻和数据，生成看多观点和投资建议
+    支持在辩论中请求额外数据
     """
     
     def __init__(self, llm_provider=None, organization_id: str = "finnews"):
@@ -26,7 +38,8 @@ class BullResearcherAgent(Agent):
             goal="从积极角度分析股票，发现投资机会和增长潜力",
             backstory="""你是一位乐观但理性的股票研究员，擅长发现被低估的投资机会。
 你善于从新闻和数据中提取正面信息，分析公司的增长潜力、竞争优势和市场机遇。
-你的分析注重长期价值，但也关注短期催化剂。""",
+你的分析注重长期价值，但也关注短期催化剂。
+当你发现数据不足以支撑论点时，你会主动请求补充数据。""",
             organization_id=organization_id
         )
         
@@ -117,13 +130,32 @@ class BullResearcherAgent(Agent):
                 "error": str(e)
             }
     
-    async def debate_round(self, prompt: str) -> str:
+    async def debate_round(self, prompt: str, enable_data_request: bool = True) -> str:
         """
         辩论回合发言（用于实时辩论模式）
+        
+        Args:
+            prompt: 辩论提示词
+            enable_data_request: 是否启用数据请求功能
+            
+        Returns:
+            发言内容（可能包含数据请求标记）
         """
+        system_content = f"""你是{self.role}，{self.backstory}
+你正在参与一场多空辩论，请用专业但有说服力的语气发言。
+
+作为看多方，你的核心任务是：
+1. 挖掘公司的增长潜力和投资价值
+2. 用数据和事实支撑你的乐观观点
+3. 反驳看空方提出的风险点
+4. 识别被市场低估的机会"""
+
+        if enable_data_request:
+            system_content += DATA_REQUEST_HINT
+        
         try:
             response = self._llm_provider.invoke([
-                {"role": "system", "content": f"你是{self.role}，{self.backstory}。你正在参与一场多空辩论，请用专业但有说服力的语气发言。"},
+                {"role": "system", "content": system_content},
                 {"role": "user", "content": prompt}
             ])
             return response.content if hasattr(response, 'content') else str(response)
@@ -157,6 +189,7 @@ class BearResearcherAgent(Agent):
     """
     看空研究员智能体
     职责：基于新闻和数据，识别风险和潜在问题
+    支持在辩论中请求额外数据
     """
     
     def __init__(self, llm_provider=None, organization_id: str = "finnews"):
@@ -167,7 +200,8 @@ class BearResearcherAgent(Agent):
             goal="从风险角度分析股票，识别潜在问题和下行风险",
             backstory="""你是一位谨慎的股票研究员，擅长发现被忽视的风险。
 你善于从新闻和数据中提取负面信号，分析公司的潜在问题、竞争威胁和市场风险。
-你的分析注重风险控制，帮助投资者避免损失。""",
+你的分析注重风险控制，帮助投资者避免损失。
+当你发现数据不足以支撑风险判断时，你会主动请求补充数据。""",
             organization_id=organization_id
         )
         
@@ -280,13 +314,32 @@ class BearResearcherAgent(Agent):
         
         return "\n".join(summaries)
     
-    async def debate_round(self, prompt: str) -> str:
+    async def debate_round(self, prompt: str, enable_data_request: bool = True) -> str:
         """
         辩论回合发言（用于实时辩论模式）
+        
+        Args:
+            prompt: 辩论提示词
+            enable_data_request: 是否启用数据请求功能
+            
+        Returns:
+            发言内容（可能包含数据请求标记）
         """
+        system_content = f"""你是{self.role}，{self.backstory}
+你正在参与一场多空辩论，请用专业但有说服力的语气发言。
+
+作为看空方，你的核心任务是：
+1. 识别公司的潜在风险和问题
+2. 用数据和事实支撑你的谨慎观点
+3. 反驳看多方过于乐观的论点
+4. 揭示被市场忽视的风险因素"""
+
+        if enable_data_request:
+            system_content += DATA_REQUEST_HINT
+        
         try:
             response = self._llm_provider.invoke([
-                {"role": "system", "content": f"你是{self.role}，{self.backstory}。你正在参与一场多空辩论，请用专业但有说服力的语气发言。"},
+                {"role": "system", "content": system_content},
                 {"role": "user", "content": prompt}
             ])
             return response.content if hasattr(response, 'content') else str(response)
@@ -299,6 +352,7 @@ class InvestmentManagerAgent(Agent):
     """
     投资经理智能体
     职责：综合 Bull/Bear 观点，做出最终投资决策
+    支持在决策前请求额外数据
     """
     
     def __init__(self, llm_provider=None, organization_id: str = "finnews"):
@@ -309,7 +363,8 @@ class InvestmentManagerAgent(Agent):
             goal="综合多方观点，做出理性的投资决策",
             backstory="""你是一位经验丰富的投资经理，擅长在多方观点中找到平衡。
 你善于综合看多和看空的分析，结合市场环境，做出最优的投资决策。
-你的决策注重风险收益比，追求稳健的长期回报。""",
+你的决策注重风险收益比，追求稳健的长期回报。
+当你认为辩论双方提供的数据不足以做出决策时，你会主动请求补充关键数据。""",
             organization_id=organization_id
         )
         
@@ -326,10 +381,19 @@ class InvestmentManagerAgent(Agent):
         stock_name: str,
         bull_analysis: str,
         bear_analysis: str,
-        context: str = ""
+        context: str = "",
+        enable_data_request: bool = False
     ) -> Dict[str, Any]:
         """
         综合双方观点，做出投资决策
+        
+        Args:
+            stock_code: 股票代码
+            stock_name: 股票名称
+            bull_analysis: 看多分析
+            bear_analysis: 看空分析
+            context: 市场背景和补充数据
+            enable_data_request: 是否允许请求额外数据
         """
         # 获取当前系统时间
         current_time = datetime.now().strftime("%Y年%m月%d日 %H:%M")
@@ -349,7 +413,7 @@ class InvestmentManagerAgent(Agent):
 【看空观点】
 {bear_analysis}
 
-【市场背景】
+【市场背景及补充数据】
 {context if context else "当前市场处于正常波动区间"}
 
 请按以下结构给出最终决策：
@@ -366,11 +430,16 @@ class InvestmentManagerAgent(Agent):
 - 指出最有力的看空论据
 - 指出看空方过于悲观的地方
 
-## 2. 综合判断
+## 2. 数据充分性评估
+- 辩论中使用的数据是否充分？
+- 是否有关键数据缺失影响决策？
+- 已获得的补充数据如何影响判断？
+
+## 3. 综合判断
 - 当前股票的核心矛盾是什么
 - 短期（1-3个月）和中长期（6-12个月）的观点
 
-## 3. 投资决策
+## 4. 投资决策
 
 **最终评级**：[强烈推荐 / 推荐 / 中性 / 谨慎 / 回避]
 
@@ -385,13 +454,21 @@ class InvestmentManagerAgent(Agent):
 - 列出需要持续关注的信号
 - 什么情况下需要调整决策
 
-## 4. 风险收益比
+## 5. 风险收益比
 - 预期收益空间
 - 潜在下行风险
 - 风险收益比评估
 
-请确保决策客观、理性，充分考虑双方观点。
+请确保决策客观、理性，充分考虑双方观点和已获取的数据。
 """
+        
+        if enable_data_request:
+            prompt += f"""
+
+【数据请求】如果你认为还需要更多数据才能做出准确决策，可以添加搜索请求：
+- [SEARCH: "具体数据需求" source:akshare]
+- [SEARCH: "新闻关键词" source:bochaai]
+但请优先基于现有数据做出判断。"""
         
         try:
             response = self._llm_provider.invoke([

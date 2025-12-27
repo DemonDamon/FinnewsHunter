@@ -1170,6 +1170,71 @@ class RiskAnalystAgent(Agent):
 
 ---
 
+## 多智能体辩论架构
+
+FinnewsHunter 的核心特色是 **多空辩论机制**，通过多个专业智能体的协作与对抗，深度挖掘个股的投资价值和风险。
+
+### 核心参与角色
+
+| 智能体 | 角色定位 | 核心职责 |
+|--------|----------|----------|
+| **BullResearcher** | 看多研究员 | 挖掘增长潜力、核心利好、估值优势 |
+| **BearResearcher** | 看空研究员 | 识别下行风险、负面催化剂、反驳乐观预期 |
+| **SearchAnalyst** | 搜索分析师 | 动态获取数据（AkShare/BochaAI/浏览器搜索） |
+| **InvestmentManager** | 投资经理 | 主持辩论、评估论点质量、做出最终决策 |
+
+### 辩论数据流架构
+
+```mermaid
+graph TD
+    subgraph 辩论启动
+        Manager[投资经理] -->|开场陈述| Orchestrator[辩论编排器]
+    end
+    
+    subgraph 多轮辩论
+        Orchestrator -->|第N轮| Bull[看多研究员]
+        Bull -->|发言 + 数据请求| Orchestrator
+        Orchestrator -->|触发搜索| Searcher[搜索分析师]
+        
+        Searcher -->|财务数据| AkShare[AkShare]
+        Searcher -->|实时新闻| BochaAI[BochaAI]
+        Searcher -->|网页搜索| Browser[浏览器引擎]
+        
+        AkShare --> Context[更新上下文]
+        BochaAI --> Context
+        Browser --> Context
+        
+        Context --> Orchestrator
+        Orchestrator -->|第N轮| Bear[看空研究员]
+        Bear -->|发言 + 数据请求| Orchestrator
+    end
+    
+    subgraph 最终决策
+        Orchestrator -->|智能数据补充| Searcher
+        Orchestrator -->|综合判断| Manager
+        Manager -->|投资评级| Result[最终报告]
+    end
+```
+
+### 动态搜索机制
+
+辩论过程中，智能体可以通过特定格式请求额外数据：
+
+```
+[SEARCH: "最近的毛利率数据" source:akshare]   -- 从 AkShare 获取财务数据
+[SEARCH: "行业竞争格局分析" source:bochaai]   -- 从 BochaAI 搜索新闻
+[SEARCH: "近期资金流向" source:akshare]       -- 获取资金流向
+[SEARCH: "竞品对比分析"]                       -- 自动选择最佳数据源
+```
+
+**支持的数据源：**
+- **AkShare**: 财务指标、K线行情、资金流向、机构持仓
+- **BochaAI**: 实时新闻搜索、分析师报告
+- **浏览器搜索**: 百度资讯、搜狗、360等多引擎搜索
+- **知识库**: 历史新闻和分析数据
+
+---
+
 ## 📈 路线图
 
 ### Phase 1: MVP（已完成） ✅
@@ -1200,11 +1265,15 @@ class RiskAnalystAgent(Agent):
   - [x] 内容质量评估与自动重试
   - [x] 缓存机制和统一 Article 模型
 
-### Phase 2: 多智能体协作（计划中）
-- [ ] BullResearcher & BearResearcher 智能体
-- [ ] 基于 `agenticx.collaboration.Debate` 的辩论工作流
-- [ ] 实时 WebSocket 推送
-- [ ] 智能体执行轨迹可视化
+### Phase 2: 多智能体辩论（已完成） ✅
+- [x] BullResearcher & BearResearcher 智能体
+- [x] SearchAnalyst 搜索分析师（动态数据获取）
+- [x] InvestmentManager 投资经理决策
+- [x] 辩论编排器（DebateOrchestrator）
+- [x] 动态搜索机制（辩论中按需获取数据）
+- [x] 三种辩论模式：并行分析、实时辩论、快速分析
+- [ ] 实时 WebSocket 推送（进行中）
+- [ ] 智能体执行轨迹可视化（进行中）
 
 ### Phase 3: 知识增强（计划中）
 - [ ] 金融知识图谱（Neo4j）
