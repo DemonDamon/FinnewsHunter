@@ -16,8 +16,11 @@ from sqlalchemy import select, func, desc, or_
 from ...core.database import get_db
 from ...models.news import News
 from ...models.analysis import Analysis
-from ...agents.debate_agents import create_debate_workflow
-from ...agents.orchestrator import create_orchestrator
+from ...agents import (
+    create_debate_workflow,
+    create_orchestrator,
+    create_data_collector
+)
 from ...services.llm_service import get_llm_provider
 from ...services.stock_data_service import stock_data_service
 
@@ -96,6 +99,18 @@ class TrajectoryStep(BaseModel):
     output_data: Optional[Dict[str, Any]] = None
     duration: Optional[float] = None
     status: str
+
+
+class SearchPlanRequest(BaseModel):
+    """生成搜索计划请求"""
+    query: str
+    stock_code: str
+    stock_name: Optional[str] = None
+
+
+class SearchExecuteRequest(BaseModel):
+    """执行搜索计划请求"""
+    plan: Dict[str, Any]  # 完整的 SearchPlan 对象
 
 
 # ============ API 端点 ============
@@ -846,6 +861,7 @@ async def debate_followup(request: FollowUpRequest):
     - 默认由投资经理回答
     - 如果问题中包含 @多方 或 @bull，由多方辩手回答
     - 如果问题中包含 @空方 或 @bear，由空方辩手回答
+    - 如果问题中包含 @数据专员，则生成搜索计划（不直接回答）
     """
     logger.info(f"🎯 收到追问请求: {request.question[:50]}...")
     
@@ -853,6 +869,41 @@ async def debate_followup(request: FollowUpRequest):
     question = request.question
     target = request.target_agent or 'manager'
     
+    # 1. 检查是否提及数据专员（确认优先模式）
+    if '@数据专员' in question or target == 'data_collector':
+        logger.info("🔍 检测到数据专员提及，生成搜索计划...")
+        
+        # 移除提及词
+        clean_question = question.replace('@数据专员', '').strip()
+        
+        # 创建数据专员
+        data_collector = create_data_collector()
+        
+        # 生成计划
+        plan = await data_collector.generate_search_plan(
+            query=clean_question,
+            stock_code=request.stock_code,
+            stock_name=request.stock_name or request.stock_code
+        )
+        
+        # 使用 SSE 返回计划事件
+        async def generate_plan_stream():
+            # Pydantic V2: 使用 model_dump_json() 或 json.dumps(model_dump())
+            plan_json = json.dumps(plan.model_dump(), ensure_ascii=False)
+            yield f"event: task_plan\ndata: {plan_json}\n\n"
+            yield "event: complete\ndata: {\"success\": true}\n\n"
+            
+        return StreamingResponse(
+            generate_plan_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+
+    # 2. 普通追问逻辑
     # 从问题中解析 @ 提及
     if '@多方' in question or '@bull' in question.lower() or '@看多' in question:
         target = 'bull'
@@ -885,6 +936,48 @@ async def debate_followup(request: FollowUpRequest):
             "X-Accel-Buffering": "no"
         }
     )
+
+
+@router.post("/search/execute")
+async def execute_search(request: SearchExecuteRequest):
+    """
+    执行确认后的搜索计划（SSE）
+    """
+    from ...agents.data_collector_v2 import SearchPlan
+    
+    logger.info(f"🚀 收到搜索执行请求: {request.plan.get('plan_id')}")
+    
+    try:
+        # 反序列化计划
+        plan = SearchPlan(**request.plan)
+        
+        async def generate_search_results():
+            yield f"event: phase\ndata: {json.dumps({'phase': 'executing', 'message': '正在执行搜索任务...'}, ensure_ascii=False)}\n\n"
+            
+            data_collector = create_data_collector()
+            
+            # 执行计划
+            results = await data_collector.execute_search_plan(plan)
+            
+            # 发送结果事件
+            yield f"event: agent\ndata: {json.dumps({'agent': 'DataCollector', 'role': '数据专员', 'content': results.get('summary', ''), 'is_chunk': False}, ensure_ascii=False)}\n\n"
+            
+            yield f"event: result\ndata: {json.dumps(results, ensure_ascii=False)}\n\n"
+            yield "event: complete\ndata: {\"success\": true}\n\n"
+            
+        return StreamingResponse(
+            generate_search_results(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"执行搜索计划失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/debate/{debate_id}", response_model=DebateResponse)
@@ -1082,6 +1175,12 @@ async def get_available_agents():
                 "role": "投资经理",
                 "description": "综合多方观点，做出投资决策",
                 "status": "active"
+            },
+            {
+                "name": "SearchAnalyst",
+                "role": "搜索分析师",
+                "description": "动态获取数据，支持 AkShare、BochaAI、网页搜索等",
+                "status": "active"
             }
         ],
         "workflows": [
@@ -1098,5 +1197,223 @@ async def get_available_agents():
                 "status": "active"
             }
         ]
+    }
+
+
+# ============ 辩论历史 API ============
+
+class DebateHistoryRequest(BaseModel):
+    """保存辩论历史请求"""
+    stock_code: str = Field(..., description="股票代码")
+    sessions: List[Dict[str, Any]] = Field(..., description="会话列表")
+
+
+class DebateHistoryResponse(BaseModel):
+    """辩论历史响应"""
+    success: bool
+    stock_code: str
+    sessions: List[Dict[str, Any]] = []
+    message: Optional[str] = None
+
+
+@router.get("/debate/history/{stock_code}", response_model=DebateHistoryResponse)
+async def get_debate_history(
+    stock_code: str,
+    limit: int = Query(10, le=50, description="返回会话数量限制"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    获取股票的辩论历史
+    
+    - **stock_code**: 股票代码
+    - **limit**: 返回数量限制（默认10，最大50）
+    """
+    from ...models.debate_history import DebateHistory
+    
+    try:
+        # 标准化股票代码
+        code = stock_code.upper()
+        if not (code.startswith("SH") or code.startswith("SZ")):
+            code = f"SH{code}" if code.startswith("6") else f"SZ{code}"
+        
+        # 查询历史记录
+        query = select(DebateHistory).where(
+            DebateHistory.stock_code == code
+        ).order_by(desc(DebateHistory.updated_at)).limit(limit)
+        
+        result = await db.execute(query)
+        histories = result.scalars().all()
+        
+        sessions = []
+        for h in histories:
+            sessions.append({
+                "id": h.session_id,
+                "stockCode": h.stock_code,
+                "stockName": h.stock_name,
+                "mode": h.mode,
+                "messages": h.messages,
+                "createdAt": h.created_at.isoformat() if h.created_at else None,
+                "updatedAt": h.updated_at.isoformat() if h.updated_at else None
+            })
+        
+        return DebateHistoryResponse(
+            success=True,
+            stock_code=code,
+            sessions=sessions
+        )
+        
+    except Exception as e:
+        logger.error(f"获取辩论历史失败: {e}", exc_info=True)
+        return DebateHistoryResponse(
+            success=False,
+            stock_code=stock_code,
+            message=str(e)
+        )
+
+
+@router.post("/debate/history", response_model=DebateHistoryResponse)
+async def save_debate_history(
+    request: DebateHistoryRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    保存辩论历史
+    
+    - **stock_code**: 股票代码
+    - **sessions**: 会话列表
+    """
+    from ...models.debate_history import DebateHistory
+    
+    try:
+        # 标准化股票代码
+        code = request.stock_code.upper()
+        if not (code.startswith("SH") or code.startswith("SZ")):
+            code = f"SH{code}" if code.startswith("6") else f"SZ{code}"
+        
+        saved_count = 0
+        
+        for session_data in request.sessions:
+            session_id = session_data.get("id")
+            if not session_id:
+                continue
+            
+            messages = session_data.get("messages", [])
+            logger.info(f"📥 Processing session {session_id}: {len(messages)} messages")
+            logger.info(f"📥 Message roles: {[m.get('role') for m in messages]}")
+            
+            # 检查是否已存在
+            existing_query = select(DebateHistory).where(
+                DebateHistory.session_id == session_id
+            )
+            existing_result = await db.execute(existing_query)
+            existing = existing_result.scalar_one_or_none()
+            
+            if existing:
+                # 更新现有记录
+                logger.info(f"📥 Updating existing session, old messages: {len(existing.messages)}, new: {len(messages)}")
+                existing.messages = messages
+                existing.mode = session_data.get("mode")
+                existing.updated_at = datetime.utcnow()
+            else:
+                # 解析 created_at，确保是 naive datetime（去掉时区信息）
+                created_at_str = session_data.get("createdAt")
+                if created_at_str:
+                    # 处理 ISO 格式字符串，移除末尾的 'Z' 并转换
+                    if created_at_str.endswith('Z'):
+                        created_at_str = created_at_str[:-1] + '+00:00'
+                    parsed_dt = datetime.fromisoformat(created_at_str)
+                    # 转换为 naive datetime (去掉时区信息)
+                    if parsed_dt.tzinfo is not None:
+                        created_at = parsed_dt.replace(tzinfo=None)
+                    else:
+                        created_at = parsed_dt
+                else:
+                    created_at = datetime.utcnow()
+                
+                # 创建新记录
+                new_history = DebateHistory(
+                    session_id=session_id,
+                    stock_code=code,
+                    stock_name=session_data.get("stockName"),
+                    mode=session_data.get("mode"),
+                    messages=session_data.get("messages", []),
+                    created_at=created_at,
+                    updated_at=datetime.utcnow()
+                )
+                db.add(new_history)
+            
+            saved_count += 1
+        
+        await db.commit()
+        
+        logger.info(f"保存了 {saved_count} 个辩论会话到数据库")
+        
+        return DebateHistoryResponse(
+            success=True,
+            stock_code=code,
+            message=f"成功保存 {saved_count} 个会话"
+        )
+        
+    except Exception as e:
+        logger.error(f"保存辩论历史失败: {e}", exc_info=True)
+        await db.rollback()
+        return DebateHistoryResponse(
+            success=False,
+            stock_code=request.stock_code,
+            message=str(e)
+        )
+
+
+@router.delete("/debate/history/{stock_code}")
+async def delete_debate_history(
+    stock_code: str,
+    session_id: Optional[str] = Query(None, description="删除指定会话，不传则删除所有"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    删除辩论历史
+    
+    - **stock_code**: 股票代码
+    - **session_id**: 会话ID（可选，不传则删除该股票的所有历史）
+    """
+    from ...models.debate_history import DebateHistory
+    from sqlalchemy import delete
+    
+    try:
+        # 标准化股票代码
+        code = stock_code.upper()
+        if not (code.startswith("SH") or code.startswith("SZ")):
+            code = f"SH{code}" if code.startswith("6") else f"SZ{code}"
+        
+        if session_id:
+            # 删除指定会话
+            stmt = delete(DebateHistory).where(
+                DebateHistory.session_id == session_id
+            )
+        else:
+            # 删除该股票的所有会话
+            stmt = delete(DebateHistory).where(
+                DebateHistory.stock_code == code
+            )
+        
+        result = await db.execute(stmt)
+        await db.commit()
+        
+        deleted_count = result.rowcount
+        
+        return {
+            "success": True,
+            "stock_code": code,
+            "deleted_count": deleted_count,
+            "message": f"删除了 {deleted_count} 条记录"
+        }
+        
+    except Exception as e:
+        logger.error(f"删除辩论历史失败: {e}", exc_info=True)
+        await db.rollback()
+        return {
+            "success": False,
+            "stock_code": stock_code,
+            "message": str(e)
     }
 
