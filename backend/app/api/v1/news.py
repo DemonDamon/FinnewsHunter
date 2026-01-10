@@ -174,6 +174,36 @@ async def crawl_news(
     )
 
 
+@router.post("/refresh", response_model=CrawlResponse)
+async def refresh_news(
+    source: str = Query("sina", description="新闻源"),
+    pages: int = Query(1, ge=1, le=5, description="爬取页数"),
+    background_tasks: BackgroundTasks = None
+):
+    """
+    刷新新闻（前端刷新按钮调用）
+    
+    - **source**: 新闻源（sina, tencent, nbd, eastmoney, yicai, 163）
+    - **pages**: 爬取页数（1-5）
+    """
+    background_tasks.add_task(
+        crawl_and_save_news_sync,
+        source,
+        1,  # start_page
+        pages  # end_page
+    )
+    
+    logger.info(f"Refresh task started: {source}, {pages} pages")
+    
+    return CrawlResponse(
+        success=True,
+        message=f"刷新任务已启动：{source}，{pages} 页",
+        crawled_count=0,
+        saved_count=0,
+        source=source
+    )
+
+
 @router.get("/", response_model=List[NewsResponse])
 async def get_news_list(
     skip: int = Query(0, ge=0, description="跳过的记录数"),
@@ -203,6 +233,36 @@ async def get_news_list(
     
     except Exception as e:
         logger.error(f"Failed to get news list: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/latest", response_model=List[NewsResponse])
+async def get_latest_news(
+    limit: int = Query(20, ge=1, le=500, description="返回的记录数"),
+    source: Optional[str] = Query(None, description="按来源筛选"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    获取最新新闻（按发布时间排序）
+    
+    - **limit**: 返回的记录数（最多500条）
+    - **source**: 按来源筛选（可选）
+    """
+    try:
+        query = select(News).order_by(desc(News.publish_time))
+        
+        if source:
+            query = query.where(News.source == source)
+        
+        query = query.limit(limit)
+        
+        result = await db.execute(query)
+        news_list = result.scalars().all()
+        
+        return [NewsResponse(**news.to_dict()) for news in news_list]
+    
+    except Exception as e:
+        logger.error(f"Failed to get latest news: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
