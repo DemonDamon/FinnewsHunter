@@ -784,6 +784,26 @@ async def get_targeted_crawl_status(
                 progress=None
             )
         
+        # 检测超时：如果任务在 PENDING 状态超过 5 分钟，自动标记为失败
+        if task.status == TaskStatus.PENDING and task.created_at:
+            pending_duration = datetime.utcnow() - task.created_at
+            if pending_duration > timedelta(minutes=5):
+                logger.warning(f"Task {task.id} has been PENDING for {pending_duration}, marking as FAILED (timeout)")
+                task.status = TaskStatus.FAILED
+                task.completed_at = datetime.utcnow()
+                task.error_message = "任务超时：Celery worker 可能未启动或已停止"
+                await db.commit()
+        
+        # 检测运行超时：如果任务在 RUNNING 状态超过 30 分钟，也标记为失败
+        if task.status == TaskStatus.RUNNING and task.started_at:
+            running_duration = datetime.utcnow() - task.started_at
+            if running_duration > timedelta(minutes=30):
+                logger.warning(f"Task {task.id} has been RUNNING for {running_duration}, marking as FAILED (timeout)")
+                task.status = TaskStatus.FAILED
+                task.completed_at = datetime.utcnow()
+                task.error_message = "任务执行超时"
+                await db.commit()
+        
         return TargetedCrawlStatus(
             task_id=task.id,
             status=task.status,
@@ -799,6 +819,68 @@ async def get_targeted_crawl_status(
     
     except Exception as e:
         logger.error(f"Failed to get targeted crawl status for {stock_code}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{stock_code}/targeted-crawl/cancel")
+async def cancel_targeted_crawl(
+    stock_code: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    取消定向爬取任务
+    
+    - **stock_code**: 股票代码
+    """
+    try:
+        # 标准化股票代码
+        code = stock_code.upper()
+        if not (code.startswith("SH") or code.startswith("SZ")):
+            code = f"SH{code}" if code.startswith("6") else f"SZ{code}"
+        
+        # 查找正在进行的任务
+        task_query = select(CrawlTask).where(
+            and_(
+                CrawlTask.mode == CrawlMode.TARGETED,
+                CrawlTask.status.in_([TaskStatus.PENDING, TaskStatus.RUNNING]),
+                text("config->>'stock_code' = :stock_code").bindparams(stock_code=code)
+            )
+        ).order_by(desc(CrawlTask.created_at)).limit(1)
+        
+        result = await db.execute(task_query)
+        task = result.scalar_one_or_none()
+        
+        if not task:
+            return {
+                "success": True,
+                "message": "没有正在进行的任务"
+            }
+        
+        # 更新任务状态为已取消
+        task.status = TaskStatus.CANCELLED
+        task.completed_at = datetime.utcnow()
+        task.error_message = "用户手动取消"
+        await db.commit()
+        
+        # 如果有 celery_task_id，尝试撤销 Celery 任务
+        if task.celery_task_id:
+            try:
+                from ...tasks.crawl_tasks import celery_app
+                celery_app.control.revoke(task.celery_task_id, terminate=True)
+                logger.info(f"Revoked Celery task: {task.celery_task_id}")
+            except Exception as e:
+                logger.warning(f"Failed to revoke Celery task: {e}")
+        
+        logger.info(f"Cancelled targeted crawl task {task.id} for {code}")
+        
+        return {
+            "success": True,
+            "message": f"已取消任务 (ID: {task.id})",
+            "task_id": task.id
+        }
+    
+    except Exception as e:
+        logger.error(f"Failed to cancel targeted crawl for {stock_code}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
