@@ -6,6 +6,7 @@ from .news import News
 from .stock import Stock
 from .analysis import Analysis
 from .crawl_task import CrawlTask, CrawlMode, TaskStatus
+from .debate_history import DebateHistory
 
 __all__ = [
     "Base",
@@ -18,5 +19,6 @@ __all__ = [
     "CrawlTask",
     "CrawlMode",
     "TaskStatus",
+    "DebateHistory",
 ]
 
