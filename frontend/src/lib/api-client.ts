@@ -404,6 +404,18 @@ export const stockApi = {
   },
 
   /**
+   * 取消定向爬取任务
+   */
+  cancelTargetedCrawl: async (stockCode: string): Promise<{
+    success: boolean
+    message: string
+    task_id?: number
+  }> => {
+    const response = await apiClient.post(`/stocks/${stockCode}/targeted-crawl/cancel`)
+    return response.data
+  },
+
+  /**
    * 清除股票新闻
    */
   clearStockNews: async (stockCode: string): Promise<{
@@ -739,6 +751,80 @@ export const agentApi = {
   }> => {
     const response = await apiClient.get('/agents/available')
     return response.data
+  },
+
+  /**
+   * 执行搜索计划 (SSE)
+   */
+  executeSearch: (
+    plan: any,
+    onEvent: (event: SSEDebateEvent) => void,
+    onError?: (error: Error) => void,
+    onComplete?: () => void
+  ): (() => void) => {
+    const controller = new AbortController()
+    
+    fetch(`${API_BASE_URL}/agents/search/execute`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ plan }),
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+        
+        const reader = response.body?.getReader()
+        if (!reader) {
+          throw new Error('No response body')
+        }
+        
+        const decoder = new TextDecoder()
+        let buffer = ''
+        
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          
+          buffer += decoder.decode(value, { stream: true })
+          
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+          
+          let currentEvent = ''
+          let currentData = ''
+          
+          for (const line of lines) {
+            if (line.startsWith('event: ')) {
+              currentEvent = line.slice(7)
+            } else if (line.startsWith('data: ')) {
+              currentData = line.slice(6)
+            } else if (line === '' && currentEvent && currentData) {
+              try {
+                const data = JSON.parse(currentData)
+                onEvent({ type: currentEvent as SSEDebateEvent['type'], data })
+              } catch (e) {
+                console.error('Failed to parse SSE data:', currentData)
+              }
+              currentEvent = ''
+              currentData = ''
+            }
+          }
+        }
+        
+        onComplete?.()
+      })
+      .catch((error) => {
+        if (error.name !== 'AbortError') {
+          console.error('SSE error:', error)
+          onError?.(error)
+        }
+      })
+    
+    return () => controller.abort()
   },
 
   /**
