@@ -9,7 +9,7 @@ from .debate_agents import (
     DebateWorkflow,
     create_debate_workflow,
 )
-from .search_analyst import SearchAnalystAgent, create_search_analyst
+from .data_collector_v2 import DataCollectorAgentV2, QuickAnalystAgent, create_data_collector
 from .orchestrator import DebateOrchestrator, create_orchestrator
 
 __all__ = [
@@ -20,8 +20,9 @@ __all__ = [
     "InvestmentManagerAgent",
     "DebateWorkflow",
     "create_debate_workflow",
-    "SearchAnalystAgent",
-    "create_search_analyst",
+    "DataCollectorAgentV2",
+    "QuickAnalystAgent",
+    "create_data_collector",
     "DebateOrchestrator",
     "create_orchestrator",
 ]
