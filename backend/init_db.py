@@ -25,6 +25,7 @@ if __name__ == "__main__":
         from app.models.stock import Stock
         from app.models.analysis import Analysis
         from app.models.crawl_task import CrawlTask
+        from app.models.debate_history import DebateHistory
         
         print(f"\nConnecting to database: {settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}")
         
@@ -43,6 +44,7 @@ if __name__ == "__main__":
         print(f"   - Stock table created")
         print(f"   - Analysis table created")
         print(f"   - CrawlTask table created")
+        print(f"   - DebateHistory table created")
         print("=" * 60)
         sys.exit(0)
         
