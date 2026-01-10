@@ -9,6 +9,9 @@ import { stockApi, agentApi, knowledgeGraphApi, SSEDebateEvent } from '@/lib/api
 import { formatRelativeTime } from '@/lib/utils'
 import NewsDetailDrawer from '@/components/NewsDetailDrawer'
 import DebateChatRoom, { ChatMessage, ChatRole } from '@/components/DebateChatRoom'
+import DebateHistorySidebar from '@/components/DebateHistorySidebar'
+import { useDebateStore, DebateSession } from '@/store/useDebateStore'
+import type { MentionTarget } from '@/components/MentionInput'
 import {
   TrendingUp,
   TrendingDown,
@@ -37,6 +40,7 @@ import {
   Network,
   Building2,
   StopCircle,
+  History,
 } from 'lucide-react'
 import {
   XAxis,
@@ -127,8 +131,136 @@ export default function StockAnalysisPage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const currentMessageIdRef = useRef<string | null>(null)
   const cancelStreamRef = useRef<(() => void) | null>(null)
+  const chatMessagesRef = useRef<ChatMessage[]>([])
+  
+  // 保持 ref 同步
+  useEffect(() => {
+    chatMessagesRef.current = chatMessages
+  }, [chatMessages])
+  
   const stockCode = code?.toUpperCase() || 'SH600519'
   const pureCode = extractCode(stockCode)
+  
+  // 辩论历史 Store
+  const { 
+    currentSession,
+    startSession, 
+    addMessage: addMessageToStore, 
+    syncMessages,
+    getStockSessions,
+    loadSession,
+    clearStockHistory,
+    syncToBackend,
+    loadFromBackend,
+    saveAnalysisResult,
+    updateSessionStatus,
+    deleteSession,
+    getLatestInProgressSession
+  } = useDebateStore()
+  
+  // 历史侧边栏状态
+  const [showHistorySidebar, setShowHistorySidebar] = useState(false)
+  
+  // 获取该股票的历史会话（直接从 Store 订阅，确保数据变化时自动更新）
+  const allSessions = useDebateStore(state => state.sessions)
+  const historySessions = useMemo(() => allSessions[stockCode] || [], [stockCode, allSessions])
+  
+  // 页面加载时从后端加载历史
+  useEffect(() => {
+    loadFromBackend(stockCode)
+  }, [stockCode, loadFromBackend])
+
+  // 页面加载时检查是否有未完成的会话，并提示恢复
+  useEffect(() => {
+    const checkAndRestoreSession = () => {
+      const inProgressSession = getLatestInProgressSession(stockCode)
+      if (inProgressSession && inProgressSession.messages.length > 0) {
+        // 有未完成的会话，提示用户恢复
+        const shouldRestore = window.confirm(
+          `检测到有未完成的${inProgressSession.mode === 'realtime_debate' ? '实时辩论' : '分析'}会话（${inProgressSession.messages.length} 条消息），是否恢复？`
+        )
+        if (shouldRestore) {
+          restoreSessionState(inProgressSession)
+          toast.success('已恢复上次会话')
+        } else {
+          // 标记为中断
+          updateSessionStatus('interrupted')
+        }
+      } else if (inProgressSession && inProgressSession.analysisResult) {
+        // 有分析结果的会话，直接恢复
+        restoreSessionState(inProgressSession)
+      }
+    }
+    
+    // 延迟执行，确保 store 数据已加载
+    const timer = setTimeout(checkAndRestoreSession, 500)
+    return () => clearTimeout(timer)
+  }, [stockCode])
+
+  // 恢复会话状态到页面
+  const restoreSessionState = useCallback((session: DebateSession) => {
+    // 恢复模式
+    setDebateMode(session.mode)
+    
+    // 恢复聊天消息（需要类型转换）
+    if (session.messages.length > 0) {
+      const restoredMessages: ChatMessage[] = session.messages.map(m => ({
+        id: m.id,
+        role: m.role as ChatRole,
+        content: m.content,
+        timestamp: new Date(m.timestamp),
+        round: m.round,
+        isStreaming: false
+      }))
+      setChatMessages(restoredMessages)
+    }
+    
+    // 恢复分析结果（并行/快速模式）
+    if (session.analysisResult) {
+      setStreamingContent({
+        bull: session.analysisResult.bull || '',
+        bear: session.analysisResult.bear || '',
+        manager: session.analysisResult.manager || '',
+        quick: session.analysisResult.quick || ''
+      })
+      
+      // 如果有最终决策，设置 debateResult
+      if (session.analysisResult.finalDecision || session.analysisResult.bull || session.analysisResult.bear) {
+        setDebateResult({
+          success: true,
+          stock_code: session.stockCode,
+          stock_name: session.stockName,
+          mode: session.mode as 'parallel' | 'realtime_debate' | 'quick_analysis',
+          bull_analysis: session.analysisResult.bull ? {
+            success: true,
+            agent_name: 'BullResearcher',
+            stance: 'bull',
+            analysis: session.analysisResult.bull
+          } : undefined,
+          bear_analysis: session.analysisResult.bear ? {
+            success: true,
+            agent_name: 'BearResearcher',
+            stance: 'bear',
+            analysis: session.analysisResult.bear
+          } : undefined,
+          final_decision: session.analysisResult.finalDecision ? {
+            success: true,
+            agent_name: 'InvestmentManager',
+            rating: session.analysisResult.finalDecision.rating,
+            decision: session.analysisResult.finalDecision.decision
+          } : undefined,
+          quick_analysis: session.analysisResult.quick ? {
+            success: true,
+            analysis: session.analysisResult.quick
+          } : undefined,
+          execution_time: session.analysisResult.executionTime
+        })
+      }
+    }
+    
+    // 加载会话到 store
+    loadSession(session.stockCode, session.id)
+  }, [loadSession])
 
   // 获取当前周期配置
   const currentPeriodConfig = PERIOD_OPTIONS.find(p => p.value === klinePeriod) || PERIOD_OPTIONS[0]
@@ -273,6 +405,31 @@ export default function StockAnalysisPage() {
     console.log('SSE Event:', event.type, event.data)
     
     switch (event.type) {
+      case 'task_plan':
+        // 搜索计划事件
+        const plan = event.data as any
+        setChatMessages(prev => {
+          // 查找最后一条消息，如果是数据专员的思考中消息，则替换
+          const lastMsg = prev[prev.length - 1]
+          if (lastMsg && lastMsg.role === 'data_collector' && !lastMsg.content) {
+            return prev.map(msg => 
+              msg.id === lastMsg.id 
+                ? { ...msg, searchPlan: plan, searchStatus: 'pending' } 
+                : msg
+            )
+          }
+          // 否则添加新消息
+          return [...prev, {
+            id: `plan-${Date.now()}`,
+            role: 'data_collector' as ChatRole,
+            content: '',
+            timestamp: new Date(),
+            searchPlan: plan,
+            searchStatus: 'pending'
+          }]
+        })
+        break
+
       case 'phase':
         setStreamPhase(event.data.phase || '')
         // 更新轮次信息
@@ -407,6 +564,19 @@ export default function StockAnalysisPage() {
         })
         setIsStreaming(false)
         setCurrentRound(null)
+        
+        // 保存分析结果到 store（用于历史恢复）
+        saveAnalysisResult({
+          bull: event.data.bull_analysis?.analysis,
+          bear: event.data.bear_analysis?.analysis,
+          manager: event.data.final_decision?.decision,
+          quick: event.data.quick_analysis?.analysis,
+          finalDecision: event.data.final_decision ? {
+            rating: event.data.final_decision.rating,
+            decision: event.data.final_decision.decision
+          } : undefined,
+          executionTime: event.data.execution_time
+        })
         break
         
       case 'error':
@@ -431,6 +601,19 @@ export default function StockAnalysisPage() {
     console.log('FollowUp Event:', event.type, event.data)
     
     switch (event.type) {
+      case 'task_plan':
+        const plan = event.data as any
+        setChatMessages(prev => [...prev, {
+          id: `plan-${Date.now()}`,
+          role: 'data_collector' as ChatRole,
+          content: '',
+          timestamp: new Date(),
+          searchPlan: plan,
+          searchStatus: 'pending'
+        }])
+        setIsStreaming(false) // 计划生成完就不再流式了，等待确认
+        break
+
       case 'agent':
         const { agent, content, is_start, is_end, is_chunk } = event.data
         const chatRole = agentToRole(agent || '')
@@ -482,15 +665,21 @@ export default function StockAnalysisPage() {
     }
   }, [agentToRole])
 
-  // 处理用户发送消息
-  const handleUserSendMessage = useCallback((content: string) => {
+  // 处理用户发送消息（支持 @ 提及）
+  const handleUserSendMessage = useCallback((content: string, mentions?: MentionTarget[]) => {
     // 添加用户消息到聊天
-    setChatMessages(prev => [...prev, {
+    const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       role: 'user' as ChatRole,
       content: content,
       timestamp: new Date()
-    }])
+    }
+    setChatMessages(prev => [...prev, userMessage])
+    
+    // 同步到 Store
+    if (currentSession) {
+      addMessageToStore(userMessage)
+    }
     
     // 角色名称映射
     const roleNames: Record<string, string> = {
@@ -533,6 +722,61 @@ export default function StockAnalysisPage() {
     cancelStreamRef.current = cancel
   }, [stockCode, stockName, chatMessages, handleFollowUpEvent])
 
+  // 处理确认搜索
+  const handleConfirmSearch = useCallback((plan: any, msgId: string) => {
+    // 更新消息状态为执行中
+    setChatMessages(prev => prev.map(msg => 
+      msg.id === msgId ? { ...msg, searchStatus: 'executing' } : msg
+    ))
+    
+    setIsStreaming(true)
+    
+    // 执行搜索
+    agentApi.executeSearch(
+      plan,
+      (event) => {
+        if (event.type === 'agent') {
+          // 搜索结果返回
+          const { content } = event.data
+          setChatMessages(prev => prev.map(msg => 
+            msg.id === msgId 
+              ? { ...msg, content: content || '', searchStatus: 'completed' } 
+              : msg
+          ))
+          
+          // 同步到 Store
+          if (currentSession) {
+            const updatedMsg = chatMessages.find(m => m.id === msgId)
+            if (updatedMsg) {
+              addMessageToStore({ ...updatedMsg, content: content || '', searchStatus: 'completed' })
+            }
+          }
+        }
+      },
+      (error) => {
+        toast.error(`搜索执行失败: ${error.message}`)
+        setIsStreaming(false)
+        setChatMessages(prev => prev.map(msg => 
+          msg.id === msgId ? { ...msg, searchStatus: 'pending' } : msg
+        ))
+      },
+      () => {
+        setIsStreaming(false)
+        // 先同步消息到 Store，再保存到后端
+        syncMessages(chatMessagesRef.current)
+        syncToBackend(stockCode)
+      }
+    )
+  }, [stockCode, currentSession, chatMessages, addMessageToStore, syncMessages, syncToBackend])
+
+  // 处理取消搜索
+  const handleCancelSearch = useCallback((msgId: string) => {
+    setChatMessages(prev => prev.map(msg => 
+      msg.id === msgId ? { ...msg, searchStatus: 'cancelled' } : msg
+    ))
+    toast.info('已取消搜索任务')
+  }, [])
+
   const handleStartDebate = useCallback(() => {
     // 重置状态
     setDebateResult(null)
@@ -543,6 +787,9 @@ export default function StockAnalysisPage() {
     setChatMessages([]) // 重置聊天消息
     currentMessageIdRef.current = null
     setIsStreaming(true)
+    
+    // 创建新的辩论会话
+    startSession(stockCode, stockName, debateMode)
     
     // 取消之前的流
     if (cancelStreamRef.current) {
@@ -560,15 +807,25 @@ export default function StockAnalysisPage() {
       (error) => {
         toast.error(`辩论失败: ${error.message}`)
         setIsStreaming(false)
+        updateSessionStatus('interrupted')
       },
       () => {
-        // 完成
+        // 完成后保存分析结果并同步到后端
+        console.log('🏁 Debate completed!')
+        console.log('🏁 chatMessagesRef.current:', chatMessagesRef.current.length, 'messages')
+        console.log('🏁 Message roles:', chatMessagesRef.current.map(m => m.role))
+        
         setIsStreaming(false)
+        updateSessionStatus('completed')
+        // 使用 ref 获取最新的消息列表，批量同步到 Store
+        syncMessages(chatMessagesRef.current)
+        // 然后同步到后端
+        syncToBackend(stockCode)
       }
     )
     
     cancelStreamRef.current = cancel
-  }, [stockCode, stockName, debateMode, handleSSEEvent])
+  }, [stockCode, stockName, debateMode, handleSSEEvent, startSession, syncMessages, syncToBackend])
   
   // 组件卸载时取消流
   useEffect(() => {
@@ -578,6 +835,43 @@ export default function StockAnalysisPage() {
       }
     }
   }, [])
+
+  // 定期保存流式内容到 store（防止刷新丢失）
+  useEffect(() => {
+    if (!isStreaming) return
+    
+    const saveInterval = setInterval(() => {
+      // 保存当前分析内容（并行/快速模式）
+      if (streamingContent.bull || streamingContent.bear || streamingContent.manager || streamingContent.quick) {
+        saveAnalysisResult({
+          bull: streamingContent.bull || undefined,
+          bear: streamingContent.bear || undefined,
+          manager: streamingContent.manager || undefined,
+          quick: streamingContent.quick || undefined
+        })
+      }
+    }, 3000) // 每3秒保存一次
+    
+    return () => clearInterval(saveInterval)
+  }, [isStreaming, streamingContent, saveAnalysisResult])
+
+  // 实时辩论模式：同步所有完成的消息到 store
+  useEffect(() => {
+    if (debateMode !== 'realtime_debate' || chatMessages.length === 0 || !currentSession) return
+    
+    // 找出所有已完成但尚未在 Store 中的消息
+    const storeMessageIds = new Set(currentSession.messages.map(m => m.id))
+    const completedMessages = chatMessages.filter(m => 
+      !m.isStreaming && // 已完成
+      (m.content || m.searchPlan) && // 有内容
+      !storeMessageIds.has(m.id) // 不在 Store 中
+    )
+    
+    // 逐个添加到 Store
+    for (const msg of completedMessages) {
+      addMessageToStore(msg)
+    }
+  }, [chatMessages, debateMode, currentSession, addMessageToStore])
 
   // 定向爬取任务状态查询
   const { data: crawlStatus, refetch: refetchCrawlStatus } = useQuery({
@@ -700,11 +994,23 @@ export default function StockAnalysisPage() {
     targetedCrawlMutation.mutate()
   }
 
-  const handleStopCrawl = () => {
+  const handleStopCrawl = async () => {
     if (window.confirm('确定要停止当前的爬取任务吗？')) {
-      // 停止任务（设置为 idle 状态）
+      try {
+        // 调用后端 API 取消任务
+        const result = await stockApi.cancelTargetedCrawl(stockCode)
+        if (result.success) {
+          setCrawlTask({ status: 'idle' })
+          toast.info(result.message || '已停止爬取任务')
+        } else {
+          toast.error(result.message || '停止任务失败')
+        }
+      } catch (error: any) {
+        console.error('Failed to cancel crawl task:', error)
+        // 即使后端失败，也重置前端状态
       setCrawlTask({ status: 'idle' })
       toast.info('已停止爬取任务')
+      }
     }
   }
 
@@ -807,6 +1113,18 @@ export default function StockAnalysisPage() {
         </div>
         
         <div className="flex items-center gap-3">
+          {/* 历史记录按钮 */}
+          {historySessions.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowHistorySidebar(true)}
+              className="gap-2 hover:bg-indigo-50 border-indigo-200 text-indigo-600"
+            >
+              <History className="w-4 h-4" />
+              历史 ({historySessions.length})
+            </Button>
+          )}
           {/* 返回按钮 */}
         <Button
           variant="outline"
@@ -1552,6 +1870,20 @@ export default function StockAnalysisPage() {
                   currentRound={currentRound}
                   activeAgent={activeAgent}
                   stockName={stockName}
+                    historySessions={historySessions}
+                    onLoadSession={(sessionId) => {
+                      const session = loadSession(stockCode, sessionId)
+                      if (session) {
+                        setChatMessages(session.messages)
+                        toast.success('已加载历史会话')
+                      }
+                    }}
+                    onClearHistory={() => {
+                      clearStockHistory(stockCode)
+                      toast.success('已清除历史记录')
+                    }}
+                    onConfirmSearch={handleConfirmSearch}
+                    onCancelSearch={handleCancelSearch}
                 />
               )}
 
@@ -1823,6 +2155,20 @@ export default function StockAnalysisPage() {
                     currentRound={null}
                     activeAgent={null}
                     stockName={stockName}
+                    historySessions={historySessions}
+                    onLoadSession={(sessionId) => {
+                      const session = loadSession(stockCode, sessionId)
+                      if (session) {
+                        setChatMessages(session.messages)
+                        toast.success('已加载历史会话')
+                      }
+                    }}
+                    onClearHistory={() => {
+                      clearStockHistory(stockCode)
+                      toast.success('已清除历史记录')
+                    }}
+                    onConfirmSearch={handleConfirmSearch}
+                    onCancelSearch={handleCancelSearch}
                   />
                   {/* 投资经理决策摘要 */}
                   {debateResult.final_decision && (
@@ -2094,6 +2440,30 @@ export default function StockAnalysisPage() {
             setTimeout(() => setSelectedNewsId(null), 300)
           }
         }}
+      />
+      
+      {/* 历史记录侧边栏 */}
+      <DebateHistorySidebar
+        sessions={historySessions}
+        currentSessionId={currentSession?.id}
+        onLoadSession={(session) => {
+          restoreSessionState(session)
+          setShowHistorySidebar(false)
+          toast.success(`已加载历史会话：${session.mode === 'realtime_debate' ? '实时辩论' : session.mode === 'parallel' ? '并行分析' : '快速分析'}`)
+        }}
+        onDeleteSession={(sessionId) => {
+          deleteSession(stockCode, sessionId)
+          toast.success('已删除会话')
+        }}
+        onClearHistory={() => {
+          clearStockHistory(stockCode)
+          setDebateResult(null)
+          setStreamingContent({ bull: '', bear: '', manager: '', quick: '' })
+          setChatMessages([])
+          toast.success('已清除所有历史记录')
+        }}
+        isOpen={showHistorySidebar}
+        onToggle={() => setShowHistorySidebar(!showHistorySidebar)}
       />
     </div>
   )
