@@ -818,7 +818,7 @@ class DebateOrchestrator:
             return "是" in response[:5]
         except Exception:
             return False
-    
+
     async def _check_manager_interrupt_or_search(
         self,
         manager_agent,
