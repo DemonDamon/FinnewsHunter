@@ -1,0 +1,1 @@
+"""Financial module tests"""
