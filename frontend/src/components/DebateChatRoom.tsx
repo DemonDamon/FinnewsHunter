@@ -1,12 +1,39 @@
-import React, { useState, useRef, useEffect } from 'react'
-import { Send, User, TrendingUp, TrendingDown, Briefcase, Loader2, Bot } from 'lucide-react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { 
+  Send, User, TrendingUp, TrendingDown, Briefcase, 
+  Loader2, Bot, History, Trash2, Search, ChevronDown,
+  CheckCircle2, Clock, ListChecks, PlayCircle, XCircle
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/utils'
+import MentionInput, { MentionTarget } from './MentionInput'
+import type { DebateSession } from '@/store/useDebateStore'
+import { agentApi, SSEDebateEvent } from '@/lib/api-client'
+import { toast } from 'sonner'
 
 // 消息角色类型
-export type ChatRole = 'user' | 'bull' | 'bear' | 'manager' | 'system' | 'data_collector'
+export type ChatRole = 'user' | 'bull' | 'bear' | 'manager' | 'system' | 'data_collector' | 'search'
+
+// 搜索计划类型
+export interface SearchTask {
+  id: string
+  source: string
+  query: string
+  description: string
+  icon: string
+  estimated_time: number
+}
+
+export interface SearchPlan {
+  plan_id: string
+  stock_code: string
+  stock_name: string
+  user_query: string
+  tasks: SearchTask[]
+  total_estimated_time: number
+}
 
 // 聊天消息类型
 export interface ChatMessage {
@@ -16,6 +43,8 @@ export interface ChatMessage {
   timestamp: Date
   round?: number
   isStreaming?: boolean
+  searchPlan?: SearchPlan // 关联的搜索计划
+  searchStatus?: 'pending' | 'executing' | 'completed' | 'cancelled'
 }
 
 // 角色配置
@@ -74,21 +103,114 @@ const ROLE_CONFIG: Record<ChatRole, {
     textColor: 'text-white',
     borderColor: 'border-gray-200',
     align: 'left'
+  },
+  search: {
+    name: '搜索结果',
+    icon: <Bot className="w-4 h-4" />,
+    bgColor: 'bg-cyan-500',
+    textColor: 'text-white',
+    borderColor: 'border-cyan-300',
+    align: 'left'
   }
 }
 
 interface DebateChatRoomProps {
   messages: ChatMessage[]
-  onSendMessage: (content: string) => void
+  onSendMessage: (content: string, mentions?: MentionTarget[]) => void
   isDebating: boolean
   currentRound?: { round: number; maxRounds: number } | null
   activeAgent?: string | null
   stockName?: string
   disabled?: boolean
+  // 历史相关
+  historySessions?: DebateSession[]
+  onLoadSession?: (sessionId: string) => void
+  onClearHistory?: () => void
+  showHistory?: boolean
+  // 搜索计划相关
+  onConfirmSearch?: (plan: SearchPlan, msgId: string) => void
+  onCancelSearch?: (msgId: string) => void
+}
+
+// 搜索计划展示组件
+const SearchPlanCard: React.FC<{ 
+  plan: SearchPlan, 
+  status: string,
+  onConfirm: (plan: SearchPlan) => void,
+  onCancel: () => void
+}> = ({ plan, status, onConfirm, onCancel }) => {
+  const isPending = status === 'pending'
+  const isExecuting = status === 'executing'
+  
+  return (
+    <div className="mt-3 p-4 bg-slate-50 rounded-xl border border-slate-200 shadow-sm animate-in fade-in zoom-in duration-300">
+      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-200">
+        <ListChecks className="w-5 h-5 text-indigo-500" />
+        <h4 className="font-semibold text-slate-800 text-sm">📋 搜索计划确认</h4>
+      </div>
+      
+      <div className="space-y-2 mb-4">
+        {plan.tasks.map((task, index) => (
+          <div key={task.id} className="flex items-start gap-3 text-xs text-slate-600">
+            <span className="mt-0.5">{task.icon || '🔍'}</span>
+            <div className="flex-1">
+              <p className="font-medium text-slate-700">{index + 1}. {task.description}</p>
+              <p className="text-[10px] text-slate-400">关键词: "{task.query}"</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      
+      <div className="flex items-center justify-between pt-2">
+        <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+          <Clock className="w-3 h-3" />
+          预计耗时: {plan.total_estimated_time}s
+        </div>
+        
+        {isPending && (
+          <div className="flex gap-2">
+            <Button 
+              size="sm" 
+              variant="outline" 
+              className="h-7 text-[10px] px-3 py-0"
+              onClick={onCancel}
+            >
+              取消
+            </Button>
+            <Button 
+              size="sm" 
+              className="h-7 text-[10px] px-3 py-0 bg-indigo-500 hover:bg-indigo-600"
+              onClick={() => onConfirm(plan)}
+            >
+              确认执行
+            </Button>
+          </div>
+        )}
+        
+        {isExecuting && (
+          <div className="flex items-center gap-2 text-[10px] text-indigo-600 animate-pulse">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            正在搜索中...
+          </div>
+        )}
+        
+        {status === 'completed' && (
+          <div className="flex items-center gap-1 text-[10px] text-emerald-600 font-medium">
+            <CheckCircle2 className="w-3 h-3" />
+            执行完成
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // 单条消息组件
-const ChatBubble: React.FC<{ message: ChatMessage }> = ({ message }) => {
+const ChatBubble: React.FC<{ 
+  message: ChatMessage,
+  onConfirmSearch?: (plan: SearchPlan, msgId: string) => void,
+  onCancelSearch?: (msgId: string) => void
+}> = ({ message, onConfirmSearch, onCancelSearch }) => {
   const config = ROLE_CONFIG[message.role]
   const isRight = config.align === 'right'
   
@@ -129,8 +251,7 @@ const ChatBubble: React.FC<{ message: ChatMessage }> = ({ message }) => {
           "rounded-2xl px-4 py-2.5 shadow-sm border",
           isRight 
             ? "bg-blue-500 text-white rounded-tr-sm border-blue-400" 
-            : `bg-white ${config.borderColor} rounded-tl-sm`,
-          message.isStreaming && "animate-pulse"
+            : `bg-white ${config.borderColor} rounded-tl-sm`
         )}>
           {message.content ? (
             <div className={cn(
@@ -141,14 +262,26 @@ const ChatBubble: React.FC<{ message: ChatMessage }> = ({ message }) => {
                 {message.content}
               </ReactMarkdown>
               {message.isStreaming && (
-                <span className="inline-block w-1.5 h-4 bg-current animate-pulse ml-0.5 align-middle" />
+                <span className="inline-block w-2 h-4 bg-current opacity-70 animate-pulse ml-1 align-middle rounded-sm" />
               )}
             </div>
+          ) : message.searchPlan ? (
+            <div className="text-sm text-gray-500 italic">正在生成搜索计划...</div>
           ) : (
             <div className="flex items-center gap-2 text-gray-400">
               <Loader2 className="w-4 h-4 animate-spin" />
               <span className="text-sm">思考中...</span>
             </div>
+          )}
+          
+          {/* 搜索计划卡片 */}
+          {message.searchPlan && (
+            <SearchPlanCard 
+              plan={message.searchPlan} 
+              status={message.searchStatus || 'pending'}
+              onConfirm={(plan) => onConfirmSearch?.(plan, message.id)}
+              onCancel={() => onCancelSearch?.(message.id)}
+            />
           )}
         </div>
       </div>
@@ -173,11 +306,19 @@ const DebateChatRoom: React.FC<DebateChatRoomProps> = ({
   currentRound,
   activeAgent,
   stockName,
-  disabled = false
+  disabled = false,
+  historySessions = [],
+  onLoadSession,
+  onClearHistory,
+  showHistory = true,
+  onConfirmSearch,
+  onCancelSearch
 }) => {
   const [inputValue, setInputValue] = useState('')
+  const [showHistoryDropdown, setShowHistoryDropdown] = useState(false)
+  const [pendingMentions, setPendingMentions] = useState<MentionTarget[]>([])
   const scrollRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const historyDropdownRef = useRef<HTMLDivElement>(null)
   
   // 自动滚动到底部
   useEffect(() => {
@@ -186,20 +327,24 @@ const DebateChatRoom: React.FC<DebateChatRoomProps> = ({
     }
   }, [messages])
   
-  const handleSend = () => {
-    if (inputValue.trim() && !disabled && !isDebating) {
-      onSendMessage(inputValue.trim())
-      setInputValue('')
-      inputRef.current?.focus()
+  // 点击外部关闭历史下拉框
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (historyDropdownRef.current && !historyDropdownRef.current.contains(e.target as Node)) {
+        setShowHistoryDropdown(false)
+      }
     }
-  }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
   
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
+  const handleSendWithMentions = useCallback((content: string, mentions: MentionTarget[]) => {
+    if (content.trim() && !disabled && !isDebating) {
+      onSendMessage(content.trim(), mentions)
+      setInputValue('')
+      setPendingMentions([])
     }
-  }
+  }, [disabled, isDebating, onSendMessage])
   
   // 获取当前活跃角色的提示
   const getActiveIndicator = () => {
@@ -290,7 +435,12 @@ const DebateChatRoom: React.FC<DebateChatRoomProps> = ({
               msg.role === 'system' ? (
                 <SystemMessage key={msg.id} message={msg} />
               ) : (
-                <ChatBubble key={msg.id} message={msg} />
+                <ChatBubble 
+                  key={msg.id} 
+                  message={msg} 
+                  onConfirmSearch={onConfirmSearch}
+                  onCancelSearch={onCancelSearch}
+                />
               )
             ))
           )}
@@ -310,18 +460,15 @@ const DebateChatRoom: React.FC<DebateChatRoomProps> = ({
           <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white flex-shrink-0">
             <User className="w-4 h-4" />
           </div>
-          <input
-            ref={inputRef}
-            type="text"
+          <MentionInput
             value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={isDebating ? "辩论进行中，您可以提问或评论..." : "输入消息参与辩论..."}
+            onChange={setInputValue}
+            onSubmit={handleSendWithMentions}
+            placeholder={isDebating ? "辩论进行中，输入 @ 提及智能体..." : "输入消息，使用 @ 提及角色..."}
             disabled={disabled}
-            className="flex-1 px-4 py-2 rounded-full bg-gray-50 border border-gray-200 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           />
           <Button
-            onClick={handleSend}
+            onClick={() => handleSendWithMentions(inputValue, pendingMentions)}
             disabled={!inputValue.trim() || disabled || isDebating}
             size="icon"
             className="rounded-full bg-blue-500 hover:bg-blue-600"
@@ -329,11 +476,82 @@ const DebateChatRoom: React.FC<DebateChatRoomProps> = ({
             <Send className="w-4 h-4" />
           </Button>
         </div>
-        {isDebating && (
-          <p className="text-xs text-gray-400 mt-2 ml-10">
-            💡 提示：辩论结束后您可以追问或要求补充分析
+        
+        {/* 提示和历史按钮 */}
+        <div className="flex items-center justify-between mt-2 ml-10">
+          {isDebating ? (
+            <p className="text-xs text-gray-400">
+              💡 提示：使用 @多方辩手 @空方辩手 可以指定角色回答
+            </p>
+          ) : (
+            <p className="text-xs text-gray-400">
+              💡 输入 @ 可以选择智能体或数据源
           </p>
         )}
+          
+          {/* 历史记录按钮 */}
+          {showHistory && historySessions.length > 0 && (
+            <div className="relative" ref={historyDropdownRef}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowHistoryDropdown(!showHistoryDropdown)}
+                className="h-7 px-2 text-gray-500 hover:text-gray-700"
+              >
+                <History className="w-3.5 h-3.5 mr-1" />
+                历史 ({historySessions.length})
+                <ChevronDown className={cn("w-3 h-3 ml-1 transition-transform", showHistoryDropdown && "rotate-180")} />
+              </Button>
+              
+              {/* 历史下拉菜单 */}
+              {showHistoryDropdown && (
+                <div className="absolute bottom-full right-0 mb-1 w-64 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                  <div className="px-3 py-1 border-b border-gray-100 flex items-center justify-between">
+                    <span className="text-xs font-medium text-gray-500">历史会话</span>
+                    {onClearHistory && (
+                      <button 
+                        onClick={() => {
+                          if (confirm('确定要清除所有历史记录吗？')) {
+                            onClearHistory()
+                            setShowHistoryDropdown(false)
+                          }
+                        }}
+                        className="text-xs text-rose-500 hover:text-rose-600 flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        清除
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {historySessions.map((session, index) => (
+                      <button
+                        key={session.id}
+                        onClick={() => {
+                          onLoadSession?.(session.id)
+                          setShowHistoryDropdown(false)
+                        }}
+                        className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
+                      >
+                        <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs text-gray-500 flex-shrink-0">
+                          {index + 1}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-gray-700 truncate">
+                            {session.stockName || session.stockCode}
+                          </div>
+                          <div className="text-xs text-gray-400">
+                            {session.messages.length} 条消息 · {new Date(session.updatedAt).toLocaleDateString('zh-CN')}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
