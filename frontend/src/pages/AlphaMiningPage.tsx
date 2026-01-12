@@ -41,7 +41,7 @@ import { useLanguageStore } from '@/store/useLanguageStore';
 const i18n = {
   zh: {
     title: 'Alpha因子挖掘',
-    subtitle: '基于 AlphaGPT 的量化因子自动挖掘系统',
+    subtitle: '',
     tabs: {
       overview: '概览',
       training: '训练',
