@@ -3,8 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { taskApi } from '@/lib/api-client'
 import { formatRelativeTime } from '@/lib/utils'
+import { useGlobalI18n, useLanguageStore } from '@/store/useLanguageStore'
 
 export default function TaskManagerPage() {
+  const t = useGlobalI18n()
+  const { lang } = useLanguageStore()
   const { data: tasks, isLoading } = useQuery({
     queryKey: ['tasks', 'list'],
     queryFn: () => taskApi.getTaskList({ limit: 20 }),
@@ -19,10 +22,10 @@ export default function TaskManagerPage() {
       failed: 'destructive' as const,
     }
     const labels = {
-      completed: '✅ 已完成',
-      running: '⏳ 运行中',
-      pending: '⏸️ 待执行',
-      failed: '❌ 失败',
+      completed: `✅ ${t.tasks.completed}`,
+      running: `⏳ ${t.tasks.running}`,
+      pending: `⏸️ ${t.tasks.pending}`,
+      failed: `❌ ${t.tasks.failed}`,
     }
     return <Badge variant={variants[status as keyof typeof variants] || 'outline'}>{labels[status as keyof typeof labels] || status}</Badge>
   }
@@ -30,53 +33,53 @@ export default function TaskManagerPage() {
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">任务管理</h1>
-        <p className="text-muted-foreground">爬取任务监控和管理</p>
+        <h1 className="text-3xl font-bold tracking-tight">{t.tasks.title}</h1>
+        <p className="text-muted-foreground">{t.tasks.subtitle}</p>
       </div>
 
       <div className="space-y-4">
         {isLoading ? (
-          <div className="text-center py-12 text-gray-500">加载中...</div>
+          <div className="text-center py-12 text-gray-500">{t.tasks.loading}</div>
         ) : tasks && tasks.length > 0 ? (
           tasks.map((task) => (
             <Card key={task.id}>
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base">
-                    任务 #{task.id} - {task.source}
+                    {t.tasks.task} #{task.id} - {task.source}
                   </CardTitle>
                   <div className="flex items-center gap-2">
                     {getStatusBadge(task.status)}
-                    <Badge variant="outline">{task.mode === 'realtime' ? '⚡ 实时' : '🥶 冷启动'}</Badge>
+                    <Badge variant="outline">{task.mode === 'realtime' ? `⚡ ${t.tasks.realtime}` : `🥶 ${t.tasks.coldStart}`}</Badge>
                   </div>
                 </div>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                   <div>
-                    <div className="text-gray-500">爬取数</div>
+                    <div className="text-gray-500">{t.tasks.crawled}</div>
                     <div className="font-medium">{task.crawled_count}</div>
                   </div>
                   <div>
-                    <div className="text-gray-500">保存数</div>
+                    <div className="text-gray-500">{t.tasks.saved}</div>
                     <div className="font-medium">{task.saved_count}</div>
                   </div>
                   <div>
-                    <div className="text-gray-500">耗时</div>
+                    <div className="text-gray-500">{t.tasks.duration}</div>
                     <div className="font-medium">
                       {task.execution_time ? `${task.execution_time.toFixed(2)}s` : '-'}
                     </div>
                   </div>
                   <div>
-                    <div className="text-gray-500">创建时间</div>
-                    <div className="font-medium">{formatRelativeTime(task.created_at)}</div>
+                    <div className="text-gray-500">{t.tasks.createdAt}</div>
+                    <div className="font-medium">{formatRelativeTime(task.created_at, t.time)}</div>
                   </div>
                 </div>
 
                 {task.progress && task.progress.percentage && (
                   <div className="mt-4">
                     <div className="flex justify-between text-xs text-gray-500 mb-1">
-                      <span>进度</span>
+                      <span>{t.tasks.progress}</span>
                       <span>{task.progress.percentage}%</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
@@ -92,7 +95,7 @@ export default function TaskManagerPage() {
           ))
         ) : (
           <div className="text-center py-12 text-gray-500">
-            暂无任务记录
+            {t.tasks.noTasks}
           </div>
         )}
       </div>

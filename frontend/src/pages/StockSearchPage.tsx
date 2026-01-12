@@ -18,8 +18,10 @@ import {
   BarChart3
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useGlobalI18n } from '@/store/useLanguageStore'
 
 export default function StockSearchPage() {
+  const t = useGlobalI18n()
   const [keyword, setKeyword] = useState('')
   const [isOpen, setIsOpen] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(-1)
@@ -143,10 +145,10 @@ export default function StockSearchPage() {
           </div>
         </div>
         <h1 className="text-4xl font-bold text-gray-900 tracking-tight mb-3">
-          个股智能分析
+          {t.stock.title}
         </h1>
         <p className="text-lg text-gray-500 max-w-md mx-auto">
-          输入股票代码或名称，开启 AI 驱动的投资洞察
+          {t.stock.subtitle}
         </p>
       </div>
 
@@ -173,7 +175,7 @@ export default function StockSearchPage() {
             }}
             onFocus={() => setIsOpen(true)}
             onKeyDown={handleKeyDown}
-            placeholder="搜索股票代码或名称..."
+            placeholder={t.stock.searchPlaceholder}
             className={cn(
               'w-full pl-14 pr-14 py-5 text-lg',
               'border-none rounded-2xl',
@@ -213,7 +215,7 @@ export default function StockSearchPage() {
             {isLoading ? (
               <div className="flex items-center justify-center py-10 text-gray-500">
                 <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                搜索中...
+                {t.stock.searching}
               </div>
             ) : searchResults && searchResults.length > 0 ? (
               <div className="py-2">
@@ -263,8 +265,8 @@ export default function StockSearchPage() {
                 {stockCount && stockCount.count === 0 ? (
                   <div className="space-y-4">
                     <Database className="w-12 h-12 mx-auto text-gray-300" />
-                    <p className="text-gray-500 font-medium">股票数据库为空</p>
-                    <p className="text-sm text-gray-400">点击下方按钮初始化股票数据</p>
+                    <p className="text-gray-500 font-medium">{t.stock.emptyDb}</p>
+                    <p className="text-sm text-gray-400">{t.stock.initTip}</p>
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
@@ -281,20 +283,20 @@ export default function StockSearchPage() {
                       {initMutation.isPending ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          正在导入股票数据...
+                          {t.stock.importing}
                         </>
                       ) : (
                         <>
                           <RefreshCw className="w-4 h-4" />
-                          初始化股票数据
+                          {t.stock.initBtn}
                         </>
                       )}
                     </button>
                   </div>
                 ) : (
                   <div>
-                    <p className="text-gray-500 font-medium">未找到匹配的股票</p>
-                    <p className="text-sm text-gray-400 mt-1">尝试输入股票代码或名称</p>
+                    <p className="text-gray-500 font-medium">{t.stock.notFound}</p>
+                    <p className="text-sm text-gray-400 mt-1">{t.stock.tryInput}</p>
                   </div>
                 )}
               </div>
@@ -305,15 +307,15 @@ export default function StockSearchPage() {
               <div className="flex items-center gap-5 text-xs text-gray-400">
                 <span className="flex items-center gap-1">
                   <kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-gray-500 shadow-sm">↑↓</kbd>
-                  <span>导航</span>
+                  <span>{t.stock.nav}</span>
                 </span>
                 <span className="flex items-center gap-1">
                   <kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-gray-500 shadow-sm">Enter</kbd>
-                  <span>选择</span>
+                  <span>{t.stock.select}</span>
                 </span>
                 <span className="flex items-center gap-1">
                   <kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-gray-500 shadow-sm">Esc</kbd>
-                  <span>关闭</span>
+                  <span>{t.stock.close}</span>
                 </span>
               </div>
             </div>
@@ -324,7 +326,7 @@ export default function StockSearchPage() {
       {/* 热门股票推荐 */}
       {!isOpen && (
         <div className="mt-10 animate-in fade-in-0 slide-in-from-bottom-8 duration-500 delay-200">
-          <p className="text-sm text-gray-400 text-center mb-4">热门股票</p>
+          <p className="text-sm text-gray-400 text-center mb-4">{t.stock.hotStocks}</p>
           <div className="flex flex-wrap justify-center gap-3">
             {hotStocks.map((stock) => (
               <button
@@ -357,22 +359,22 @@ export default function StockSearchPage() {
           <div className="w-10 h-10 mx-auto rounded-xl bg-blue-100 flex items-center justify-center mb-3">
             <BarChart3 className="w-5 h-5 text-blue-600" />
           </div>
-          <p className="text-sm font-medium text-gray-700">K线分析</p>
-          <p className="text-xs text-gray-400 mt-1">多周期行情数据</p>
+          <p className="text-sm font-medium text-gray-700">{t.stock.kline}</p>
+          <p className="text-xs text-gray-400 mt-1">{t.stock.klineDesc}</p>
         </div>
         <div className="text-center">
           <div className="w-10 h-10 mx-auto rounded-xl bg-purple-100 flex items-center justify-center mb-3">
             <Sparkles className="w-5 h-5 text-purple-600" />
           </div>
-          <p className="text-sm font-medium text-gray-700">AI 情感分析</p>
-          <p className="text-xs text-gray-400 mt-1">新闻舆情智能解读</p>
+          <p className="text-sm font-medium text-gray-700">{t.stock.aiSentiment}</p>
+          <p className="text-xs text-gray-400 mt-1">{t.stock.aiSentimentDesc}</p>
         </div>
         <div className="text-center">
           <div className="w-10 h-10 mx-auto rounded-xl bg-emerald-100 flex items-center justify-center mb-3">
             <TrendingUp className="w-5 h-5 text-emerald-600" />
           </div>
-          <p className="text-sm font-medium text-gray-700">多空辩论</p>
-          <p className="text-xs text-gray-400 mt-1">Bull vs Bear 对决</p>
+          <p className="text-sm font-medium text-gray-700">{t.stock.debate}</p>
+          <p className="text-xs text-gray-400 mt-1">{t.stock.debateDesc}</p>
         </div>
       </div>
     </div>

@@ -12,11 +12,13 @@ import { useNewsToolbar } from '@/context/NewsToolbarContext'
 import { useDebounce } from '@/hooks/useDebounce'
 import HighlightText from '@/components/HighlightText'
 import { useModelConfig } from '@/components/ModelSelector'
+import { useGlobalI18n } from '@/store/useLanguageStore'
 
 type FilterType = 'all' | 'pending' | 'positive' | 'negative' | 'neutral'
 
 // 独立的搜索框组件，自己管理内部状态，避免每次输入都重新挂载
 function SearchBox({ onSearch }: { onSearch: (query: string) => void }) {
+  const t = useGlobalI18n()
   const [localQuery, setLocalQuery] = useState('')
   const isComposingRef = useRef(false)
 
@@ -45,7 +47,7 @@ function SearchBox({ onSearch }: { onSearch: (query: string) => void }) {
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
       <input
         type="text"
-        placeholder="搜索新闻、股票代码..."
+        placeholder={t.news.search}
         value={localQuery}
         onCompositionStart={() => {
           isComposingRef.current = true
@@ -67,22 +69,61 @@ function SearchBox({ onSearch }: { onSearch: (query: string) => void }) {
   )
 }
 
-// 新闻源配置
+// 新闻源配置（国际化在组件内处理）
 const NEWS_SOURCES = [
-  { key: 'all', name: '全部来源', icon: '📰' },
-  { key: 'sina', name: '新浪财经', icon: '🌐' },
-  { key: 'tencent', name: '腾讯财经', icon: '🐧' },
-  { key: 'jwview', name: '金融界', icon: '💰' },
-  { key: 'eeo', name: '经济观察网', icon: '📊' },
-  { key: 'caijing', name: '财经网', icon: '📈' },
-  { key: 'jingji21', name: '21经济网', icon: '📉' },
-  { key: 'nbd', name: '每日经济新闻', icon: '📰' },
-  { key: 'yicai', name: '第一财经', icon: '🎯' },
-  { key: '163', name: '网易财经', icon: '📧' },
-  { key: 'eastmoney', name: '东方财富', icon: '💎' },
+  { key: 'all', nameZh: '全部来源', nameEn: 'All Sources', icon: '📰' },
+  { key: 'sina', nameZh: '新浪财经', nameEn: 'Sina Finance', icon: '🌐' },
+  { key: 'tencent', nameZh: '腾讯财经', nameEn: 'Tencent Finance', icon: '🐧' },
+  { key: 'jwview', nameZh: '金融界', nameEn: 'JRJ', icon: '💰' },
+  { key: 'eeo', nameZh: '经济观察网', nameEn: 'EEO', icon: '📊' },
+  { key: 'caijing', nameZh: '财经网', nameEn: 'Caijing', icon: '📈' },
+  { key: 'jingji21', nameZh: '21经济网', nameEn: '21Jingji', icon: '📉' },
+  { key: 'nbd', nameZh: '每日经济新闻', nameEn: 'NBD', icon: '📰' },
+  { key: 'yicai', nameZh: '第一财经', nameEn: 'Yicai', icon: '🎯' },
+  { key: '163', nameZh: '网易财经', nameEn: '163 Finance', icon: '📧' },
+  { key: 'eastmoney', nameZh: '东方财富', nameEn: 'Eastmoney', icon: '💎' },
 ]
 
+// 后端可能返回的中文 source 名称到 key 的映射
+const SOURCE_NAME_TO_KEY: Record<string, string> = {
+  '全部来源': 'all',
+  '新浪财经': 'sina',
+  '腾讯财经': 'tencent',
+  '金融界': 'jwview',
+  '经济观察网': 'eeo',
+  '财经网': 'caijing',
+  '21经济网': 'jingji21',
+  '每日经济新闻': 'nbd',
+  '第一财经': 'yicai',
+  '网易财经': '163',
+  '东方财富': 'eastmoney',
+  '东方财富网': 'eastmoney', // 后端可能返回的变体
+  '同花顺财经': 'tonghuashun', // 后端可能返回的其他来源
+  '证券时报': 'securities_times',
+  '证券之星': 'stockstar',
+  '中金在线': 'cnfol',
+  '澎湃新闻': 'thepaper',
+  '证券时报网': 'securities_times_online',
+  '北京商报': 'bbtnews',
+  '卡车之家': 'truckhome',
+  'sogou': 'sogou',
+}
+
+// 扩展的新闻源配置（包含后端可能返回的其他来源）
+const EXTENDED_NEWS_SOURCES: Record<string, { nameZh: string; nameEn: string; icon: string }> = {
+  tonghuashun: { nameZh: '同花顺财经', nameEn: 'Tonghuashun Finance', icon: '📊' },
+  securities_times: { nameZh: '证券时报', nameEn: 'Securities Times', icon: '📰' },
+  stockstar: { nameZh: '证券之星', nameEn: 'Stockstar', icon: '⭐' },
+  cnfol: { nameZh: '中金在线', nameEn: 'CNFOL', icon: '💼' },
+  thepaper: { nameZh: '澎湃新闻', nameEn: 'The Paper', icon: '📰' },
+  securities_times_online: { nameZh: '证券时报网', nameEn: 'Securities Times Online', icon: '📰' },
+  bbtnews: { nameZh: '北京商报', nameEn: 'Beijing Business Today', icon: '📰' },
+  truckhome: { nameZh: '卡车之家', nameEn: 'Truck Home', icon: '🚚' },
+  sogou: { nameZh: '搜狗', nameEn: 'Sogou', icon: '🔍' },
+}
+
 export default function NewsListPage() {
+  const t = useGlobalI18n()
   const queryClient = useQueryClient()
   const [expandedStocks, setExpandedStocks] = useState<Set<number>>(new Set())
   const [gridCols, setGridCols] = useState(3)
@@ -94,6 +135,70 @@ export default function NewsListPage() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('') // 搜索关键词
   const debouncedSearchQuery = useDebounce(searchQuery, 300) // 防抖处理
+  
+  // 获取新闻源图标
+  const getSourceIcon = useCallback((sourceValue: string) => {
+    // 1. 先尝试直接匹配 key
+    const sourceByKey = NEWS_SOURCES.find(s => s.key === sourceValue)
+    if (sourceByKey) {
+      return sourceByKey.icon
+    }
+    
+    // 2. 尝试通过中文名称映射到 key
+    const mappedKey = SOURCE_NAME_TO_KEY[sourceValue]
+    if (mappedKey) {
+      const source = NEWS_SOURCES.find(s => s.key === mappedKey)
+      if (source) {
+        return source.icon
+      }
+      // 如果在扩展配置中
+      const extendedSource = EXTENDED_NEWS_SOURCES[mappedKey]
+      if (extendedSource) {
+        return extendedSource.icon
+      }
+    }
+    
+    // 3. 尝试在扩展配置中直接查找
+    const extendedSource = EXTENDED_NEWS_SOURCES[sourceValue]
+    if (extendedSource) {
+      return extendedSource.icon
+    }
+    
+    // 4. 默认图标
+    return '📰'
+  }, [])
+  
+  // 获取新闻源名称（支持中文 source 名称映射）
+  const getSourceName = useCallback((sourceValue: string) => {
+    // 1. 先尝试直接匹配 key
+    const sourceByKey = NEWS_SOURCES.find(s => s.key === sourceValue)
+    if (sourceByKey) {
+      return t.nav.home === '首页' ? sourceByKey.nameZh : sourceByKey.nameEn
+    }
+    
+    // 2. 尝试通过中文名称映射到 key
+    const mappedKey = SOURCE_NAME_TO_KEY[sourceValue]
+    if (mappedKey) {
+      const source = NEWS_SOURCES.find(s => s.key === mappedKey)
+      if (source) {
+        return t.nav.home === '首页' ? source.nameZh : source.nameEn
+      }
+      // 如果在扩展配置中
+      const extendedSource = EXTENDED_NEWS_SOURCES[mappedKey]
+      if (extendedSource) {
+        return t.nav.home === '首页' ? extendedSource.nameZh : extendedSource.nameEn
+      }
+    }
+    
+    // 3. 尝试在扩展配置中直接查找
+    const extendedSource = EXTENDED_NEWS_SOURCES[sourceValue]
+    if (extendedSource) {
+      return t.nav.home === '首页' ? extendedSource.nameZh : extendedSource.nameEn
+    }
+    
+    // 4. 如果都不匹配，返回原值（可能是英文或未知来源）
+    return sourceValue
+  }, [t])
   
   // 使用 useCallback 确保 onSearch 引用稳定，避免 SearchBox 重新渲染
   const handleSearch = useCallback((query: string) => {
@@ -158,21 +263,21 @@ export default function NewsListPage() {
     onSuccess: (data) => {
       setAnalyzingNewsId(null)
       if (data.success) {
-        toast.success('分析完成！')
+        toast.success(t.news.analysisComplete)
         queryClient.invalidateQueries({ queryKey: ['news'] })
       } else {
-        toast.error(`分析失败: ${data.error}`)
+        toast.error(`${t.news.analysisFailed}: ${data.error}`)
       }
     },
     onError: (error: Error) => {
       setAnalyzingNewsId(null)
-      toast.error(`分析失败: ${error.message}`)
+      toast.error(`${t.news.analysisFailed}: ${error.message}`)
     },
   })
 
   const handleForceRefresh = () => {
     if (isRefreshing) {
-      toast.warning('正在爬取中，请稍候...')
+      toast.warning(t.news.crawling)
       return
     }
     
@@ -197,7 +302,7 @@ export default function NewsListPage() {
         <RefreshCw
           className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`}
         />
-        {isRefreshing ? '爬取中...(约2分钟)' : '立即刷新'}
+        {isRefreshing ? t.news.crawlingProgress : t.news.refreshNow}
       </Button>
     )
 
@@ -266,7 +371,7 @@ export default function NewsListPage() {
       return (
         <Badge className="bg-green-100 text-green-800 hover:bg-green-100 border-green-200">
           <span className="mr-1">😊</span>
-          利好 {score.toFixed(2)}
+          {t.news.positive} {score.toFixed(2)}
         </Badge>
       )
     }
@@ -274,14 +379,14 @@ export default function NewsListPage() {
       return (
         <Badge className="bg-red-100 text-red-800 hover:bg-red-100 border-red-200">
           <span className="mr-1">😰</span>
-          利空 {score.toFixed(2)}
+          {t.news.negative} {score.toFixed(2)}
         </Badge>
       )
     }
     return (
       <Badge variant="outline" className="bg-gray-50 text-gray-700">
         <span className="mr-1">😐</span>
-        中性 {score.toFixed(2)}
+        {t.news.neutral} {score.toFixed(2)}
       </Badge>
     )
   }
@@ -318,14 +423,14 @@ export default function NewsListPage() {
       const titleMatch = news.title.toLowerCase().includes(query)
       const contentMatch = news.content.toLowerCase().includes(query)
       const codeMatch = news.stock_codes?.some(code => code.toLowerCase().includes(query)) || false
-      const sourceMatch = NEWS_SOURCES.find(s => s.key === news.source)?.name.toLowerCase().includes(query) || false
+      const sourceMatch = getSourceName(news.source).toLowerCase().includes(query)
       
       const searchMatch = titleMatch || contentMatch || codeMatch || sourceMatch
       
       // 3. 返回交集
       return sentimentMatch && searchMatch
     })
-  }, [newsList, activeFilter, debouncedSearchQuery])
+  }, [newsList, activeFilter, debouncedSearchQuery, getSourceName])
 
   // 获取卡片样式类
   const getCardStyle = (sentiment: number | null) => {
@@ -384,7 +489,7 @@ export default function NewsListPage() {
                   }
                 >
                   <span className="mr-1">{source.icon}</span>
-                  {source.name}
+                  {getSourceName(source.key)}
                 </Button>
               ))}
             </div>
@@ -401,7 +506,7 @@ export default function NewsListPage() {
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
                 >
-                  全部
+                  {t.news.all}
                 </Button>
                 <Button
                   variant={activeFilter === 'pending' ? 'default' : 'ghost'}
@@ -414,7 +519,7 @@ export default function NewsListPage() {
                 }`}
                 >
                   <HelpCircle className="w-3.5 h-3.5 mr-1.5" />
-                  待分析
+                  {t.news.pending}
                 </Button>
                 <Button
                   variant={activeFilter === 'positive' ? 'default' : 'ghost'}
@@ -427,7 +532,7 @@ export default function NewsListPage() {
                 }`}
                 >
                   <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
-                  利好
+                  {t.news.positive}
                 </Button>
                 <Button
                   variant={activeFilter === 'negative' ? 'default' : 'ghost'}
@@ -440,7 +545,7 @@ export default function NewsListPage() {
                 }`}
                 >
                   <XCircle className="w-3.5 h-3.5 mr-1.5" />
-                  利空
+                  {t.news.negative}
                 </Button>
                 <Button
                   variant={activeFilter === 'neutral' ? 'default' : 'ghost'}
@@ -453,7 +558,7 @@ export default function NewsListPage() {
                 }`}
                 >
                   <MinusCircle className="w-3.5 h-3.5 mr-1.5" />
-                  中性
+                  {t.news.neutral}
               </Button>
             </div>
           </div>
@@ -468,16 +573,16 @@ export default function NewsListPage() {
               <div className="flex items-center gap-6">
                 <div className="flex items-center gap-2">
                   <span className="text-2xl font-bold text-blue-600">{filteredNews.length}</span>
-                  <span className="text-sm text-gray-600">条新闻</span>
+                  <span className="text-sm text-gray-600">{t.news.items}</span>
                 </div>
                 {activeSource === 'all' && filteredNews && (
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-600">来源：</span>
+                    <span className="text-sm text-gray-600">{t.news.source}：</span>
                     <div className="flex flex-wrap gap-1">
                       {Array.from(new Set(filteredNews.map(n => n.source))).map(source => (
                         <Badge key={source} variant="outline" className="text-xs">
-                          <span className="mr-0.5">{NEWS_SOURCES.find(s => s.key === source)?.icon}</span>
-                          {NEWS_SOURCES.find(s => s.key === source)?.name}
+                          <span className="mr-0.5">{getSourceIcon(source)}</span>
+                          {getSourceName(source)}
                         </Badge>
                       ))}
                     </div>
@@ -492,7 +597,7 @@ export default function NewsListPage() {
                 )}
                 {activeFilter !== 'all' && (
                   <span>
-                    已筛选：{activeFilter === 'pending' ? '待分析' : activeFilter === 'positive' ? '利好' : activeFilter === 'negative' ? '利空' : '中性'}
+                    {activeFilter === 'pending' ? t.news.pending : activeFilter === 'positive' ? t.news.positive : activeFilter === 'negative' ? t.news.negative : t.news.neutral}
                   </span>
                 )}
               </div>
@@ -511,7 +616,7 @@ export default function NewsListPage() {
         {isLoading ? (
           <div className="col-span-full text-center py-12 text-gray-500">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            <p className="mt-4">加载中...</p>
+            <p className="mt-4">{t.common.loading}</p>
           </div>
         ) : filteredNews && filteredNews.length > 0 ? (
           filteredNews.map((news) => (
@@ -534,12 +639,12 @@ export default function NewsListPage() {
                 <div className="flex items-center gap-2 text-xs text-gray-500">
                   <div className="flex items-center gap-1">
                     <Calendar className="w-3 h-3" />
-                    <span>{formatRelativeTime(news.publish_time || news.created_at)}</span>
+                    <span>{formatRelativeTime(news.publish_time || news.created_at, t.time)}</span>
                   </div>
                   <span>•</span>
                   <div className="flex items-center gap-1">
-                    <span>{NEWS_SOURCES.find(s => s.key === news.source)?.icon || '📰'}</span>
-                    <span>{NEWS_SOURCES.find(s => s.key === news.source)?.name || news.source}</span>
+                    <span>{getSourceIcon(news.source)}</span>
+                    <span>{getSourceName(news.source)}</span>
                   </div>
                 </div>
               </CardHeader>
@@ -586,12 +691,12 @@ export default function NewsListPage() {
                           {expandedStocks.has(news.id) ? (
                             <>
                               <ChevronUp className="w-3 h-3" />
-                              收起 ({news.stock_codes.length} 只股票)
+                              {t.news.collapse} ({news.stock_codes.length} {t.news.stocks})
                             </>
                           ) : (
                             <>
                               <ChevronDown className="w-3 h-3" />
-                              展开更多 ({news.stock_codes.length - 6} 只)
+                              {t.news.expandMore} ({news.stock_codes.length - 6})
                             </>
                           )}
                         </button>
@@ -618,17 +723,17 @@ export default function NewsListPage() {
                   {analyzingNewsId === news.id ? (
                     <>
                       <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                      分析中...
+                      {t.news.analyzing}
                     </>
                   ) : news.sentiment_score !== null ? (
                     <>
                       <RefreshCcw className="w-4 h-4 mr-2" />
-                      重新分析
+                      {t.news.reanalyze}
                     </>
                   ) : (
                     <>
                       <Sparkles className="w-4 h-4 mr-2" />
-                      分析
+                      {t.news.analyze}
                     </>
                   )}
                 </Button>
@@ -646,13 +751,13 @@ export default function NewsListPage() {
             </div>
             {debouncedSearchQuery ? (
               <>
-                <p className="text-gray-500 text-lg">没有找到与 "{debouncedSearchQuery}" 相关的新闻</p>
-                <p className="text-gray-400 text-sm mt-1">试试其他关键词，如股票代码或公司名称</p>
+                <p className="text-gray-500 text-lg">{t.news.noNewsFound} "{debouncedSearchQuery}" {t.news.relatedNews}</p>
+                <p className="text-gray-400 text-sm mt-1">{t.news.tryOtherKeywords}</p>
               </>
             ) : (
               <>
-            <p className="text-gray-500 text-lg">暂无新闻</p>
-            <p className="text-gray-400 text-sm mt-1">请先爬取新闻</p>
+            <p className="text-gray-500 text-lg">{t.news.noNews}</p>
+            <p className="text-gray-400 text-sm mt-1">{t.news.pleaseCrawl}</p>
               </>
             )}
           </div>

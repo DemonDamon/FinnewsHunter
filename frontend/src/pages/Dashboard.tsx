@@ -7,26 +7,132 @@ import { TrendingUp, Newspaper, Activity, Clock } from 'lucide-react'
 import { useState, useMemo, useEffect } from 'react'
 import { formatRelativeTime } from '@/lib/utils'
 import NewsDetailDrawer from '@/components/NewsDetailDrawer'
+import { useGlobalI18n, useLanguageStore } from '@/store/useLanguageStore'
+import { useCallback } from 'react'
 
 // 新闻源配置
 const NEWS_SOURCES = [
-  { key: 'all', name: '全部来源', icon: '📰' },
-  { key: 'sina', name: '新浪财经', icon: '🌐' },
-  { key: 'tencent', name: '腾讯财经', icon: '🐧' },
-  { key: 'jwview', name: '金融界', icon: '💰' },
-  { key: 'eeo', name: '经济观察网', icon: '📊' },
-  { key: 'caijing', name: '财经网', icon: '📈' },
-  { key: 'jingji21', name: '21经济网', icon: '📉' },
-  { key: 'nbd', name: '每日经济新闻', icon: '📰' },
-  { key: 'yicai', name: '第一财经', icon: '🎯' },
-  { key: '163', name: '网易财经', icon: '📧' },
-  { key: 'eastmoney', name: '东方财富', icon: '💎' },
+  { key: 'all', nameZh: '全部来源', nameEn: 'All Sources', icon: '📰' },
+  { key: 'sina', nameZh: '新浪财经', nameEn: 'Sina Finance', icon: '🌐' },
+  { key: 'tencent', nameZh: '腾讯财经', nameEn: 'Tencent Finance', icon: '🐧' },
+  { key: 'jwview', nameZh: '金融界', nameEn: 'JRJ', icon: '💰' },
+  { key: 'eeo', nameZh: '经济观察网', nameEn: 'EEO', icon: '📊' },
+  { key: 'caijing', nameZh: '财经网', nameEn: 'Caijing', icon: '📈' },
+  { key: 'jingji21', nameZh: '21经济网', nameEn: '21Jingji', icon: '📉' },
+  { key: 'nbd', nameZh: '每日经济新闻', nameEn: 'NBD', icon: '📰' },
+  { key: 'yicai', nameZh: '第一财经', nameEn: 'Yicai', icon: '🎯' },
+  { key: '163', nameZh: '网易财经', nameEn: '163 Finance', icon: '📧' },
+  { key: 'eastmoney', nameZh: '东方财富', nameEn: 'Eastmoney', icon: '💎' },
 ]
 
+// 后端可能返回的中文 source 名称到 key 的映射
+const SOURCE_NAME_TO_KEY: Record<string, string> = {
+  '全部来源': 'all',
+  '新浪财经': 'sina',
+  '腾讯财经': 'tencent',
+  '金融界': 'jwview',
+  '经济观察网': 'eeo',
+  '财经网': 'caijing',
+  '21经济网': 'jingji21',
+  '每日经济新闻': 'nbd',
+  '第一财经': 'yicai',
+  '网易财经': '163',
+  '东方财富': 'eastmoney',
+  '东方财富网': 'eastmoney', // 后端可能返回的变体
+  '同花顺财经': 'tonghuashun',
+  '证券时报': 'securities_times',
+  '证券之星': 'stockstar',
+  '中金在线': 'cnfol',
+  '澎湃新闻': 'thepaper',
+  '证券时报网': 'securities_times_online',
+  '北京商报': 'bbtnews',
+  '卡车之家': 'truckhome',
+  'sogou': 'sogou',
+}
+
+// 扩展的新闻源配置（包含后端可能返回的其他来源）
+const EXTENDED_NEWS_SOURCES: Record<string, { nameZh: string; nameEn: string; icon: string }> = {
+  tonghuashun: { nameZh: '同花顺财经', nameEn: 'Tonghuashun Finance', icon: '📊' },
+  securities_times: { nameZh: '证券时报', nameEn: 'Securities Times', icon: '📰' },
+  stockstar: { nameZh: '证券之星', nameEn: 'Stockstar', icon: '⭐' },
+  cnfol: { nameZh: '中金在线', nameEn: 'CNFOL', icon: '💼' },
+  thepaper: { nameZh: '澎湃新闻', nameEn: 'The Paper', icon: '📰' },
+  securities_times_online: { nameZh: '证券时报网', nameEn: 'Securities Times Online', icon: '📰' },
+  bbtnews: { nameZh: '北京商报', nameEn: 'Beijing Business Today', icon: '📰' },
+  truckhome: { nameZh: '卡车之家', nameEn: 'Truck Home', icon: '🚚' },
+  sogou: { nameZh: '搜狗', nameEn: 'Sogou', icon: '🔍' },
+}
+
 export default function Dashboard() {
+  const t = useGlobalI18n()
+  const { lang } = useLanguageStore()
   const [selectedSource, setSelectedSource] = useState<string>('all')
   const [selectedNewsId, setSelectedNewsId] = useState<number | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
+
+  // 获取新闻源图标
+  const getSourceIcon = useCallback((sourceValue: string) => {
+    // 1. 先尝试直接匹配 key
+    const sourceByKey = NEWS_SOURCES.find(s => s.key === sourceValue)
+    if (sourceByKey) {
+      return sourceByKey.icon
+    }
+    
+    // 2. 尝试通过中文名称映射到 key
+    const mappedKey = SOURCE_NAME_TO_KEY[sourceValue]
+    if (mappedKey) {
+      const source = NEWS_SOURCES.find(s => s.key === mappedKey)
+      if (source) {
+        return source.icon
+      }
+      // 如果在扩展配置中
+      const extendedSource = EXTENDED_NEWS_SOURCES[mappedKey]
+      if (extendedSource) {
+        return extendedSource.icon
+      }
+    }
+    
+    // 3. 尝试在扩展配置中直接查找
+    const extendedSource = EXTENDED_NEWS_SOURCES[sourceValue]
+    if (extendedSource) {
+      return extendedSource.icon
+    }
+    
+    // 4. 默认图标
+    return '📰'
+  }, [])
+  
+  // 获取新闻源名称（支持中文 source 名称映射）
+  const getSourceName = useCallback((sourceValue: string) => {
+    // 1. 先尝试直接匹配 key
+    const sourceByKey = NEWS_SOURCES.find(s => s.key === sourceValue)
+    if (sourceByKey) {
+      return t.nav.home === '首页' ? sourceByKey.nameZh : sourceByKey.nameEn
+    }
+    
+    // 2. 尝试通过中文名称映射到 key
+    const mappedKey = SOURCE_NAME_TO_KEY[sourceValue]
+    if (mappedKey) {
+      const source = NEWS_SOURCES.find(s => s.key === mappedKey)
+      if (source) {
+        return t.nav.home === '首页' ? source.nameZh : source.nameEn
+      }
+      // 如果在扩展配置中
+      const extendedSource = EXTENDED_NEWS_SOURCES[mappedKey]
+      if (extendedSource) {
+        return t.nav.home === '首页' ? extendedSource.nameZh : extendedSource.nameEn
+      }
+    }
+    
+    // 3. 尝试在扩展配置中直接查找
+    const extendedSource = EXTENDED_NEWS_SOURCES[sourceValue]
+    if (extendedSource) {
+      return t.nav.home === '首页' ? extendedSource.nameZh : extendedSource.nameEn
+    }
+    
+    // 4. 如果都不匹配，返回原值（可能是英文或未知来源）
+    return sourceValue
+  }, [t])
 
   // 监听自定义事件，用于从相关新闻跳转
   useEffect(() => {
@@ -64,18 +170,18 @@ export default function Dashboard() {
     return Array.from(stats.entries()).map(([source, count]) => ({
       source,
       count,
-      name: NEWS_SOURCES.find(s => s.key === source)?.name || source,
-      icon: NEWS_SOURCES.find(s => s.key === source)?.icon || '📰'
+      name: getSourceName(source),
+      icon: getSourceIcon(source)
     })).sort((a, b) => b.count - a.count)
-  }, [newsList])
+  }, [newsList, getSourceName, getSourceIcon])
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">仪表盘</h1>
+          <h1 className="text-3xl font-bold tracking-tight">{t.dashboard.title}</h1>
           <p className="text-muted-foreground">
-            金融新闻智能分析平台 - Powered by AgenticX
+            {t.dashboard.subtitle}
           </p>
         </div>
       </div>
@@ -85,14 +191,14 @@ export default function Dashboard() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              总新闻数
+              {t.dashboard.totalNews}
             </CardTitle>
             <Newspaper className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{taskStats?.total_news_saved || 0}</div>
             <p className="text-xs text-muted-foreground">
-              已保存到数据库
+              {t.dashboard.savedToDb}
             </p>
           </CardContent>
         </Card>
@@ -100,14 +206,14 @@ export default function Dashboard() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              总任务数
+              {t.dashboard.totalTasks}
             </CardTitle>
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{taskStats?.total || 0}</div>
             <p className="text-xs text-muted-foreground">
-              最近完成 {taskStats?.recent_completed || 0} 个
+              {t.dashboard.recentCompleted} {taskStats?.recent_completed || 0} {t.dashboard.units}
             </p>
           </CardContent>
         </Card>
@@ -115,7 +221,7 @@ export default function Dashboard() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              爬取成功率
+              {t.dashboard.crawlRate}
             </CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -134,14 +240,14 @@ export default function Dashboard() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              实时监控
+              {t.dashboard.liveMonitor}
             </CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">运行中</div>
+            <div className="text-2xl font-bold text-green-600">{t.dashboard.running}</div>
             <p className="text-xs text-muted-foreground">
-              每1分钟自动爬取
+              {t.dashboard.autoInterval}
             </p>
           </CardContent>
         </Card>
@@ -151,8 +257,8 @@ export default function Dashboard() {
       {newsStats.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>新闻来源统计</CardTitle>
-            <CardDescription>各新闻源的内容数量分布</CardDescription>
+            <CardTitle>{t.dashboard.newsStats}</CardTitle>
+            <CardDescription>{t.dashboard.newsStatsDesc}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -173,8 +279,8 @@ export default function Dashboard() {
       {/* 来源筛选 */}
       <Card>
         <CardHeader>
-          <CardTitle>最新新闻</CardTitle>
-          <CardDescription>最近爬取的新闻动态</CardDescription>
+          <CardTitle>{t.dashboard.latestNews}</CardTitle>
+          <CardDescription>{t.dashboard.latestNewsDesc}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* 筛选器 */}
@@ -188,7 +294,7 @@ export default function Dashboard() {
                 className="text-xs"
               >
                 <span className="mr-1">{source.icon}</span>
-                {source.name}
+                {getSourceName(source.key)}
                 {source.key !== 'all' && newsStats.find(s => s.source === source.key) && (
                   <Badge variant="secondary" className="ml-2">
                     {newsStats.find(s => s.source === source.key)?.count}
@@ -217,10 +323,10 @@ export default function Dashboard() {
                     </p>
                     <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
                       <span className="flex items-center gap-1">
-                        <span>{NEWS_SOURCES.find(s => s.key === news.source)?.icon}</span>
-                        <span>{NEWS_SOURCES.find(s => s.key === news.source)?.name || news.source}</span>
+                        <span>{getSourceIcon(news.source)}</span>
+                        <span>{getSourceName(news.source)}</span>
                       </span>
-                      <span>⏰ {formatRelativeTime(news.publish_time || news.created_at)}</span>
+                      <span>⏰ {formatRelativeTime(news.publish_time || news.created_at, t.time)}</span>
                       {news.stock_codes && news.stock_codes.length > 0 && (
                         <span className="flex items-center gap-1">
                           📈 
@@ -243,7 +349,7 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="text-center py-8 text-gray-500">
-              {selectedSource === 'all' ? '暂无新闻数据，请先爬取新闻' : `暂无来自 ${NEWS_SOURCES.find(s => s.key === selectedSource)?.name} 的新闻`}
+              {selectedSource === 'all' ? t.dashboard.noNews : t.dashboard.noNewsFrom}
             </div>
           )}
         </CardContent>

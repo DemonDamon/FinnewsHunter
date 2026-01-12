@@ -25,6 +25,54 @@ import {
   Timer,
 } from 'lucide-react'
 import type { AgentLogEntry, AgentMetrics, AgentInfo, WorkflowInfo } from '@/types/api'
+import { useGlobalI18n, useLanguageStore } from '@/store/useLanguageStore'
+import { formatRelativeTime as formatRelativeTimeUtil } from '@/lib/utils'
+
+// 智能体角色和描述映射
+const AGENT_ROLES: Record<string, { roleZh: string; roleEn: string; descZh: string; descEn: string }> = {
+  NewsAnalyst: {
+    roleZh: '金融新闻分析师',
+    roleEn: 'Financial News Analyst',
+    descZh: '分析金融新闻的情感、影响和关键信息',
+    descEn: 'Analyzes sentiment, impact and key information of financial news',
+  },
+  BullResearcher: {
+    roleZh: '看多研究员',
+    roleEn: 'Bull Researcher',
+    descZh: '从积极角度分析股票,发现投资机会',
+    descEn: 'Analyzes stocks from a positive perspective, discovering investment opportunities',
+  },
+  BearResearcher: {
+    roleZh: '看空研究员',
+    roleEn: 'Bear Researcher',
+    descZh: '从风险角度分析股票,识别潜在问题',
+    descEn: 'Analyzes stocks from a risk perspective, identifying potential problems',
+  },
+  InvestmentManager: {
+    roleZh: '投资经理',
+    roleEn: 'Investment Manager',
+    descZh: '综合多方观点,做出投资决策',
+    descEn: 'Integrates multiple viewpoints to make investment decisions',
+  },
+  SearchAnalyst: {
+    roleZh: '搜索分析师',
+    roleEn: 'Search Analyst',
+    descZh: '动态获取数据,支持 AkShare、BochaAI、网页搜索等',
+    descEn: 'Dynamically obtains data, supports AkShare, BochaAI, web search, etc.',
+  },
+}
+
+// 工作流描述映射
+const WORKFLOW_DESCRIPTIONS: Record<string, { descZh: string; descEn: string }> = {
+  NewsAnalysisWorkflow: {
+    descZh: '新闻分析工作流：爬取 -> 清洗 -> 情感分析',
+    descEn: 'News Analysis Workflow: Crawl -> Clean -> Sentiment Analysis',
+  },
+  InvestmentDebateWorkflow: {
+    descZh: '投资辩论工作流：Bull vs Bear 多智能体辩论',
+    descEn: 'Investment Debate Workflow: Bull vs Bear Multi-Agent Debate',
+  },
+}
 
 // 状态徽章颜色
 const statusColors: Record<string, { bg: string; text: string; border: string }> = {
@@ -45,9 +93,10 @@ const agentIcons: Record<string, React.ReactNode> = {
 }
 
 // 格式化时间戳
-function formatTimestamp(timestamp: string): string {
+// 格式化时间戳（已废弃，使用 formatRelativeTimeUtil）
+function formatTimestamp(timestamp: string, locale: string = 'zh-CN'): string {
   const date = new Date(timestamp)
-  return date.toLocaleString('zh-CN', {
+  return date.toLocaleString(locale, {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -56,25 +105,36 @@ function formatTimestamp(timestamp: string): string {
   })
 }
 
-// 格式化相对时间
-function formatRelativeTime(timestamp: string): string {
-  const now = new Date()
-  const date = new Date(timestamp)
-  const diffMs = now.getTime() - date.getTime()
-  const diffSec = Math.floor(diffMs / 1000)
-  const diffMin = Math.floor(diffSec / 60)
-  const diffHour = Math.floor(diffMin / 60)
-  
-  if (diffSec < 60) return `${diffSec}秒前`
-  if (diffMin < 60) return `${diffMin}分钟前`
-  if (diffHour < 24) return `${diffHour}小时前`
-  return formatTimestamp(timestamp)
-}
-
 export default function AgentMonitorPage() {
+  const t = useGlobalI18n()
+  const { lang } = useLanguageStore()
   const queryClient = useQueryClient()
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
   const [autoRefresh, setAutoRefresh] = useState(true)
+  
+  // 获取智能体角色和描述（国际化）
+  const getAgentInfo = (agentName: string, defaultRole: string, defaultDesc: string) => {
+    const agentInfo = AGENT_ROLES[agentName]
+    if (agentInfo) {
+      return {
+        role: lang === 'zh' ? agentInfo.roleZh : agentInfo.roleEn,
+        description: lang === 'zh' ? agentInfo.descZh : agentInfo.descEn,
+      }
+    }
+    return {
+      role: defaultRole,
+      description: defaultDesc,
+    }
+  }
+  
+  // 获取工作流描述（国际化）
+  const getWorkflowDescription = (workflowName: string, defaultDesc: string) => {
+    const workflowInfo = WORKFLOW_DESCRIPTIONS[workflowName]
+    if (workflowInfo) {
+      return lang === 'zh' ? workflowInfo.descZh : workflowInfo.descEn
+    }
+    return defaultDesc
+  }
 
   // 获取性能指标
   const { data: metrics, isLoading: metricsLoading, refetch: refetchMetrics } = useQuery({
@@ -122,7 +182,7 @@ export default function AgentMonitorPage() {
   }
 
   const handleClearLogs = () => {
-    if (window.confirm('确定要清空所有执行日志吗？此操作不可恢复。')) {
+    if (window.confirm(t.agents.confirmClearLogs)) {
       clearLogsMutation.mutate()
     }
   }
@@ -139,10 +199,10 @@ export default function AgentMonitorPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-gray-900 flex items-center gap-3">
             <Activity className="w-8 h-8 text-indigo-500" />
-            智能体监控台
+            {t.agents.title}
           </h1>
           <p className="text-muted-foreground mt-1">
-            实时查看智能体执行状态、性能指标和思考链
+            {t.agents.subtitle}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -153,7 +213,7 @@ export default function AgentMonitorPage() {
             className={autoRefresh ? 'bg-emerald-50 border-emerald-200' : ''}
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${autoRefresh ? 'animate-spin' : ''}`} />
-            {autoRefresh ? '自动刷新中' : '自动刷新已关闭'}
+            {autoRefresh ? t.agents.autoRefreshing : t.agents.autoRefreshing}
           </Button>
           <Button
             variant="outline"
@@ -161,7 +221,7 @@ export default function AgentMonitorPage() {
             onClick={handleRefresh}
           >
             <RefreshCw className="w-4 h-4 mr-2" />
-            手动刷新
+            {t.agents.refresh}
           </Button>
           <Button
             variant="outline"
@@ -171,7 +231,7 @@ export default function AgentMonitorPage() {
             disabled={clearLogsMutation.isPending}
           >
             <Trash2 className="w-4 h-4 mr-2" />
-            清空日志
+            {t.agents.clearLogs}
           </Button>
         </div>
       </div>
@@ -182,7 +242,7 @@ export default function AgentMonitorPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">总执行次数</p>
+                <p className="text-sm text-muted-foreground">{t.agents.totalExec}</p>
                 <p className="text-3xl font-bold text-indigo-600">
                   {metrics?.total_executions || 0}
                 </p>
@@ -196,7 +256,7 @@ export default function AgentMonitorPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">成功执行</p>
+                <p className="text-sm text-muted-foreground">{t.agents.successExec}</p>
                 <p className="text-3xl font-bold text-emerald-600">
                   {metrics?.successful_executions || 0}
                 </p>
@@ -204,7 +264,7 @@ export default function AgentMonitorPage() {
               <CheckCircle2 className="w-10 h-10 text-emerald-500/30" />
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-              成功率 {successRate}%
+              {t.agents.successRate} {successRate}%
             </p>
           </CardContent>
         </Card>
@@ -213,7 +273,7 @@ export default function AgentMonitorPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">失败次数</p>
+                <p className="text-sm text-muted-foreground">{t.agents.failedExec}</p>
                 <p className="text-3xl font-bold text-rose-600">
                   {metrics?.failed_executions || 0}
                 </p>
@@ -227,7 +287,7 @@ export default function AgentMonitorPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">平均耗时</p>
+                <p className="text-sm text-muted-foreground">{t.agents.avgTime}</p>
                 <p className="text-3xl font-bold text-amber-600">
                   {metrics?.avg_execution_time?.toFixed(1) || 0}s
                 </p>
@@ -244,16 +304,16 @@ export default function AgentMonitorPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Bot className="w-5 h-5 text-indigo-500" />
-              可用智能体
+              {t.agents.availableAgents}
             </CardTitle>
             <CardDescription>
-              系统中已注册的智能体和工作流
+              {t.agents.availableAgentsDesc}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* 智能体 */}
             <div>
-              <h4 className="text-sm font-medium text-gray-500 mb-2">智能体</h4>
+              <h4 className="text-sm font-medium text-gray-500 mb-2">{t.agents.agents}</h4>
               <div className="space-y-2">
                 {available?.agents.map((agent) => (
                   <div
@@ -274,23 +334,23 @@ export default function AgentMonitorPage() {
                         </div>
                         <div>
                           <p className="font-medium text-gray-900 text-sm">{agent.name}</p>
-                          <p className="text-xs text-gray-500">{agent.role}</p>
+                          <p className="text-xs text-gray-500">{getAgentInfo(agent.name, agent.role, agent.description).role}</p>
                         </div>
                       </div>
                       <Badge className={`${statusColors[agent.status].bg} ${statusColors[agent.status].text}`}>
-                        {agent.status === 'active' ? '活跃' : '未激活'}
+                        {agent.status === 'active' ? t.agents.active : t.agents.inactive}
                       </Badge>
                     </div>
-                    <p className="text-xs text-gray-500 mt-2">{agent.description}</p>
+                    <p className="text-xs text-gray-500 mt-2">{getAgentInfo(agent.name, agent.role, agent.description).description}</p>
                     {metrics?.agent_stats?.[agent.name] && (
                       <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
-                        <span>执行 {metrics.agent_stats[agent.name].total} 次</span>
+                        <span>{t.agents.execTimes} {metrics.agent_stats[agent.name].total} {t.agents.times}</span>
                         <span>•</span>
-                        <span>成功 {metrics.agent_stats[agent.name].successful}</span>
+                        <span>{t.agents.success} {metrics.agent_stats[agent.name].successful}</span>
                         {metrics.agent_stats[agent.name].avg_time > 0 && (
                           <>
                             <span>•</span>
-                            <span>平均 {metrics.agent_stats[agent.name].avg_time.toFixed(1)}s</span>
+                            <span>{t.agents.avg} {metrics.agent_stats[agent.name].avg_time.toFixed(1)}s</span>
                           </>
                         )}
                       </div>
@@ -302,7 +362,7 @@ export default function AgentMonitorPage() {
 
             {/* 工作流 */}
             <div>
-              <h4 className="text-sm font-medium text-gray-500 mb-2">工作流</h4>
+              <h4 className="text-sm font-medium text-gray-500 mb-2">{t.agents.workflows}</h4>
               <div className="space-y-2">
                 {available?.workflows.map((workflow) => (
                   <div
@@ -313,7 +373,7 @@ export default function AgentMonitorPage() {
                       <GitBranch className="w-4 h-4 text-purple-500" />
                       <span className="font-medium text-gray-900 text-sm">{workflow.name}</span>
                     </div>
-                    <p className="text-xs text-gray-500">{workflow.description}</p>
+                    <p className="text-xs text-gray-500">{getWorkflowDescription(workflow.name, workflow.description)}</p>
                     <div className="flex items-center gap-1 mt-2 flex-wrap">
                       {workflow.agents.map((agent, idx) => (
                         <span key={agent} className="flex items-center">
@@ -339,10 +399,10 @@ export default function AgentMonitorPage() {
             <CardTitle className="flex items-center justify-between">
               <span className="flex items-center gap-2">
                 <Activity className="w-5 h-5 text-blue-500" />
-                执行日志
+                {t.agents.execLogs}
                 {selectedAgent && (
                   <Badge variant="outline" className="ml-2">
-                    筛选: {selectedAgent}
+                    {selectedAgent}
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
@@ -356,11 +416,11 @@ export default function AgentMonitorPage() {
                 )}
               </span>
               <span className="text-sm font-normal text-gray-500">
-                {logs?.length || 0} 条记录
+                {logs?.length || 0} {t.agents.records}
               </span>
             </CardTitle>
             <CardDescription>
-              实时智能体执行日志和状态追踪
+              {t.agents.execLogsDesc}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -405,11 +465,11 @@ export default function AgentMonitorPage() {
                             </span>
                             {log.agent_role && (
                               <span className="text-xs text-gray-500">
-                                ({log.agent_role})
+                                ({getAgentInfo(log.agent_name || '', log.agent_role, '').role})
                               </span>
                             )}
                             <Badge className={`${statusColors[log.status].bg} ${statusColors[log.status].text} text-xs`}>
-                              {log.status === 'completed' ? '完成' : log.status === 'failed' ? '失败' : '进行中'}
+                              {log.status === 'completed' ? t.tasks.completed : log.status === 'failed' ? t.tasks.failed : t.tasks.running}
                             </Badge>
                           </div>
                           <p className="text-sm text-gray-600 mt-1">
@@ -429,7 +489,7 @@ export default function AgentMonitorPage() {
                       </div>
                       <div className="text-right flex-shrink-0">
                         <p className="text-xs text-gray-400">
-                          {formatRelativeTime(log.timestamp)}
+                          {formatRelativeTimeUtil(log.timestamp, t.time)}
                         </p>
                         {log.execution_time && (
                           <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
@@ -445,9 +505,9 @@ export default function AgentMonitorPage() {
             ) : (
               <div className="text-center py-12 text-gray-500">
                 <Activity className="w-16 h-16 mx-auto opacity-30 mb-4" />
-                <p className="text-lg">暂无执行日志</p>
+                <p className="text-lg">{t.agents.noLogs}</p>
                 <p className="text-sm mt-2">
-                  执行分析任务或辩论后，日志将在此显示
+                  {t.agents.noLogsHint}
                 </p>
               </div>
             )}
@@ -461,7 +521,7 @@ export default function AgentMonitorPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Clock className="w-5 h-5 text-purple-500" />
-              最近活动
+              {t.agents.recentActivity || 'Recent Activity'}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -482,7 +542,7 @@ export default function AgentMonitorPage() {
                     {activity.action.replace(/_/g, ' ')}
                   </p>
                   <p className="text-xs text-gray-400">
-                    {formatRelativeTime(activity.timestamp)}
+                    {formatRelativeTimeUtil(activity.timestamp, t.time)}
                   </p>
                 </div>
               ))}
