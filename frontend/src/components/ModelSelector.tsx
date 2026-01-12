@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import {
@@ -12,11 +12,59 @@ import {
 import { ChevronDown, Check, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { llmApi } from '@/lib/api-client'
+import { useGlobalI18n, useLanguageStore } from '@/store/useLanguageStore'
 
 // 模型配置
 export interface ModelConfig {
   provider: string
   model: string
+}
+
+// Provider 和 Model 的国际化映射
+const PROVIDER_I18N: Record<string, { labelZh: string; labelEn: string }> = {
+  bailian: {
+    labelZh: '百炼（阿里云）',
+    labelEn: 'Bailian (Alibaba Cloud)',
+  },
+  openai: {
+    labelZh: 'OpenAI',
+    labelEn: 'OpenAI',
+  },
+  deepseek: {
+    labelZh: 'DeepSeek',
+    labelEn: 'DeepSeek',
+  },
+  kimi: {
+    labelZh: 'Kimi (Moonshot)',
+    labelEn: 'Kimi (Moonshot)',
+  },
+  zhipu: {
+    labelZh: '智谱',
+    labelEn: 'Zhipu',
+  },
+}
+
+const MODEL_DESCRIPTION_I18N: Record<string, { descZh: string; descEn: string }> = {
+  bailian: {
+    descZh: '百炼 模型',
+    descEn: 'Bailian Model',
+  },
+  openai: {
+    descZh: 'OpenAI 模型',
+    descEn: 'OpenAI Model',
+  },
+  deepseek: {
+    descZh: 'DeepSeek 模型',
+    descEn: 'DeepSeek Model',
+  },
+  kimi: {
+    descZh: 'Kimi 模型',
+    descEn: 'Kimi Model',
+  },
+  zhipu: {
+    descZh: '智谱 模型',
+    descEn: 'Zhipu Model',
+  },
 }
 
 const DEFAULT_CONFIG: ModelConfig = {
@@ -25,6 +73,8 @@ const DEFAULT_CONFIG: ModelConfig = {
 }
 
 export default function ModelSelector() {
+  const t = useGlobalI18n()
+  const { lang } = useLanguageStore()
   const [config, setConfig] = useState<ModelConfig>(DEFAULT_CONFIG)
   
   // 从后端 API 动态加载可用厂商和模型
@@ -35,7 +85,29 @@ export default function ModelSelector() {
     retry: 1,
   })
   
-  const providers = llmConfig?.providers || []
+  // 国际化处理：将后端返回的 provider 和 model 数据转换为国际化文本
+  const providers = useMemo(() => {
+    if (!llmConfig?.providers) return []
+    return llmConfig.providers.map(provider => {
+      const providerI18n = PROVIDER_I18N[provider.value] || { 
+        labelZh: provider.label, 
+        labelEn: provider.label 
+      }
+      const modelDescI18n = MODEL_DESCRIPTION_I18N[provider.value] || { 
+        descZh: `${provider.label} 模型`, 
+        descEn: `${provider.label} Model` 
+      }
+      
+      return {
+        ...provider,
+        label: lang === 'zh' ? providerI18n.labelZh : providerI18n.labelEn,
+        models: provider.models.map(model => ({
+          ...model,
+          description: lang === 'zh' ? modelDescI18n.descZh : modelDescI18n.descEn,
+        })),
+      }
+    })
+  }, [llmConfig?.providers, lang])
 
   // 从 localStorage 加载配置
   useEffect(() => {
@@ -69,7 +141,7 @@ export default function ModelSelector() {
     return (
       <div className="flex items-center">
         <Button variant="outline" size="sm" disabled className="gap-2 h-10 rounded-lg px-3">
-          <span className="text-sm">加载中...</span>
+          <span className="text-sm">{t.model.loading}</span>
         </Button>
       </div>
     )
@@ -81,7 +153,7 @@ export default function ModelSelector() {
       <div className="flex items-center">
         <Button variant="outline" size="sm" disabled className="gap-2 h-10 rounded-lg px-3 border-orange-300">
           <AlertCircle className="h-4 w-4 text-orange-500" />
-          <span className="text-sm text-orange-600">未配置LLM</span>
+          <span className="text-sm text-orange-600">{t.model.notConfigured}</span>
         </Button>
       </div>
     )
@@ -99,7 +171,7 @@ export default function ModelSelector() {
             <span className="text-base">{currentProvider?.icon || '📦'}</span>
             <div className="flex flex-col items-start leading-tight">
               <span className="text-[11px] text-slate-500">
-                {currentProvider?.label || '选择模型'}
+                {currentProvider?.label || t.model.selectModel}
               </span>
               <span className="text-sm font-semibold text-slate-900">
                 {currentModel?.label || config.model}
@@ -113,7 +185,7 @@ export default function ModelSelector() {
           className="w-96 max-h-[480px] overflow-y-auto border-slate-200 shadow-xl"
         >
           <DropdownMenuLabel className="text-xs text-slate-500">
-            选择模型 · 兼顾质量与成本
+            {t.model.selectTip}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
 
@@ -123,7 +195,7 @@ export default function ModelSelector() {
                 <span className="text-base">{provider.icon}</span>
                 <span className="font-medium text-slate-700">{provider.label}</span>
                 {!provider.has_api_key && (
-                  <span className="text-xs text-orange-500 ml-auto">⚠️ 未配置API Key</span>
+                  <span className="text-xs text-orange-500 ml-auto">⚠️ {t.model.noApiKey}</span>
                 )}
               </DropdownMenuLabel>
               <div className="grid gap-1">
@@ -169,7 +241,7 @@ export default function ModelSelector() {
           ))}
 
           <div className="px-3 py-2 text-xs text-slate-500 bg-slate-50 rounded-md mx-1">
-            当前：{currentProvider?.label} · {currentModel?.label}
+            {t.model.current}：{currentProvider?.label} · {currentModel?.label}
           </div>
         </DropdownMenuContent>
       </DropdownMenu>
