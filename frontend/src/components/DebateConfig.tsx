@@ -15,6 +15,7 @@ import {
   ChevronUp,
   Info
 } from 'lucide-react'
+import { useGlobalI18n } from '@/store/useLanguageStore'
 
 // 辩论模式类型
 export interface DebateMode {
@@ -33,25 +34,25 @@ export interface ModeRules {
   requireDataCollection?: boolean
 }
 
-// 可用的辩论模式
-const DEBATE_MODES: DebateMode[] = [
+// 可用的辩论模式（使用函数获取，支持国际化）
+const getDebateModes = (t: any): DebateMode[] => [
   {
     id: 'parallel',
-    name: '并行分析模式',
-    description: 'Bull/Bear并行分析，投资经理汇总决策',
+    name: t.stockDetail.parallelAnalysis,
+    description: t.stockDetail.parallelAnalysisDesc || 'Bull/Bear parallel analysis, Investment Manager summarizes decision',
     icon: '⚡',
     isDefault: true
   },
   {
     id: 'realtime_debate',
-    name: '实时辩论模式',
-    description: '四人实时对话，投资经理主持，多空双方交替发言',
+    name: t.stockDetail.realtimeDebate,
+    description: t.stockDetail.realtimeDebateDesc || 'Four agents real-time dialogue, Investment Manager moderates, Bull/Bear alternate',
     icon: '🎭'
   },
   {
     id: 'quick_analysis',
-    name: '快速分析模式',
-    description: '单一分析师快速给出建议，适合时间紧迫场景',
+    name: t.stockDetail.quickAnalysis,
+    description: t.stockDetail.quickAnalysisDesc || 'Single analyst quick recommendation, suitable for time-sensitive scenarios',
     icon: '🚀'
   }
 ]
@@ -95,6 +96,8 @@ export const DebateConfig: React.FC<DebateConfigProps> = ({
   disabled = false,
   compact = false
 }) => {
+  const t = useGlobalI18n()
+  const DEBATE_MODES = getDebateModes(t)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [localRules, setLocalRules] = useState<ModeRules>(
     rules || DEFAULT_RULES[selectedMode] || DEFAULT_RULES.parallel
@@ -129,7 +132,7 @@ export const DebateConfig: React.FC<DebateConfigProps> = ({
   if (compact) {
     return (
       <div className="flex items-center gap-2">
-        <label className="text-sm text-gray-500">分析模式:</label>
+        <label className="text-sm text-gray-500">{t.stockDetail.analysisMode}:</label>
         <select
           value={selectedMode}
           onChange={(e) => onModeChange(e.target.value)}
@@ -152,7 +155,7 @@ export const DebateConfig: React.FC<DebateConfigProps> = ({
       <div className="p-4 border-b border-gray-100">
         <div className="flex items-center gap-2 mb-3">
           <Settings className="w-5 h-5 text-gray-600" />
-          <h3 className="font-semibold text-gray-800">分析模式配置</h3>
+          <h3 className="font-semibold text-gray-800">{t.stockDetail.analysisModeConfig || t.stockDetail.analysisMode}</h3>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -172,7 +175,7 @@ export const DebateConfig: React.FC<DebateConfigProps> = ({
             >
               {mode.isDefault && (
                 <span className="absolute top-2 right-2 text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">
-                  默认
+                  {t.stockDetail.default || 'Default'}
                 </span>
               )}
               <div className="flex items-center gap-2 mb-2">
@@ -207,33 +210,33 @@ export const DebateConfig: React.FC<DebateConfigProps> = ({
                 {selectedMode === 'parallel' && (
                   <>
                     <span className="inline-flex items-center gap-1 text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
-                      <Zap className="w-3 h-3" /> 并行执行
+                      <Zap className="w-3 h-3" /> {t.stockDetail.parallelExecution || 'Parallel Execution'}
                     </span>
                     <span className="inline-flex items-center gap-1 text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
-                      <Clock className="w-3 h-3" /> 约2-3分钟
+                      <Clock className="w-3 h-3" /> {t.stockDetail.about2to3min || '~2-3 min'}
                     </span>
                   </>
                 )}
                 {selectedMode === 'realtime_debate' && (
                   <>
                     <span className="inline-flex items-center gap-1 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
-                      <MessageSquare className="w-3 h-3" /> 实时对话
+                      <MessageSquare className="w-3 h-3" /> {t.stockDetail.realtimeDialogue || 'Real-time Dialogue'}
                     </span>
                     <span className="inline-flex items-center gap-1 text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-full">
-                      <Users className="w-3 h-3" /> 4位智能体
+                      <Users className="w-3 h-3" /> {t.stockDetail.fourAgents || '4 Agents'}
                     </span>
                     <span className="inline-flex items-center gap-1 text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
-                      <Clock className="w-3 h-3" /> 约5-10分钟
+                      <Clock className="w-3 h-3" /> {t.stockDetail.about5to10min || '~5-10 min'}
                     </span>
                   </>
                 )}
                 {selectedMode === 'quick_analysis' && (
                   <>
                     <span className="inline-flex items-center gap-1 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
-                      <Rocket className="w-3 h-3" /> 单智能体
+                      <Rocket className="w-3 h-3" /> {t.stockDetail.singleAgent || 'Single Agent'}
                     </span>
                     <span className="inline-flex items-center gap-1 text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
-                      <Clock className="w-3 h-3" /> 约1分钟
+                      <Clock className="w-3 h-3" /> {t.stockDetail.about1min || '~1 min'}
                     </span>
                   </>
                 )}
@@ -252,7 +255,7 @@ export const DebateConfig: React.FC<DebateConfigProps> = ({
         >
           <span className="flex items-center gap-2">
             <Info className="w-4 h-4" />
-            高级配置
+            {t.stockDetail.advancedConfig || 'Advanced Config'}
           </span>
           {showAdvanced ? (
             <ChevronUp className="w-4 h-4" />
@@ -265,7 +268,7 @@ export const DebateConfig: React.FC<DebateConfigProps> = ({
           <div className="p-4 border-t border-gray-100 bg-gray-50 space-y-4">
             {/* 最大时间 */}
             <div className="flex items-center justify-between">
-              <label className="text-sm text-gray-600">最大执行时间</label>
+              <label className="text-sm text-gray-600">{t.stockDetail.maxExecutionTime || 'Max Execution Time'}</label>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
@@ -277,7 +280,7 @@ export const DebateConfig: React.FC<DebateConfigProps> = ({
                   step={60}
                   className="w-20 text-sm border border-gray-200 rounded px-2 py-1 text-right disabled:bg-gray-100"
                 />
-                <span className="text-sm text-gray-500">秒</span>
+                <span className="text-sm text-gray-500">{t.stockDetail.seconds || 's'}</span>
               </div>
             </div>
 
@@ -285,7 +288,7 @@ export const DebateConfig: React.FC<DebateConfigProps> = ({
             {selectedMode === 'realtime_debate' && (
               <>
                 <div className="flex items-center justify-between">
-                  <label className="text-sm text-gray-600">最大辩论回合数</label>
+                  <label className="text-sm text-gray-600">{t.stockDetail.maxDebateRounds || 'Max Debate Rounds'}</label>
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
@@ -296,12 +299,12 @@ export const DebateConfig: React.FC<DebateConfigProps> = ({
                       max={10}
                       className="w-20 text-sm border border-gray-200 rounded px-2 py-1 text-right disabled:bg-gray-100"
                     />
-                    <span className="text-sm text-gray-500">轮</span>
+                    <span className="text-sm text-gray-500">{t.stockDetail.rounds || 'rounds'}</span>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <label className="text-sm text-gray-600">投资经理可打断辩论</label>
+                  <label className="text-sm text-gray-600">{t.stockDetail.managerCanInterrupt || 'Manager Can Interrupt'}</label>
                   <input
                     type="checkbox"
                     checked={localRules.managerCanInterrupt || false}
@@ -312,7 +315,7 @@ export const DebateConfig: React.FC<DebateConfigProps> = ({
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <label className="text-sm text-gray-600">辩论前搜集数据</label>
+                  <label className="text-sm text-gray-600">{t.stockDetail.collectDataBeforeDebate || 'Collect Data Before Debate'}</label>
                   <input
                     type="checkbox"
                     checked={localRules.requireDataCollection || false}
@@ -336,6 +339,8 @@ export const DebateModeSelector: React.FC<{
   onChange: (value: string) => void
   disabled?: boolean
 }> = ({ value, onChange, disabled }) => {
+  const t = useGlobalI18n()
+  const DEBATE_MODES = getDebateModes(t)
   return (
     <div className="flex gap-2">
       {DEBATE_MODES.map((mode) => (
@@ -354,7 +359,7 @@ export const DebateModeSelector: React.FC<{
           title={mode.description}
         >
           <span className="mr-1">{mode.icon}</span>
-          {mode.name.replace('模式', '')}
+          {mode.name}
         </button>
       ))}
     </div>
