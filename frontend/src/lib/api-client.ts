@@ -836,6 +836,254 @@ export const agentApi = {
   },
 }
 
+/**
+ * Alpha Mining 相关类型
+ */
+export interface AlphaMiningFactor {
+  formula: number[]
+  formula_str: string
+  sortino: number
+  sharpe?: number
+  ic?: number
+  discovered_at?: string
+  stock_code?: string
+}
+
+export interface AlphaMiningMetrics {
+  sortino_ratio: number
+  sharpe_ratio: number
+  ic: number
+  rank_ic: number
+  max_drawdown: number
+  turnover: number
+  total_return: number
+  win_rate: number
+  avg_return?: number
+}
+
+export interface MineRequest {
+  stock_code?: string
+  num_steps: number
+  use_sentiment: boolean
+  batch_size?: number
+}
+
+export interface EvaluateRequest {
+  formula: string
+  stock_code?: string
+}
+
+export interface SentimentCompareResult {
+  best_score: number
+  best_formula: string
+  total_steps: number
+  num_features: number
+}
+
+export interface OperatorInfo {
+  name: string
+  arity: number
+  description: string
+}
+
+/**
+ * Alpha Mining 相关 API
+ */
+export const alphaMiningApi = {
+  /**
+   * 启动因子挖掘任务（后台执行）
+   */
+  mine: async (request: MineRequest): Promise<{
+    success: boolean
+    task_id: string
+    message: string
+  }> => {
+    const response = await apiClient.post('/alpha-mining/mine', request)
+    return response.data
+  },
+
+  /**
+   * SSE 流式挖掘（返回 fetch Response）
+   */
+  mineStream: (
+    request: MineRequest,
+    onProgress: (data: {
+      step: number
+      progress: number
+      loss: number
+      avg_reward: number
+      max_reward: number
+      valid_ratio: number
+      best_score: number
+      best_formula: string
+    }) => void,
+    onComplete: (data: { best_score: number; best_formula: string }) => void,
+    onError: (error: string) => void
+  ): (() => void) => {
+    const controller = new AbortController()
+
+    fetch(`${apiClient.defaults.baseURL}/alpha-mining/mine/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const reader = response.body?.getReader()
+        if (!reader) throw new Error('No body')
+
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          let event = '', data = ''
+          for (const line of lines) {
+            if (line.startsWith('event: ')) event = line.slice(7)
+            else if (line.startsWith('data: ')) data = line.slice(6)
+            else if (line === '' && event && data) {
+              try {
+                const parsed = JSON.parse(data)
+                if (event === 'progress') onProgress(parsed)
+                else if (event === 'complete') onComplete(parsed)
+                else if (event === 'error') onError(parsed.error)
+              } catch {}
+              event = data = ''
+            }
+          }
+        }
+      })
+      .catch((err) => {
+        if (err.name !== 'AbortError') onError(err.message)
+      })
+
+    return () => controller.abort()
+  },
+
+  /**
+   * 评估因子表达式
+   */
+  evaluate: async (request: EvaluateRequest): Promise<{
+    success: boolean
+    formula: string
+    metrics?: AlphaMiningMetrics
+    error?: string
+  }> => {
+    const response = await apiClient.post('/alpha-mining/evaluate', request)
+    return response.data
+  },
+
+  /**
+   * 生成候选因子
+   */
+  generate: async (batch_size: number = 10, max_len: number = 8): Promise<{
+    success: boolean
+    generated: number
+    valid: number
+    factors: Array<{
+      formula: number[]
+      formula_str: string
+      sortino: number
+      ic: number
+    }>
+  }> => {
+    const response = await apiClient.post('/alpha-mining/generate', { batch_size, max_len })
+    return response.data
+  },
+
+  /**
+   * 获取已发现的因子列表
+   */
+  getFactors: async (top_k: number = 20, stock_code?: string): Promise<{
+    success: boolean
+    total: number
+    returned: number
+    factors: AlphaMiningFactor[]
+  }> => {
+    const response = await apiClient.get('/alpha-mining/factors', {
+      params: { top_k, stock_code }
+    })
+    return response.data
+  },
+
+  /**
+   * 获取任务状态
+   */
+  getTaskStatus: async (task_id: string): Promise<{
+    task_id: string
+    status: 'pending' | 'running' | 'completed' | 'failed'
+    progress: number
+    result?: { best_factor: string; best_score: number; total_steps: number }
+    error?: string
+  }> => {
+    const response = await apiClient.get(`/alpha-mining/status/${task_id}`)
+    return response.data
+  },
+
+  /**
+   * 获取支持的操作符列表
+   */
+  getOperators: async (): Promise<{
+    success: boolean
+    features: string[]
+    operators: OperatorInfo[]
+  }> => {
+    const response = await apiClient.get('/alpha-mining/operators')
+    return response.data
+  },
+
+  /**
+   * 情感融合效果对比
+   */
+  compareSentiment: async (num_steps: number = 50, batch_size: number = 16): Promise<{
+    success: boolean
+    with_sentiment: SentimentCompareResult
+    without_sentiment: SentimentCompareResult
+    improvement: { score_diff: number; improvement_pct: number }
+  }> => {
+    const response = await apiClient.post('/alpha-mining/compare-sentiment', {
+      num_steps,
+      batch_size
+    })
+    return response.data
+  },
+
+  /**
+   * Agent 调用演示
+   */
+  agentDemo: async (params: {
+    stock_code?: string
+    num_steps: number
+    use_sentiment: boolean
+  }): Promise<{
+    success: boolean
+    agent_name: string
+    tool_name: string
+    input_params: Record<string, any>
+    output: { best_formula: string; best_score: number; total_steps: number } | null
+    execution_time: number
+    logs: string[]
+  }> => {
+    const response = await apiClient.post('/alpha-mining/agent-demo', params)
+    return response.data
+  },
+
+  /**
+   * 删除任务
+   */
+  deleteTask: async (task_id: string): Promise<{ success: boolean; message: string }> => {
+    const response = await apiClient.delete(`/alpha-mining/tasks/${task_id}`)
+    return response.data
+  },
+}
+
 export { apiClient }
 export default apiClient
 
