@@ -8,8 +8,37 @@ import { init, dispose, registerLocale } from 'klinecharts'
 import type { Chart } from 'klinecharts'
 import type { KLineDataPoint } from '@/types/api'
 import { cn } from '@/lib/utils'
+import { useLanguageStore } from '@/store/useLanguageStore'
 
-// 注册中文语言包
+// 注册语言包（使用动态语言）
+const registerKLineLocales = () => {
+  const { lang } = useLanguageStore.getState();
+  const t = globalI18n[lang];
+  
+  registerLocale('zh-CN', {
+    time: `${t.stockDetail.timeLabel}：`,
+    open: `${t.stockDetail.openLabel}：`,
+    high: `${t.stockDetail.highLabel}：`,
+    low: `${t.stockDetail.lowLabel}：`,
+    close: `${t.stockDetail.closeLabel}：`,
+    volume: `${t.stockDetail.volumeLabel}：`,
+    turnover: '额：',
+    change: '涨跌：',
+  })
+
+  registerLocale('en-US', {
+    time: `${t.stockDetail.timeLabel}: `,
+    open: `${t.stockDetail.openLabel}: `,
+    high: `${t.stockDetail.highLabel}: `,
+    low: `${t.stockDetail.lowLabel}: `,
+    close: `${t.stockDetail.closeLabel}: `,
+    volume: `${t.stockDetail.volumeLabel}: `,
+    turnover: 'Turnover: ',
+    change: 'Change: ',
+  })
+}
+
+// 初始化注册
 registerLocale('zh-CN', {
   time: '时间：',
   open: '开：',
@@ -19,6 +48,17 @@ registerLocale('zh-CN', {
   volume: '量：',
   turnover: '额：',
   change: '涨跌：',
+})
+
+registerLocale('en-US', {
+  time: 'Time: ',
+  open: 'Open: ',
+  high: 'High: ',
+  low: 'Low: ',
+  close: 'Close: ',
+  volume: 'Volume: ',
+  turnover: 'Turnover: ',
+  change: 'Change: ',
 })
 
 interface KLineChartProps {
@@ -42,6 +82,7 @@ export default function KLineChart({
   theme = 'light',
   period = 'daily',
 }: KLineChartProps) {
+  const { lang } = useLanguageStore()
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<Chart | null>(null)
   const [isInitialized, setIsInitialized] = useState(false)
@@ -62,6 +103,9 @@ export default function KLineChart({
   // 初始化图表
   useEffect(() => {
     if (!containerRef.current) return
+
+    // 重置初始化状态
+    setIsInitialized(false)
 
     // 销毁旧图表
     if (chartRef.current) {
@@ -286,7 +330,7 @@ export default function KLineChart({
 
     // 创建图表
     const chart = init(containerRef.current, {
-      locale: 'zh-CN',
+      locale: lang === 'zh' ? 'zh-CN' : 'en-US',
       styles,
     })
 
@@ -333,23 +377,38 @@ export default function KLineChart({
         chart.createIndicator('MACD')
       }
 
+      // 如果有数据，立即应用
+      if (data && data.length > 0) {
+        try {
+          const formattedData = formatData(data)
+          chart.applyNewData(formattedData)
+        } catch (error) {
+          console.error('Failed to apply initial chart data:', error)
+        }
+      }
+
       setIsInitialized(true)
     }
 
     return () => {
+      setIsInitialized(false)
       if (chartRef.current) {
         dispose(chartRef.current)
         chartRef.current = null
       }
     }
-  }, [theme, showVolume, showMA, showMACD, period])
+  }, [theme, showVolume, showMA, showMACD, period, lang, data, formatData])
 
-  // 更新数据
+  // 更新数据 - 当图表初始化完成且有数据时应用
   useEffect(() => {
     if (!chartRef.current || !isInitialized || !data || data.length === 0) return
 
-    const formattedData = formatData(data)
-    chartRef.current.applyNewData(formattedData)
+    try {
+      const formattedData = formatData(data)
+      chartRef.current.applyNewData(formattedData)
+    } catch (error) {
+      console.error('Failed to apply chart data:', error)
+    }
   }, [data, isInitialized, formatData])
 
   return (
