@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { stockApi, agentApi, knowledgeGraphApi, SSEDebateEvent } from '@/lib/api-client'
 import { formatRelativeTime } from '@/lib/utils'
 import NewsDetailDrawer from '@/components/NewsDetailDrawer'
+import { useGlobalI18n, useLanguageStore } from '@/store/useLanguageStore'
 import DebateChatRoom, { ChatMessage, ChatRole } from '@/components/DebateChatRoom'
 import DebateHistorySidebar from '@/components/DebateHistorySidebar'
 import { useDebateStore, DebateSession } from '@/store/useDebateStore'
@@ -70,21 +71,21 @@ const extractCode = (fullCode: string): string => {
 
 // K线周期配置
 type KLinePeriod = 'daily' | '1m' | '5m' | '15m' | '30m' | '60m'
-const PERIOD_OPTIONS: { value: KLinePeriod; label: string; limit: number }[] = [
-  { value: 'daily', label: '日K', limit: 120 },  // 近3-4个月数据（扣除周末节假日约90个交易日）
-  { value: '60m', label: '60分', limit: 200 },
-  { value: '30m', label: '30分', limit: 200 },
-  { value: '15m', label: '15分', limit: 200 },
-  { value: '5m', label: '5分', limit: 300 },
-  { value: '1m', label: '1分', limit: 400 },
+const getPeriodOptions = (t: any): { value: KLinePeriod; label: string; limit: number }[] => [
+  { value: 'daily', label: t.stockDetail.dailyK, limit: 120 },
+  { value: '60m', label: t.stockDetail.min60, limit: 200 },
+  { value: '30m', label: t.stockDetail.min30, limit: 200 },
+  { value: '15m', label: t.stockDetail.min15, limit: 200 },
+  { value: '5m', label: t.stockDetail.min5, limit: 300 },
+  { value: '1m', label: t.stockDetail.min1, limit: 400 },
 ]
 
 // 复权类型配置
 type KLineAdjust = 'qfq' | 'hfq' | ''
-const ADJUST_OPTIONS: { value: KLineAdjust; label: string; tip: string }[] = [
-  { value: 'qfq', label: '前复权', tip: '消除除权缺口，保持走势连续（推荐）' },
-  { value: '', label: '不复权', tip: '显示真实交易价格，会有除权缺口' },
-  { value: 'hfq', label: '后复权', tip: '以上市首日为基准，价格可能很高' },
+const getAdjustOptions = (t: any): { value: KLineAdjust; label: string; tip: string }[] => [
+  { value: 'qfq', label: t.stockDetail.qfq, tip: t.stockDetail.qfqTip },
+  { value: '', label: t.stockDetail.noAdjust, tip: t.stockDetail.noAdjustTip },
+  { value: 'hfq', label: t.stockDetail.hfq, tip: t.stockDetail.hfqTip },
 ]
 
 // 定向爬取任务状态类型
@@ -102,6 +103,8 @@ interface CrawlTaskState {
 }
 
 export default function StockAnalysisPage() {
+  const t = useGlobalI18n()
+  const { lang } = useLanguageStore()
   const { code } = useParams<{ code: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -177,7 +180,7 @@ export default function StockAnalysisPage() {
       if (inProgressSession && inProgressSession.messages.length > 0) {
         // 有未完成的会话，提示用户恢复
         const shouldRestore = window.confirm(
-          `检测到有未完成的${inProgressSession.mode === 'realtime_debate' ? '实时辩论' : '分析'}会话（${inProgressSession.messages.length} 条消息），是否恢复？`
+          `${t.stockDetail.detectIncompleteSession || '检测到有未完成的'}${inProgressSession.mode === 'realtime_debate' ? t.stockDetail.realtimeDebate : t.stockDetail.analysis || '分析'}${t.stockDetail.session || '会话'}（${inProgressSession.messages.length} ${t.stockDetail.messages || '条消息'}），${t.stockDetail.restore || '是否恢复'}？`
         )
         if (shouldRestore) {
           restoreSessionState(inProgressSession)
@@ -263,6 +266,8 @@ export default function StockAnalysisPage() {
   }, [loadSession])
 
   // 获取当前周期配置
+  const PERIOD_OPTIONS = getPeriodOptions(t)
+  const ADJUST_OPTIONS = getAdjustOptions(t)
   const currentPeriodConfig = PERIOD_OPTIONS.find(p => p.value === klinePeriod) || PERIOD_OPTIONS[0]
 
   // 获取股票名称（从数据库查询）
@@ -1060,20 +1065,20 @@ export default function StockAnalysisPage() {
   }
 
   const getSentimentLabel = (score: number | null) => {
-    if (score === null) return '未知'
-    if (score > 0.3) return '强烈利好'
-    if (score > 0.1) return '利好'
-    if (score < -0.3) return '强烈利空'
-    if (score < -0.1) return '利空'
-    return '中性'
+    if (score === null) return t.stockDetail.unknown
+    if (score > 0.3) return t.stockDetail.strongBull
+    if (score > 0.1) return t.stockDetail.positive
+    if (score < -0.3) return t.stockDetail.strongBear
+    if (score < -0.1) return t.stockDetail.negative
+    return t.stockDetail.neutral
   }
 
   // 复制内容到剪贴板
   const handleCopyContent = (content: string, label: string) => {
     navigator.clipboard.writeText(content).then(() => {
-      toast.success(`${label}已复制到剪贴板`)
+      toast.success(`${label}${t.stockDetail.copy}`)
     }).catch(() => {
-      toast.error('复制失败')
+      toast.error(`${t.stockDetail.copy}失败`)
     })
   }
 
@@ -1088,7 +1093,7 @@ export default function StockAnalysisPage() {
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
-    toast.success('文件已导出')
+    toast.success(`${t.stockDetail.export}成功`)
   }
 
   return (
@@ -1107,7 +1112,7 @@ export default function StockAnalysisPage() {
           </div>
           <p className="text-muted-foreground mt-1 flex items-center gap-2">
             <Activity className="w-4 h-4" />
-            个股分析 · 智能体驱动的投资决策
+            {t.stockDetail.title}
           </p>
         </div>
         </div>
@@ -1122,18 +1127,18 @@ export default function StockAnalysisPage() {
               className="gap-2 hover:bg-indigo-50 border-indigo-200 text-indigo-600"
             >
               <History className="w-4 h-4" />
-              历史 ({historySessions.length})
+              {t.stockDetail.history} ({historySessions.length})
             </Button>
           )}
           {/* 返回按钮 */}
-        <Button
-          variant="outline"
-          size="sm"
+            <Button
+              variant="outline"
+              size="sm"
             onClick={() => navigate('/stock')}
             className="gap-2 hover:bg-gray-100"
         >
             <ArrowLeft className="w-4 h-4" />
-            返回搜索
+            {t.stockDetail.backToSearch}
         </Button>
         </div>
       </div>
@@ -1242,7 +1247,7 @@ export default function StockAnalysisPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">关联新闻</p>
+                <p className="text-sm text-muted-foreground">{t.stockDetail.relatedNews}</p>
                 <p className="text-2xl font-bold text-blue-600">
                   {overview?.total_news || 0}
                 </p>
@@ -1250,7 +1255,7 @@ export default function StockAnalysisPage() {
               <Newspaper className="w-8 h-8 text-blue-500/50" />
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-              已分析 {overview?.analyzed_news || 0} 条
+              {t.stockDetail.analyzed} {overview?.analyzed_news || 0} {t.stockDetail.items}
             </p>
           </CardContent>
         </Card>
@@ -1259,7 +1264,7 @@ export default function StockAnalysisPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">整体情感</p>
+                <p className="text-sm text-muted-foreground">{t.stockDetail.overallSentiment}</p>
                 <p className={`text-2xl font-bold text-${getSentimentColor(overview?.avg_sentiment ?? null)}-600`}>
                   {overview?.avg_sentiment != null 
                     ? (overview.avg_sentiment > 0 ? '+' : '') + overview.avg_sentiment.toFixed(2)
@@ -1278,7 +1283,7 @@ export default function StockAnalysisPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">近7天情感</p>
+                <p className="text-sm text-muted-foreground">{t.stockDetail.recent7d}</p>
                 <p className={`text-2xl font-bold text-${getSentimentColor(overview?.recent_sentiment ?? null)}-600`}>
                   {overview?.recent_sentiment != null
                     ? (overview.recent_sentiment > 0 ? '+' : '') + overview.recent_sentiment.toFixed(2)
@@ -1288,10 +1293,10 @@ export default function StockAnalysisPage() {
               {getTrendIcon(overview?.sentiment_trend || 'stable')}
             </div>
             <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-              趋势：
-              {overview?.sentiment_trend === 'up' && <span className="text-emerald-600">上升 ↑</span>}
-              {overview?.sentiment_trend === 'down' && <span className="text-rose-600">下降 ↓</span>}
-              {overview?.sentiment_trend === 'stable' && <span className="text-gray-600">稳定 →</span>}
+              {t.stockDetail.trend}：
+              {overview?.sentiment_trend === 'up' && <span className="text-emerald-600">{t.stockDetail.up} ↑</span>}
+              {overview?.sentiment_trend === 'down' && <span className="text-rose-600">{t.stockDetail.down} ↓</span>}
+              {overview?.sentiment_trend === 'stable' && <span className="text-gray-600">{t.stockDetail.stable} →</span>}
             </p>
           </CardContent>
         </Card>
@@ -1300,11 +1305,11 @@ export default function StockAnalysisPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">最新新闻</p>
+                <p className="text-sm text-muted-foreground">{t.stockDetail.latestNews}</p>
                 <p className="text-lg font-medium text-gray-700">
                   {overview?.last_news_time 
-                    ? formatRelativeTime(overview.last_news_time)
-                    : '暂无'}
+                    ? formatRelativeTime(overview.last_news_time, t.time)
+                    : t.stockDetail.none}
                 </p>
               </div>
               <Calendar className="w-8 h-8 text-orange-500/50" />
@@ -1320,16 +1325,16 @@ export default function StockAnalysisPage() {
                 <div>
               <CardTitle className="flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-blue-500" />
-                    K线图 · 真实行情
+                    {t.stockDetail.kline}
               </CardTitle>
               <CardDescription>
-                    数据来源：akshare · {ADJUST_OPTIONS.find(o => o.value === klineAdjust)?.label || '前复权'} · 支持缩放拖拽
+                    {t.stockDetail.dataSource}：akshare · {ADJUST_OPTIONS.find(o => o.value === klineAdjust)?.label || t.stockDetail.qfq} · {t.stockDetail.supportZoom}
               </CardDescription>
                 </div>
                 {klineData && klineData.length > 0 && (
                   <div className="flex items-center gap-4 text-sm">
                     <div className="flex items-center gap-1">
-                      <span className="text-gray-500">收盘：</span>
+                      <span className="text-gray-500">{t.stockDetail.close}：</span>
                       <span className={`font-semibold ${
                         klineData[klineData.length - 1].change_percent !== undefined &&
                         klineData[klineData.length - 1].change_percent! >= 0
@@ -1341,7 +1346,7 @@ export default function StockAnalysisPage() {
                     </div>
                     {klineData[klineData.length - 1].change_percent !== undefined && (
                       <div className="flex items-center gap-1">
-                        <span className="text-gray-500">涨跌：</span>
+                        <span className="text-gray-500">{t.stockDetail.change}：</span>
                         <Badge className={
                           klineData[klineData.length - 1].change_percent! >= 0
                             ? 'bg-rose-100 text-rose-700'
@@ -1354,9 +1359,9 @@ export default function StockAnalysisPage() {
                     )}
                     {klineData[klineData.length - 1].turnover !== undefined && (
                       <div className="flex items-center gap-1">
-                        <span className="text-gray-500">成交额：</span>
+                        <span className="text-gray-500">{t.stockDetail.volume}：</span>
                         <span className="font-medium">
-                          {(klineData[klineData.length - 1].turnover! / 100000000).toFixed(2)}亿
+                          {(klineData[klineData.length - 1].turnover! / 100000000).toFixed(2)}{t.stockDetail.billion}
                         </span>
                       </div>
                     )}
@@ -1365,7 +1370,7 @@ export default function StockAnalysisPage() {
               </div>
               {/* 周期和复权选择器 */}
               <div className="flex items-center gap-1 mt-3 pt-3 border-t border-gray-100 flex-wrap">
-                <span className="text-sm text-gray-500 mr-2">周期：</span>
+                <span className="text-sm text-gray-500 mr-2">{t.stockDetail.period}：</span>
                 {PERIOD_OPTIONS.map((option) => (
                   <Button
                     key={option.value}
@@ -1387,7 +1392,7 @@ export default function StockAnalysisPage() {
                   <>
                     <span className="text-gray-300 mx-2">|</span>
                     <span className="text-sm text-gray-500 mr-2" title="前复权可消除分红送股产生的缺口，保持K线连续性">
-                      复权：
+                      {t.stockDetail.adjust}：
                     </span>
                     {ADJUST_OPTIONS.map((option) => (
                       <Button
@@ -1403,7 +1408,7 @@ export default function StockAnalysisPage() {
                         }`}
                       >
                         {option.label}
-                        {option.value === 'qfq' && <span className="ml-1 text-[10px] opacity-70">推荐</span>}
+                        {option.value === 'qfq' && <span className="ml-1 text-[10px] opacity-70">{t.stockDetail.recommendLabel || 'Recommend'}</span>}
                       </Button>
                     ))}
                   </>
@@ -1438,8 +1443,8 @@ export default function StockAnalysisPage() {
               ) : (
                 <div className="h-[550px] flex flex-col items-center justify-center text-gray-500">
                   <BarChart3 className="w-12 h-12 opacity-50 mb-3" />
-                  <p>暂无K线数据</p>
-                  <p className="text-sm mt-1">请检查股票代码是否正确</p>
+                  <p>{t.stockDetail.noKline}</p>
+                  <p className="text-sm mt-1">{t.stockDetail.checkCode}</p>
                 </div>
               )}
           </CardContent>
@@ -1454,10 +1459,10 @@ export default function StockAnalysisPage() {
                   <div>
                     <CardTitle className="flex items-center gap-2">
                       <Newspaper className="w-5 h-5 text-blue-500" />
-                      关联新闻
+                      {t.stockDetail.news}
                     </CardTitle>
                     <CardDescription className="mt-1.5">
-                      包含 {stockCode} 的相关财经新闻 {newsList && `（共${newsList.length}条）`}
+                      {t.stockDetail.newsContain} {stockCode} {t.stockDetail.newsTotal} {newsList && `（${t.stockDetail.newsTotal}${newsList.length}${t.stockDetail.items}）`}
                     </CardDescription>
                   </div>
                   {/* 展开/折叠按钮 */}
@@ -1474,7 +1479,7 @@ export default function StockAnalysisPage() {
                     className="gap-2"
                   >
                     <ChevronDown className={`w-4 h-4 transition-transform ${newsExpanded ? '' : 'rotate-180'}`} />
-                    {newsExpanded ? '折叠' : '展开'}
+                    {newsExpanded ? t.stockDetail.fold : t.stockDetail.expand}
                   </Button>
                 </div>
               </div>
@@ -1498,7 +1503,7 @@ export default function StockAnalysisPage() {
                     ) : (
                       <>
                         <Trash2 className="w-4 h-4" />
-                        <span>清除数据</span>
+                        <span>{t.stockDetail.clearData}</span>
                       </>
                     )}
                   </Button>
@@ -1507,13 +1512,13 @@ export default function StockAnalysisPage() {
                 {crawlTask.status === 'completed' && (
                   <span className="flex items-center gap-1 text-xs text-emerald-600">
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    爬取完成
+                    {t.stockDetail.crawlComplete}
                   </span>
                 )}
                 {crawlTask.status === 'failed' && (
                   <span className="flex items-center gap-1 text-xs text-rose-600">
                     <AlertCircle className="w-3.5 h-3.5" />
-                    爬取失败
+                    {t.stockDetail.crawlFailed}
                   </span>
                 )}
                 {crawlTask.status === 'running' || crawlTask.status === 'pending' ? (
@@ -1525,7 +1530,7 @@ export default function StockAnalysisPage() {
                       className="gap-2"
                     >
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>爬取中...</span>
+                      <span>{t.stockDetail.crawling}</span>
                       {crawlTask.progress && (
                         <span className="text-xs text-gray-500">
                           {crawlTask.progress.message || `${crawlTask.progress.current}%`}
@@ -1539,7 +1544,7 @@ export default function StockAnalysisPage() {
                       className="gap-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
                     >
                       <StopCircle className="w-4 h-4" />
-                      <span>停止</span>
+                      <span>{t.stockDetail.stop}</span>
                     </Button>
                   </>
                 ) : (
@@ -1551,7 +1556,7 @@ export default function StockAnalysisPage() {
                     className="gap-2"
                   >
                     <Download className="w-4 h-4" />
-                    {hasHistoryNews ? '更新爬取' : '定向爬取'}
+                    {hasHistoryNews ? t.stockDetail.updateCrawl : t.stockDetail.targetCrawl}
                   </Button>
                 )}
               </div>
@@ -1582,7 +1587,7 @@ export default function StockAnalysisPage() {
                         </CardTitle>
                         <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
                           <Calendar className="w-3 h-3" />
-                          <span>{news.publish_time ? formatRelativeTime(news.publish_time) : '时间未知'}</span>
+                          <span>{news.publish_time ? formatRelativeTime(news.publish_time, t.time) : t.stockDetail.unknown}</span>
                           <span>•</span>
                           <span>{news.source}</span>
                         </div>
@@ -1612,8 +1617,8 @@ export default function StockAnalysisPage() {
                                   'bg-amber-100 text-amber-700 border-amber-200'
                                 }`}
                               >
-                                {news.sentiment_score > 0.1 ? '📈 利好' : 
-                                 news.sentiment_score < -0.1 ? '📉 利空' : '➖ 中性'}
+                                {news.sentiment_score > 0.1 ? `📈 ${t.stockDetail.positive}` : 
+                                 news.sentiment_score < -0.1 ? `📉 ${t.stockDetail.negative}` : `➖ ${t.stockDetail.neutral}`}
                               </Badge>
                             )}
                             {news.has_analysis && (
@@ -1642,7 +1647,7 @@ export default function StockAnalysisPage() {
                         className="gap-2 hover:bg-blue-50"
                       >
                         <ChevronDown className="w-4 h-4" />
-                        继续扩展 (还有 {(newsList?.length || 0) - newsDisplayCount} 条)
+                        {t.stockDetail.loadMore} ({t.stockDetail.remaining} {(newsList?.length || 0) - newsDisplayCount} {t.stockDetail.items})
                       </Button>
                     </div>
                   )}
@@ -1650,20 +1655,20 @@ export default function StockAnalysisPage() {
                   {/* 已显示全部提示 */}
                   {!hasMoreNews && newsList && newsList.length > 12 && (
                     <div className="text-center pt-4 text-sm text-gray-400">
-                      已显示全部 {newsList.length} 条新闻
+                      {t.stockDetail.showAll} {newsList.length} {t.stockDetail.items}
                     </div>
                   )}
                 </div>
               ) : (
                 <div className="text-center py-8 text-gray-500">
-                  <p className="text-sm">新闻已折叠，点击"展开"查看</p>
+                  <p className="text-sm">{t.stockDetail.newsFolded}</p>
                 </div>
               )
             ) : (
               <div className="text-center py-12 text-gray-500">
                 <Newspaper className="w-12 h-12 mx-auto opacity-50 mb-3" />
-                <p>暂无关联新闻</p>
-                <p className="text-sm mt-1">点击「{hasHistoryNews ? '更新爬取' : '定向爬取'}」获取该股票的相关新闻</p>
+                <p>{t.stockDetail.noRelatedNews}</p>
+                <p className="text-sm mt-1">{t.stockDetail.clickCrawl}</p>
                 </div>
               )}
             </CardContent>
@@ -1674,10 +1679,10 @@ export default function StockAnalysisPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MessageSquare className="w-5 h-5 text-purple-500" />
-                新闻情感趋势
+                {t.stockDetail.sentimentTrend}
               </CardTitle>
               <CardDescription>
-                近30天新闻情感分布与平均值
+                {t.stockDetail.sentimentDesc}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1717,21 +1722,21 @@ export default function StockAnalysisPage() {
                       dataKey="positive_count" 
                       stackId="a" 
                       fill="#10b981" 
-                      name="利好"
+                      name={t.stockDetail.positive}
                     />
                     <Bar 
                       yAxisId="right"
                       dataKey="neutral_count" 
                       stackId="a" 
                       fill="#f59e0b" 
-                      name="中性"
+                      name={t.stockDetail.neutral}
                     />
                     <Bar 
                       yAxisId="right"
                       dataKey="negative_count" 
                       stackId="a" 
                       fill="#ef4444" 
-                      name="利空"
+                      name={t.stockDetail.negative}
                     />
                     <Line
                       yAxisId="left"
@@ -1740,7 +1745,7 @@ export default function StockAnalysisPage() {
                       stroke="#8b5cf6"
                       strokeWidth={2}
                       dot={false}
-                      name="平均情感"
+                      name={t.stockDetail.avgSentiment}
                     />
                   </ComposedChart>
                 </ResponsiveContainer>
@@ -1769,9 +1774,9 @@ export default function StockAnalysisPage() {
                       </div>
                     </div>
                     <div>
-                      <h3 className="font-semibold text-gray-900">Bull vs Bear 智能体辩论</h3>
+                      <h3 className="font-semibold text-gray-900">{t.stockDetail.bullBear}</h3>
                       <p className="text-sm text-gray-500">
-                        看多研究员 vs 看空研究员，投资经理综合裁决
+                        {t.stockDetail.bullBearDesc}
                       </p>
                     </div>
                   </div>
@@ -1783,19 +1788,19 @@ export default function StockAnalysisPage() {
                     {isStreaming || debateMutation.isPending ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        辩论中...
+                        {t.stockDetail.debating}
                       </>
                     ) : (
                       <>
                         <Swords className="w-4 h-4 mr-2" />
-                        开始辩论
+                        {t.stockDetail.startDebate}
                       </>
                     )}
                   </Button>
                 </div>
                 {/* 辩论模式选择器 */}
                 <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
-                  <span className="text-sm text-gray-500">分析模式:</span>
+                  <span className="text-sm text-gray-500">{t.stockDetail.analysisMode}:</span>
                   <DebateModeSelector
                     value={debateMode}
                     onChange={setDebateMode}
@@ -1817,10 +1822,10 @@ export default function StockAnalysisPage() {
                     <span className="text-sm text-blue-600 font-medium">
                       {streamPhase === 'start' && '正在初始化...'}
                       {streamPhase === 'data_collection' && '📊 数据专员正在搜集资料...'}
-                      {streamPhase === 'analyzing' && '🚀 快速分析中...'}
-                      {streamPhase === 'parallel_analysis' && '⚡ Bull/Bear 并行分析中...'}
-                      {streamPhase === 'debate' && '🎭 多空辩论进行中...'}
-                      {streamPhase === 'decision' && '⚖️ 投资经理正在做最终决策...'}
+                      {streamPhase === 'analyzing' && `🚀 ${t.stockDetail.quickAnalysis}...`}
+                      {streamPhase === 'parallel_analysis' && `⚡ Bull/Bear ${t.stockDetail.parallelAnalysis}...`}
+                      {streamPhase === 'debate' && `🎭 ${t.stockDetail.realtimeDebate}...`}
+                      {streamPhase === 'decision' && `⚖️ ${t.stockDetail.managerDecision}...`}
                       {streamPhase === 'complete' && '✅ 分析完成'}
                     </span>
                   </div>
@@ -1835,12 +1840,12 @@ export default function StockAnalysisPage() {
                       <div className={`w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center ${activeAgent === 'QuickAnalyst' ? 'animate-pulse ring-2 ring-blue-400' : ''}`}>
                         <Activity className="w-5 h-5 text-blue-600" />
                       </div>
-                      🚀 快速分析
+                      🚀 {t.stockDetail.quickAnalysis}
                       {activeAgent === 'QuickAnalyst' && <span className="text-xs bg-blue-200 px-2 py-0.5 rounded animate-pulse">输出中...</span>}
                     </CardTitle>
                     <CardDescription>
                       <Bot className="w-3 h-3 inline mr-1" />
-                      QuickAnalyst · 快速分析师
+                      QuickAnalyst · {t.stockDetail.quickAnalysis}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -1854,7 +1859,7 @@ export default function StockAnalysisPage() {
                     ) : (
                       <div className="flex flex-col items-center justify-center py-12 text-gray-500">
                         <Loader2 className="w-10 h-10 animate-spin text-blue-500 mb-4" />
-                        <p className="text-sm font-medium">等待分析开始...</p>
+                        <p className="text-sm font-medium">{t.stockDetail.waitingAnalysis}</p>
                       </div>
                     )}
                   </CardContent>
@@ -1899,12 +1904,12 @@ export default function StockAnalysisPage() {
                             <div className={`w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center ${activeAgent === 'BullResearcher' ? 'animate-pulse' : ''}`}>
                               <ThumbsUp className="w-4 h-4 text-emerald-600" />
                             </div>
-                            看多观点
+                            {t.stockDetail.bullView}
                             {activeAgent === 'BullResearcher' && <span className="text-xs bg-emerald-200 px-2 py-0.5 rounded animate-pulse">输出中...</span>}
                           </CardTitle>
                           <CardDescription>
                             <Bot className="w-3 h-3 inline mr-1" />
-                            BullResearcher · 看多研究员
+                            BullResearcher · {t.stockDetail.bullView}
                           </CardDescription>
                         </div>
                         {/* 操作按钮组 */}
@@ -1913,9 +1918,9 @@ export default function StockAnalysisPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleCopyContent(streamingContent.bull, '看多观点')}
+                              onClick={() => handleCopyContent(streamingContent.bull, t.stockDetail.bullView)}
                               className="h-8 px-2"
-                              title="复制"
+                              title={t.stockDetail.copy}
                             >
                               <Copy className="w-3.5 h-3.5" />
                             </Button>
@@ -1924,10 +1929,10 @@ export default function StockAnalysisPage() {
                               size="sm"
                               onClick={() => handleExportToFile(
                                 streamingContent.bull, 
-                                `${stockName}_看多观点_${new Date().toISOString().slice(0,10)}.md`
+                                `${stockName}_${t.stockDetail.bullView}_${new Date().toISOString().slice(0,10)}.md`
                               )}
                               className="h-8 px-2"
-                              title="导出"
+                              title={t.stockDetail.export}
                             >
                               <FileDown className="w-3.5 h-3.5" />
                             </Button>
@@ -1937,7 +1942,7 @@ export default function StockAnalysisPage() {
                               onClick={handleStartDebate}
                               disabled={isStreaming}
                               className="h-8 px-2"
-                              title="重新生成"
+                              title={t.stockDetail.regenerate}
                             >
                               <RefreshCw className="w-3.5 h-3.5" />
                             </Button>
@@ -1971,12 +1976,12 @@ export default function StockAnalysisPage() {
                             <div className={`w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center ${activeAgent === 'BearResearcher' ? 'animate-pulse' : ''}`}>
                               <ThumbsDown className="w-4 h-4 text-rose-600" />
                             </div>
-                            看空观点
+                            {t.stockDetail.bearView}
                             {activeAgent === 'BearResearcher' && <span className="text-xs bg-rose-200 px-2 py-0.5 rounded animate-pulse">输出中...</span>}
                           </CardTitle>
                           <CardDescription>
                             <Bot className="w-3 h-3 inline mr-1" />
-                            BearResearcher · 看空研究员
+                            BearResearcher · {t.stockDetail.bearView}
                           </CardDescription>
                         </div>
                         {/* 操作按钮组 */}
@@ -1985,9 +1990,9 @@ export default function StockAnalysisPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleCopyContent(streamingContent.bear, '看空观点')}
+                              onClick={() => handleCopyContent(streamingContent.bear, t.stockDetail.bearView)}
                               className="h-8 px-2"
-                              title="复制"
+                              title={t.stockDetail.copy}
                             >
                               <Copy className="w-3.5 h-3.5" />
                             </Button>
@@ -1996,10 +2001,10 @@ export default function StockAnalysisPage() {
                               size="sm"
                               onClick={() => handleExportToFile(
                                 streamingContent.bear, 
-                                `${stockName}_看空观点_${new Date().toISOString().slice(0,10)}.md`
+                                `${stockName}_${t.stockDetail.bearView}_${new Date().toISOString().slice(0,10)}.md`
                               )}
                               className="h-8 px-2"
-                              title="导出"
+                              title={t.stockDetail.export}
                             >
                               <FileDown className="w-3.5 h-3.5" />
                             </Button>
@@ -2009,7 +2014,7 @@ export default function StockAnalysisPage() {
                               onClick={handleStartDebate}
                               disabled={isStreaming}
                               className="h-8 px-2"
-                              title="重新生成"
+                              title={t.stockDetail.regenerate}
                             >
                               <RefreshCw className="w-3.5 h-3.5" />
                             </Button>
@@ -2043,12 +2048,12 @@ export default function StockAnalysisPage() {
                             <div className={`w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center ${activeAgent === 'InvestmentManager' ? 'animate-pulse' : ''}`}>
                               <Scale className="w-5 h-5 text-indigo-600" />
                             </div>
-                            投资经理决策
+                            {t.stockDetail.managerDecision}
                             {activeAgent === 'InvestmentManager' && <span className="text-xs bg-indigo-200 px-2 py-0.5 rounded animate-pulse">决策中...</span>}
                           </CardTitle>
                           <CardDescription>
                             <Bot className="w-3 h-3 inline mr-1" />
-                            InvestmentManager · 投资经理
+                            InvestmentManager · {t.stockDetail.managerDecision}
                           </CardDescription>
                         </div>
                         {/* 操作按钮组 */}
@@ -2057,9 +2062,9 @@ export default function StockAnalysisPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleCopyContent(streamingContent.manager, '投资经理决策')}
+                              onClick={() => handleCopyContent(streamingContent.manager, t.stockDetail.managerDecision)}
                               className="h-8 px-2"
-                              title="复制"
+                              title={t.stockDetail.copy}
                             >
                               <Copy className="w-3.5 h-3.5" />
                             </Button>
@@ -2068,10 +2073,10 @@ export default function StockAnalysisPage() {
                               size="sm"
                               onClick={() => handleExportToFile(
                                 streamingContent.manager, 
-                                `${stockName}_投资经理决策_${new Date().toISOString().slice(0,10)}.md`
+                                `${stockName}_${t.stockDetail.managerDecision}_${new Date().toISOString().slice(0,10)}.md`
                               )}
                               className="h-8 px-2"
-                              title="导出"
+                              title={t.stockDetail.export}
                             >
                               <FileDown className="w-3.5 h-3.5" />
                             </Button>
@@ -2081,7 +2086,7 @@ export default function StockAnalysisPage() {
                               onClick={handleStartDebate}
                               disabled={isStreaming}
                               className="h-8 px-2"
-                              title="重新生成"
+                              title={t.stockDetail.regenerate}
                             >
                               <RefreshCw className="w-3.5 h-3.5" />
                             </Button>
@@ -2100,7 +2105,7 @@ export default function StockAnalysisPage() {
                       ) : (
                         <div className="flex flex-col items-center justify-center py-8 text-gray-500">
                           <Loader2 className="w-10 h-10 animate-spin text-indigo-500 mb-4" />
-                          <p className="text-sm font-medium">等待多空分析完成后进行决策...</p>
+                          <p className="text-sm font-medium">{t.stockDetail.waitingDecision}</p>
                         </div>
                       )}
                     </CardContent>
@@ -2121,16 +2126,16 @@ export default function StockAnalysisPage() {
                       <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
                         <Activity className="w-5 h-5 text-blue-600" />
                       </div>
-                      🚀 快速分析结果
+                      🚀 {t.stockDetail.quickAnalysis} {t.stockDetail.result}
                     </CardTitle>
                     <CardDescription className="flex items-center gap-4">
                       <span>
                         <Bot className="w-3 h-3 inline mr-1" />
-                        QuickAnalyst · 快速分析师
+                        QuickAnalyst · {t.stockDetail.quickAnalysis}
                       </span>
                       {debateResult.execution_time && (
                         <span className="text-xs bg-blue-100 px-2 py-0.5 rounded">
-                          耗时 {debateResult.execution_time.toFixed(1)}s
+                          {t.stockDetail.executionTime} {debateResult.execution_time.toFixed(1)}s
                         </span>
                       )}
                     </CardDescription>
@@ -2182,7 +2187,8 @@ export default function StockAnalysisPage() {
                           {debateResult.final_decision?.rating && (
                             <Badge 
                               className={`ml-2 ${
-                                debateResult.final_decision.rating === '强烈推荐' || debateResult.final_decision.rating === '推荐'
+                                debateResult.final_decision.rating === '强烈推荐' || debateResult.final_decision.rating === '推荐' ||
+                                debateResult.final_decision.rating === t.stockDetail.stronglyRec || debateResult.final_decision.rating === t.stockDetail.recommend
                                   ? 'bg-emerald-500' 
                                   : debateResult.final_decision.rating === '中性'
                                   ? 'bg-amber-500'
@@ -2211,11 +2217,11 @@ export default function StockAnalysisPage() {
                             <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
                               <ThumbsUp className="w-4 h-4 text-emerald-600" />
                             </div>
-                            看多观点
+                            {t.stockDetail.bullView}
                           </CardTitle>
                           <CardDescription>
                             <Bot className="w-3 h-3 inline mr-1" />
-                            {debateResult.bull_analysis?.agent_name || 'BullResearcher'} · {debateResult.bull_analysis?.agent_role || '看多研究员'}
+                            {debateResult.bull_analysis?.agent_name || 'BullResearcher'} · {lang === 'zh' ? '看多研究员' : 'Bull Researcher'}
                           </CardDescription>
                         </div>
                         {/* 操作按钮组 */}
@@ -2223,9 +2229,9 @@ export default function StockAnalysisPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleCopyContent(debateResult.bull_analysis?.analysis || '', '看多观点')}
+                            onClick={() => handleCopyContent(debateResult.bull_analysis?.analysis || '', t.stockDetail.bullView)}
                             className="h-8 px-2"
-                            title="复制"
+                            title={t.stockDetail.copy}
                           >
                             <Copy className="w-3.5 h-3.5" />
                           </Button>
@@ -2234,10 +2240,10 @@ export default function StockAnalysisPage() {
                             size="sm"
                             onClick={() => handleExportToFile(
                               debateResult.bull_analysis?.analysis || '', 
-                              `${stockName}_看多观点_${new Date().toISOString().slice(0,10)}.md`
+                              `${stockName}_${t.stockDetail.bullView}_${new Date().toISOString().slice(0,10)}.md`
                             )}
                             className="h-8 px-2"
-                            title="导出"
+                            title={t.stockDetail.export}
                           >
                             <FileDown className="w-3.5 h-3.5" />
                           </Button>
@@ -2246,7 +2252,7 @@ export default function StockAnalysisPage() {
                             size="sm"
                             onClick={handleStartDebate}
                             className="h-8 px-2"
-                            title="重新生成"
+                            title={t.stockDetail.regenerate}
                           >
                             <RefreshCw className="w-3.5 h-3.5" />
                           </Button>
@@ -2271,11 +2277,11 @@ export default function StockAnalysisPage() {
                             <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center">
                               <ThumbsDown className="w-4 h-4 text-rose-600" />
                             </div>
-                            看空观点
+                            {t.stockDetail.bearView}
                           </CardTitle>
                           <CardDescription>
                             <Bot className="w-3 h-3 inline mr-1" />
-                            {debateResult.bear_analysis?.agent_name || 'BearResearcher'} · {debateResult.bear_analysis?.agent_role || '看空研究员'}
+                            {debateResult.bear_analysis?.agent_name || 'BearResearcher'} · {lang === 'zh' ? '看空研究员' : 'Bear Researcher'}
                           </CardDescription>
                         </div>
                         {/* 操作按钮组 */}
@@ -2283,9 +2289,9 @@ export default function StockAnalysisPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleCopyContent(debateResult.bear_analysis?.analysis || '', '看空观点')}
+                            onClick={() => handleCopyContent(debateResult.bear_analysis?.analysis || '', t.stockDetail.bearView)}
                             className="h-8 px-2"
-                            title="复制"
+                            title={t.stockDetail.copy}
                           >
                             <Copy className="w-3.5 h-3.5" />
                           </Button>
@@ -2294,10 +2300,10 @@ export default function StockAnalysisPage() {
                             size="sm"
                             onClick={() => handleExportToFile(
                               debateResult.bear_analysis?.analysis || '', 
-                              `${stockName}_看空观点_${new Date().toISOString().slice(0,10)}.md`
+                              `${stockName}_${t.stockDetail.bearView}_${new Date().toISOString().slice(0,10)}.md`
                             )}
                             className="h-8 px-2"
-                            title="导出"
+                            title={t.stockDetail.export}
                           >
                             <FileDown className="w-3.5 h-3.5" />
                           </Button>
@@ -2306,7 +2312,7 @@ export default function StockAnalysisPage() {
                             size="sm"
                             onClick={handleStartDebate}
                             className="h-8 px-2"
-                            title="重新生成"
+                            title={t.stockDetail.regenerate}
                           >
                             <RefreshCw className="w-3.5 h-3.5" />
                           </Button>
@@ -2331,13 +2337,15 @@ export default function StockAnalysisPage() {
                             <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
                               <Scale className="w-5 h-5 text-blue-600" />
                             </div>
-                            投资经理决策
+                            {t.stockDetail.managerDecision}
                             {debateResult.final_decision?.rating && (
                               <Badge 
                                 className={`ml-2 ${
-                                  debateResult.final_decision.rating === '强烈推荐' || debateResult.final_decision.rating === '推荐'
+                                  debateResult.final_decision.rating === '强烈推荐' || debateResult.final_decision.rating === '推荐' ||
+                                  debateResult.final_decision.rating === t.stockDetail.stronglyRec || debateResult.final_decision.rating === t.stockDetail.recommend
                                     ? 'bg-emerald-500'
-                                    : debateResult.final_decision.rating === '回避' || debateResult.final_decision.rating === '谨慎'
+                                    : debateResult.final_decision.rating === '回避' || debateResult.final_decision.rating === '谨慎' ||
+                                      debateResult.final_decision.rating === t.stockDetail.avoid || debateResult.final_decision.rating === t.stockDetail.caution
                                     ? 'bg-rose-500'
                                     : 'bg-amber-500'
                                 }`}
@@ -2349,11 +2357,11 @@ export default function StockAnalysisPage() {
                           <CardDescription className="flex items-center gap-4">
                             <span>
                               <Bot className="w-3 h-3 inline mr-1" />
-                              {debateResult.final_decision?.agent_name || 'InvestmentManager'} · {debateResult.final_decision?.agent_role || '投资经理'}
+                              {debateResult.final_decision?.agent_name || 'InvestmentManager'} · {lang === 'zh' ? '投资经理' : 'Investment Manager'}
                             </span>
                             {debateResult.execution_time && (
                               <span className="text-xs bg-blue-100 px-2 py-0.5 rounded">
-                                耗时 {debateResult.execution_time.toFixed(1)}s
+                                {t.stockDetail.executionTime} {debateResult.execution_time.toFixed(1)}s
                               </span>
                             )}
                           </CardDescription>
@@ -2363,9 +2371,9 @@ export default function StockAnalysisPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleCopyContent(debateResult.final_decision?.decision || '', '投资经理决策')}
+                            onClick={() => handleCopyContent(debateResult.final_decision?.decision || '', t.stockDetail.managerDecision)}
                             className="h-8 px-2"
-                            title="复制"
+                            title={t.stockDetail.copy}
                           >
                             <Copy className="w-3.5 h-3.5" />
                           </Button>
@@ -2374,10 +2382,10 @@ export default function StockAnalysisPage() {
                             size="sm"
                             onClick={() => handleExportToFile(
                               debateResult.final_decision?.decision || '', 
-                              `${stockName}_投资经理决策_${new Date().toISOString().slice(0,10)}.md`
+                              `${stockName}_${t.stockDetail.managerDecision}_${new Date().toISOString().slice(0,10)}.md`
                             )}
                             className="h-8 px-2"
-                            title="导出"
+                            title={t.stockDetail.export}
                           >
                             <FileDown className="w-3.5 h-3.5" />
                           </Button>
@@ -2386,7 +2394,7 @@ export default function StockAnalysisPage() {
                             size="sm"
                             onClick={handleStartDebate}
                             className="h-8 px-2"
-                            title="重新生成"
+                            title={t.stockDetail.regenerate}
                           >
                             <RefreshCw className="w-3.5 h-3.5" />
                           </Button>
@@ -2420,9 +2428,9 @@ export default function StockAnalysisPage() {
             <Card className="bg-gray-50">
               <CardContent className="py-12 text-center text-gray-500">
                 <Swords className="w-16 h-16 mx-auto opacity-50 mb-4" />
-                <p className="text-lg">点击"开始辩论"启动智能体分析</p>
+                <p className="text-lg">{t.stockDetail.clickDebate}</p>
                 <p className="text-sm mt-2">
-                  系统将自动调用 Bull/Bear 研究员进行多角度分析，并由投资经理给出综合决策
+                  {t.stockDetail.debateDesc}
                 </p>
               </CardContent>
             </Card>
@@ -2449,7 +2457,7 @@ export default function StockAnalysisPage() {
         onLoadSession={(session) => {
           restoreSessionState(session)
           setShowHistorySidebar(false)
-          toast.success(`已加载历史会话：${session.mode === 'realtime_debate' ? '实时辩论' : session.mode === 'parallel' ? '并行分析' : '快速分析'}`)
+          toast.success(`${t.stockDetail.historySessionLoaded || '已加载历史会话'}：${session.mode === 'realtime_debate' ? t.stockDetail.realtimeDebate : session.mode === 'parallel' ? t.stockDetail.parallelAnalysis : t.stockDetail.quickAnalysis}`)
         }}
         onDeleteSession={(sessionId) => {
           deleteSession(stockCode, sessionId)
