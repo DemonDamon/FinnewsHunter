@@ -7,6 +7,7 @@ import StockSearchPage from './pages/StockSearchPage'
 import StockAnalysisPage from './pages/StockAnalysisPage'
 import AgentMonitorPage from './pages/AgentMonitorPage'
 import TaskManagerPage from './pages/TaskManagerPage'
+import AlphaMiningPage from './pages/AlphaMiningPage'
 
 function App() {
   return (
@@ -19,6 +20,7 @@ function App() {
           <Route path="stock/:code" element={<StockAnalysisPage />} />
           <Route path="agents" element={<AgentMonitorPage />} />
           <Route path="tasks" element={<TaskManagerPage />} />
+          <Route path="alpha-mining" element={<AlphaMiningPage />} />
         </Route>
       </Routes>
       <Toaster richColors position="top-right" />
