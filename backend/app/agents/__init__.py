@@ -11,6 +11,7 @@ from .debate_agents import (
 )
 from .data_collector_v2 import DataCollectorAgentV2, QuickAnalystAgent, create_data_collector
 from .orchestrator import DebateOrchestrator, create_orchestrator
+from .quantitative_agent import QuantitativeAgent, create_quantitative_agent
 
 __all__ = [
     "NewsAnalystAgent",
@@ -25,5 +26,7 @@ __all__ = [
     "create_data_collector",
     "DebateOrchestrator",
     "create_orchestrator",
+    "QuantitativeAgent",
+    "create_quantitative_agent",
 ]
 
