@@ -16,20 +16,35 @@ export function formatDate(date: string | Date): string {
   }).format(d)
 }
 
-export function formatRelativeTime(date: string | Date): string {
+export interface TimeI18n {
+  justNow: string
+  minutesAgo: string
+  hoursAgo: string
+  daysAgo: string
+}
+
+const defaultTimeI18n: TimeI18n = {
+  justNow: '刚刚',
+  minutesAgo: '分钟前',
+  hoursAgo: '小时前',
+  daysAgo: '天前',
+}
+
+export function formatRelativeTime(date: string | Date, i18n?: TimeI18n): string {
+  const t = i18n || defaultTimeI18n
   const d = typeof date === 'string' ? new Date(date) : date
   const now = new Date()
   const diffMs = now.getTime() - d.getTime()
   const diffMins = Math.floor(diffMs / 60000)
   
-  if (diffMins < 1) return '刚刚'
-  if (diffMins < 60) return `${diffMins}分钟前`
+  if (diffMins < 1) return t.justNow
+  if (diffMins < 60) return `${diffMins}${t.minutesAgo}`
   
   const diffHours = Math.floor(diffMins / 60)
-  if (diffHours < 24) return `${diffHours}小时前`
+  if (diffHours < 24) return `${diffHours}${t.hoursAgo}`
   
   const diffDays = Math.floor(diffHours / 24)
-  if (diffDays < 7) return `${diffDays}天前`
+  if (diffDays < 7) return `${diffDays}${t.daysAgo}`
   
   return formatDate(d)
 }
