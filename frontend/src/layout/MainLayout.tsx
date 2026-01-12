@@ -1,15 +1,17 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { Home, Newspaper, TrendingUp, Activity, Settings } from 'lucide-react'
+import { Home, Newspaper, TrendingUp, Activity, Settings, Brain } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ModelSelector from '@/components/ModelSelector'
 import { NewsToolbarProvider, useNewsToolbar } from '@/context/NewsToolbarContext'
+import { useLanguageStore, useGlobalI18n } from '@/store/useLanguageStore'
 
-const navigation = [
-  { name: '首页', href: '/', icon: Home },
-  { name: '新闻流', href: '/news', icon: Newspaper },
-  { name: '个股分析', href: '/stock', icon: TrendingUp },
-  { name: '智能体监控', href: '/agents', icon: Activity },
-  { name: '任务管理', href: '/tasks', icon: Settings },
+const navigationConfig = [
+  { key: 'home', href: '/', icon: Home },
+  { key: 'news', href: '/news', icon: Newspaper },
+  { key: 'stock', href: '/stock', icon: TrendingUp },
+  { key: 'alphaMining', href: '/alpha-mining', icon: Brain },
+  { key: 'agents', href: '/agents', icon: Activity },
+  { key: 'tasks', href: '/tasks', icon: Settings },
 ]
 
 export default function MainLayout() {
@@ -23,6 +25,9 @@ export default function MainLayout() {
 function MainLayoutInner() {
   const location = useLocation()
   const { content } = useNewsToolbar()
+  const { lang, setLang } = useLanguageStore()
+  const t = useGlobalI18n()
+  
   const isNewsPage =
     location.pathname === '/news' || location.pathname.startsWith('/news/')
 
@@ -39,14 +44,15 @@ function MainLayoutInner() {
 
         {/* 导航 */}
         <nav className="flex-1 px-4 py-4 space-y-1">
-          {navigation.map((item) => {
+          {navigationConfig.map((item) => {
             const Icon = item.icon
+            const name = t.nav[item.key as keyof typeof t.nav]
             const isActive = location.pathname === item.href ||
               (item.href !== '/' && location.pathname.startsWith(item.href))
 
             return (
               <Link
-                key={item.name}
+                key={item.key}
                 to={item.href}
                 className={cn(
                   'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
@@ -56,7 +62,7 @@ function MainLayoutInner() {
                 )}
               >
                 <Icon className="w-5 h-5" />
-                {item.name}
+                {name}
               </Link>
             )
           })}
@@ -65,7 +71,7 @@ function MainLayoutInner() {
         {/* 底部信息 */}
         <div className="p-4 border-t border-gray-200">
           <div className="text-xs text-gray-500">
-            Powered by <span className="font-semibold">AgenticX</span>
+            {t.header.poweredBy} <span className="font-semibold">AgenticX</span>
           </div>
         </div>
       </div>
@@ -77,14 +83,40 @@ function MainLayoutInner() {
           {/* 左侧：搜索框或标题 */}
           <div className="flex-1 max-w-xl">
             {isNewsPage ? (
-              content.left || <h1 className="text-xl font-semibold text-gray-900">实时新闻流</h1>
+              content.left || <h1 className="text-xl font-semibold text-gray-900">
+                {lang === 'zh' ? '实时新闻流' : 'Real-time News Feed'}
+              </h1>
             ) : (
-              <h1 className="text-xl font-semibold text-gray-900">FinnewsHunter</h1>
+              <h1 className="text-xl font-semibold text-gray-900">{t.header.title}</h1>
             )}
           </div>
           
           {/* 右侧：工具栏 */}
           <div className="flex items-center gap-4">
+            {/* 语言切换 */}
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setLang('en')}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  lang === 'en' 
+                    ? 'bg-white text-gray-900 shadow-sm' 
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                EN
+              </button>
+              <button
+                onClick={() => setLang('zh')}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  lang === 'zh' 
+                    ? 'bg-white text-gray-900 shadow-sm' 
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                中文
+              </button>
+            </div>
+            
             <ModelSelector />
             {isNewsPage && content.right}
           </div>
@@ -98,4 +130,3 @@ function MainLayoutInner() {
     </div>
   )
 }
-
