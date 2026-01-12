@@ -1,5 +1,7 @@
 # Development documentation (local only, not for Git)
-.dev-docs/
+devlogs/
+conclusions/
+researches
 
 # Python
 __pycache__/
