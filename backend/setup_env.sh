@@ -48,8 +48,8 @@ EMBEDDING_MODEL=text-embedding-ada-002
 LOG_LEVEL=INFO
 EOF
     echo ""
-    echo "✅ OpenAI 配置已创建"
-    echo "📝 请编辑 .env 并填入你的 OPENAI_API_KEY"
+    echo "OpenAI 配置已创建"
+    echo "请编辑 .env 并填入你的 OPENAI_API_KEY"
     ;;
     
   2)
@@ -86,9 +86,9 @@ EMBEDDING_MODEL=text-embedding-v4
 LOG_LEVEL=INFO
 EOF
     echo ""
-    echo "✅ 百炼配置已创建"
-    echo "📝 请编辑 .env 并填入你的百炼 API Key"
-    echo "🔗 获取 Key: https://dashscope.console.aliyun.com/"
+    echo "百炼配置已创建"
+    echo "请编辑 .env 并填入你的百炼 API Key"
+    echo "获取 Key: https://dashscope.console.aliyun.com/"
     ;;
     
   3)
@@ -125,20 +125,20 @@ EMBEDDING_MODEL=text-embedding-ada-002
 LOG_LEVEL=INFO
 EOF
     echo ""
-    echo "✅ 代理配置已创建"
-    echo "📝 请编辑 .env 并填入你的代理信息"
+    echo "代理配置已创建"
+    echo "请编辑 .env 并填入你的代理信息"
     ;;
     
   4)
     # 手动配置
     cp env.example .env
     echo ""
-    echo "✅ 配置模板已复制"
-    echo "📝 请编辑 .env 并选择合适的配置方案"
+    echo "配置模板已复制"
+    echo "请编辑 .env 并选择合适的配置方案"
     ;;
     
   *)
-    echo "❌ 无效选项"
+    echo "无效选项"
     exit 1
     ;;
 esac
@@ -151,5 +151,5 @@ if [[ ! $REPLY =~ ^[Nn]$ ]]; then
 fi
 
 echo ""
-echo "✨ 配置完成！运行 ./start.sh 启动服务"
+echo "配置完成！运行 ./start.sh 启动服务"
 

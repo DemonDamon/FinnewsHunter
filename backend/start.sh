@@ -32,8 +32,8 @@ python init_db.py || echo "Database initialization skipped (may already exist)"
 echo ""
 echo "[4/4] Starting FastAPI application..."
 echo ""
-echo "🚀 Server will start at: http://localhost:8000"
-echo "📚 API Documentation: http://localhost:8000/docs"
+echo "Server will start at: http://localhost:8000"
+echo "API Documentation: http://localhost:8000/docs"
 echo ""
 
 # 确保在 backend 目录下启动
