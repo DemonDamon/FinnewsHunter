@@ -102,14 +102,12 @@ services:
       - finnews_network
 
   celery-worker:
-    image: python:3.11
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.celery
     container_name: finnews_celery_worker
     working_dir: /app
-    command: >
-      sh -c "
-        pip install --no-cache-dir -r requirements.txt &&
-        celery -A app.core.celery_app worker --loglevel=info
-      "
+    command: celery -A app.core.celery_app worker --loglevel=info
     volumes:
       - ../backend:/app
     env_file:
@@ -141,14 +139,12 @@ services:
     restart: unless-stopped
 
   celery-beat:
-    image: python:3.11
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.celery
     container_name: finnews_celery_beat
     working_dir: /app
-    command: >
-      sh -c "
-        pip install --no-cache-dir -r requirements.txt &&
-        celery -A app.core.celery_app beat --loglevel=info
-      "
+    command: celery -A app.core.celery_app beat --loglevel=info
     volumes:
       - ../backend:/app
     env_file:
