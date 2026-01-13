@@ -184,7 +184,7 @@ export default function StockAnalysisPage() {
         )
         if (shouldRestore) {
           restoreSessionState(inProgressSession)
-          toast.success('已恢复上次会话')
+          toast.success(t.stockDetail.sessionRestored)
         } else {
           // 标记为中断
           updateSessionStatus('interrupted')
@@ -379,11 +379,12 @@ export default function StockAnalysisPage() {
       stock_code: stockCode,
       stock_name: stockName,
       mode: mode as 'parallel' | 'realtime_debate' | 'quick_analysis',
+      language: lang,
     }),
     onSuccess: (data) => {
       setDebateResult(data)
       if (data.success) {
-        toast.success('辩论分析完成！')
+        toast.success(t.stockDetail.debateComplete)
       } else {
         toast.error(`辩论失败: ${data.error}`)
       }
@@ -446,19 +447,19 @@ export default function StockAnalysisPage() {
             setChatMessages(prev => [...prev, {
               id: `system-round-${event.data.round}`,
               role: 'system' as ChatRole,
-              content: `📢 第 ${event.data.round}/${event.data.max_rounds} 轮辩论开始`,
+              content: `📢 ${t.debateRoom.roundPrefix} ${event.data.round}/${event.data.max_rounds} ${t.debateRoom.roundSuffix}${t.debateRoom.roundStarted}`,
               timestamp: new Date()
             }])
           }
         }
         if (event.data.phase === 'complete') {
-          toast.success('辩论分析完成！')
+          toast.success(t.stockDetail.debateComplete)
           // 添加完成消息
           if (debateMode === 'realtime_debate') {
             setChatMessages(prev => [...prev, {
               id: 'system-complete',
               role: 'system' as ChatRole,
-              content: '✅ 辩论结束，投资经理已做出最终决策',
+              content: `✅ ${t.debateRoom.debateEnded}`,
               timestamp: new Date()
             }])
           }
@@ -467,7 +468,7 @@ export default function StockAnalysisPage() {
           setChatMessages(prev => [...prev, {
             id: 'system-start',
             role: 'system' as ChatRole,
-            content: '🎬 辩论开始，数据专员正在准备资料...',
+            content: `🎬 ${t.debateRoom.debateStarted}`,
             timestamp: new Date()
           }])
         }
@@ -501,7 +502,10 @@ export default function StockAnalysisPage() {
                         : agent === 'BearResearcher' ? 'bear'
                         : null
               if (key && round > 1) {
-                return { ...prev, [key]: prev[key as keyof typeof prev] + `\n\n---\n**【第${round}轮】**\n` }
+                const roundMarker = lang === 'zh' 
+                  ? `\n\n---\n**【第${round}轮】**\n`
+                  : `\n\n---\n**【Round ${round}】**\n`
+                return { ...prev, [key]: prev[key as keyof typeof prev] + roundMarker }
               }
               return prev
             })
@@ -688,12 +692,12 @@ export default function StockAnalysisPage() {
     
     // 角色名称映射
     const roleNames: Record<string, string> = {
-      bull: '多方辩手',
-      bear: '空方辩手', 
-      manager: '投资经理',
-      data_collector: '数据专员',
-      user: '用户',
-      system: '系统'
+      bull: t.debateHistory.roleNames.bull,
+      bear: t.debateHistory.roleNames.bear,
+      manager: t.debateHistory.roleNames.manager,
+      data_collector: t.debateHistory.roleNames.data_collector,
+      user: t.debateHistory.roleNames.user,
+      system: t.stockDetail.history === '历史' ? '系统' : 'System'
     }
     
     // 构建上下文（从之前的聊天记录中提取）
@@ -779,7 +783,7 @@ export default function StockAnalysisPage() {
     setChatMessages(prev => prev.map(msg => 
       msg.id === msgId ? { ...msg, searchStatus: 'cancelled' } : msg
     ))
-    toast.info('已取消搜索任务')
+    toast.info(t.stockDetail.searchCancelled)
   }, [])
 
   const handleStartDebate = useCallback(() => {
@@ -807,6 +811,7 @@ export default function StockAnalysisPage() {
         stock_code: stockCode,
         stock_name: stockName,
         mode: debateMode as 'parallel' | 'realtime_debate' | 'quick_analysis',
+        language: lang,
       },
       handleSSEEvent,
       (error) => {
@@ -906,7 +911,7 @@ export default function StockAnalysisPage() {
         setCrawlTask({ 
           status: 'completed', 
           taskId: crawlStatus.task_id,
-          progress: { current: 100, total: 100, message: '爬取完成' }
+          progress: { current: 100, total: 100, message: t.stockDetail.crawlComplete }
         })
         // 强制刷新新闻列表（忽略缓存）
         queryClient.resetQueries({ queryKey: ['stock', 'news', stockCode] })
@@ -914,14 +919,14 @@ export default function StockAnalysisPage() {
         // 立即重新获取
         queryClient.refetchQueries({ queryKey: ['stock', 'news', stockCode], type: 'all' })
         queryClient.refetchQueries({ queryKey: ['stock', 'overview', stockCode], type: 'all' })
-        toast.success(`定向爬取完成！新增 ${crawlStatus.saved_count || 0} 条新闻`)
+        toast.success(`${t.stockDetail.crawlSuccess} ${crawlStatus.saved_count || 0} ${t.stockDetail.newsItems}`)
       } else if (crawlStatus.status === 'failed') {
         setCrawlTask({ 
           status: 'failed', 
           taskId: crawlStatus.task_id,
-          error: crawlStatus.error_message || '爬取失败'
+          error: crawlStatus.error_message || t.stockDetail.crawlFailed
         })
-        toast.error(`定向爬取失败: ${crawlStatus.error_message || '未知错误'}`)
+        toast.error(`${t.stockDetail.crawlFailed}: ${crawlStatus.error_message || t.stockDetail.unknownError}`)
       } else if (crawlStatus.status === 'running' || crawlStatus.status === 'pending') {
         // 更新进度和真实的 taskId
         setCrawlTask(prev => ({
@@ -967,9 +972,9 @@ export default function StockAnalysisPage() {
         setCrawlTask({ 
           status: 'pending', 
           taskId: data.task_id!,  // 现在 task_id 一定存在
-          progress: { current: 0, total: 100, message: '任务已创建，等待执行...' }
+          progress: { current: 0, total: 100, message: t.stockDetail.taskCreated }
         })
-        toast.success('定向爬取任务已启动')
+        toast.success(t.stockDetail.crawlTaskStarted)
         // 立即开始轮询（不需要延迟，因为任务记录已创建）
         refetchCrawlStatus()
       } else if (data.task_id) {
@@ -977,9 +982,9 @@ export default function StockAnalysisPage() {
         setCrawlTask({ 
           status: 'running', 
           taskId: data.task_id,
-          progress: { current: 0, total: 100, message: '正在爬取中...' }
+          progress: { current: 0, total: 100, message: t.stockDetail.crawlingInProgress }
         })
-        toast.info('该股票已有正在进行的爬取任务，正在同步状态...')
+        toast.info(t.stockDetail.crawlTaskExists)
         // 立即获取任务状态
         refetchCrawlStatus()
       } else {
@@ -1000,21 +1005,21 @@ export default function StockAnalysisPage() {
   }
 
   const handleStopCrawl = async () => {
-    if (window.confirm('确定要停止当前的爬取任务吗？')) {
+    if (window.confirm(t.stockDetail.stopCrawlConfirm)) {
       try {
         // 调用后端 API 取消任务
         const result = await stockApi.cancelTargetedCrawl(stockCode)
         if (result.success) {
           setCrawlTask({ status: 'idle' })
-          toast.info(result.message || '已停止爬取任务')
+          toast.info(result.message || t.stockDetail.crawlTaskStopped)
         } else {
-          toast.error(result.message || '停止任务失败')
+          toast.error(result.message || t.stockDetail.crawlTaskStopFailed)
         }
       } catch (error: any) {
         console.error('Failed to cancel crawl task:', error)
         // 即使后端失败，也重置前端状态
       setCrawlTask({ status: 'idle' })
-      toast.info('已停止爬取任务')
+      toast.info(t.stockDetail.crawlTaskStopped)
       }
     }
   }
@@ -1024,7 +1029,7 @@ export default function StockAnalysisPage() {
     mutationFn: () => stockApi.clearStockNews(stockCode),
     onSuccess: (data) => {
       if (data.success) {
-        toast.success(`已清除 ${data.deleted_count || 0} 条新闻`)
+        toast.success(`${t.stockDetail.newsCleared} ${data.deleted_count || 0} ${t.stockDetail.newsItems}`)
         // 强制刷新新闻列表
         queryClient.resetQueries({ queryKey: ['stock', 'news', stockCode] })
         queryClient.resetQueries({ queryKey: ['stock', 'overview', stockCode] })
@@ -1040,7 +1045,7 @@ export default function StockAnalysisPage() {
   })
 
   const handleClearNews = () => {
-    if (window.confirm(`确定要清除「${stockName}」的所有新闻吗？此操作不可恢复！`)) {
+    if (window.confirm(`${t.stockDetail.clearNewsConfirm}${stockName}${t.stockDetail.clearNewsConfirmEnd}`)) {
       clearNewsMutation.mutate()
     }
   }
@@ -1151,10 +1156,10 @@ export default function StockAnalysisPage() {
               <div>
                 <CardTitle className="flex items-center gap-2 text-purple-800">
                   <Network className="w-5 h-5 text-purple-600" />
-                  知识图谱 · 智能检索
+                  {t.stockDetail.knowledgeGraph}
                 </CardTitle>
                 <CardDescription className="mt-1.5">
-                  基于多维度关键词并发检索，提升召回率
+                  {t.stockDetail.knowledgeGraphDesc}
                 </CardDescription>
               </div>
               <Button
@@ -1172,7 +1177,7 @@ export default function StockAnalysisPage() {
             {/* 名称变体 */}
             {knowledgeGraph.name_variants && knowledgeGraph.name_variants.length > 0 && (
               <div>
-                <p className="text-xs text-gray-500 mb-1">名称变体</p>
+                <p className="text-xs text-gray-500 mb-1">{t.stockDetail.nameVariants}</p>
                 <div className="flex flex-wrap gap-1">
                   {knowledgeGraph.name_variants.map((variant, idx) => (
                     <Badge key={idx} variant="outline" className="text-xs bg-white">
@@ -1186,7 +1191,7 @@ export default function StockAnalysisPage() {
             {/* 业务线 */}
             {knowledgeGraph.businesses && knowledgeGraph.businesses.length > 0 && (
               <div>
-                <p className="text-xs text-gray-500 mb-1">主营业务</p>
+                <p className="text-xs text-gray-500 mb-1">{t.stockDetail.mainBusiness}</p>
                 <div className="flex flex-wrap gap-1">
                   {knowledgeGraph.businesses
                     .filter(b => b.status === 'active')
@@ -1212,7 +1217,7 @@ export default function StockAnalysisPage() {
             {/* 关联概念 */}
             {knowledgeGraph.concepts && knowledgeGraph.concepts.length > 0 && (
               <div>
-                <p className="text-xs text-gray-500 mb-1">关联概念</p>
+                <p className="text-xs text-gray-500 mb-1">{t.stockDetail.relatedConcepts}</p>
                 <div className="flex flex-wrap gap-1">
                   {knowledgeGraph.concepts.slice(0, 6).map((concept, idx) => (
                     <Badge key={idx} className="text-xs bg-purple-100 text-purple-700">
@@ -1226,7 +1231,7 @@ export default function StockAnalysisPage() {
             {/* 检索策略 */}
             {knowledgeGraph.search_queries && knowledgeGraph.search_queries.length > 0 && (
               <div>
-                <p className="text-xs text-gray-500 mb-1">并发检索查询（{knowledgeGraph.search_queries.length}条）</p>
+                <p className="text-xs text-gray-500 mb-1">{t.stockDetail.concurrentQueries}（{knowledgeGraph.search_queries.length}{t.stockDetail.queries}）</p>
                 <div className="text-xs text-gray-600 bg-white rounded p-2 max-h-20 overflow-y-auto">
                   {knowledgeGraph.search_queries.slice(0, 3).map((query, idx) => (
                     <div key={idx} className="truncate">• {query}</div>
@@ -1623,7 +1628,7 @@ export default function StockAnalysisPage() {
                             )}
                             {news.has_analysis && (
                               <Badge variant="outline" className="text-xs px-2 py-0.5">
-                                已分析
+                                {t.stockDetail.analyzed}
                               </Badge>
                             )}
                           </div>
@@ -1820,13 +1825,13 @@ export default function StockAnalysisPage() {
                   <div className="flex items-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
                     <span className="text-sm text-blue-600 font-medium">
-                      {streamPhase === 'start' && '正在初始化...'}
-                      {streamPhase === 'data_collection' && '📊 数据专员正在搜集资料...'}
-                      {streamPhase === 'analyzing' && `🚀 ${t.stockDetail.quickAnalysis}...`}
+                      {streamPhase === 'start' && (t.stockDetail.history === '历史' ? '正在初始化...' : 'Initializing...')}
+                      {streamPhase === 'data_collection' && (t.stockDetail.history === '历史' ? '📊 数据专员正在搜集资料...' : '📊 Data Collector is gathering materials...')}
+                      {streamPhase === 'analyzing' && `🚀 ${t.stockDetail.quickAnalysis || 'Quick Analysis'}...`}
                       {streamPhase === 'parallel_analysis' && `⚡ Bull/Bear ${t.stockDetail.parallelAnalysis}...`}
                       {streamPhase === 'debate' && `🎭 ${t.stockDetail.realtimeDebate}...`}
                       {streamPhase === 'decision' && `⚖️ ${t.stockDetail.managerDecision}...`}
-                      {streamPhase === 'complete' && '✅ 分析完成'}
+                      {streamPhase === 'complete' && (t.stockDetail.history === '历史' ? '✅ 分析完成' : '✅ Analysis Complete')}
                     </span>
                   </div>
                 </div>
@@ -1840,12 +1845,12 @@ export default function StockAnalysisPage() {
                       <div className={`w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center ${activeAgent === 'QuickAnalyst' ? 'animate-pulse ring-2 ring-blue-400' : ''}`}>
                         <Activity className="w-5 h-5 text-blue-600" />
                       </div>
-                      🚀 {t.stockDetail.quickAnalysis}
-                      {activeAgent === 'QuickAnalyst' && <span className="text-xs bg-blue-200 px-2 py-0.5 rounded animate-pulse">输出中...</span>}
+                      🚀 {t.stockDetail.quickAnalysis || 'Quick Analysis'}
+                      {activeAgent === 'QuickAnalyst' && <span className="text-xs bg-blue-200 px-2 py-0.5 rounded animate-pulse">{t.stockDetail.history === '历史' ? '输出中...' : 'Outputting...'}</span>}
                     </CardTitle>
                     <CardDescription>
                       <Bot className="w-3 h-3 inline mr-1" />
-                      QuickAnalyst · {t.stockDetail.quickAnalysis}
+                      QuickAnalyst · {t.stockDetail.quickAnalysis || 'Quick Analysis'}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -1880,12 +1885,12 @@ export default function StockAnalysisPage() {
                       const session = loadSession(stockCode, sessionId)
                       if (session) {
                         setChatMessages(session.messages)
-                        toast.success('已加载历史会话')
+                        toast.success(t.stockDetail.historySessionLoaded)
                       }
                     }}
                     onClearHistory={() => {
                       clearStockHistory(stockCode)
-                      toast.success('已清除历史记录')
+                      toast.success(t.stockDetail.allHistoryCleared)
                     }}
                     onConfirmSearch={handleConfirmSearch}
                     onCancelSearch={handleCancelSearch}
@@ -1905,7 +1910,7 @@ export default function StockAnalysisPage() {
                               <ThumbsUp className="w-4 h-4 text-emerald-600" />
                             </div>
                             {t.stockDetail.bullView}
-                            {activeAgent === 'BullResearcher' && <span className="text-xs bg-emerald-200 px-2 py-0.5 rounded animate-pulse">输出中...</span>}
+                            {activeAgent === 'BullResearcher' && <span className="text-xs bg-emerald-200 px-2 py-0.5 rounded animate-pulse">{t.stockDetail.outputting}</span>}
                           </CardTitle>
                           <CardDescription>
                             <Bot className="w-3 h-3 inline mr-1" />
@@ -1977,7 +1982,7 @@ export default function StockAnalysisPage() {
                               <ThumbsDown className="w-4 h-4 text-rose-600" />
                             </div>
                             {t.stockDetail.bearView}
-                            {activeAgent === 'BearResearcher' && <span className="text-xs bg-rose-200 px-2 py-0.5 rounded animate-pulse">输出中...</span>}
+                            {activeAgent === 'BearResearcher' && <span className="text-xs bg-rose-200 px-2 py-0.5 rounded animate-pulse">{t.stockDetail.outputting}</span>}
                           </CardTitle>
                           <CardDescription>
                             <Bot className="w-3 h-3 inline mr-1" />
@@ -2049,7 +2054,7 @@ export default function StockAnalysisPage() {
                               <Scale className="w-5 h-5 text-indigo-600" />
                             </div>
                             {t.stockDetail.managerDecision}
-                            {activeAgent === 'InvestmentManager' && <span className="text-xs bg-indigo-200 px-2 py-0.5 rounded animate-pulse">决策中...</span>}
+                            {activeAgent === 'InvestmentManager' && <span className="text-xs bg-indigo-200 px-2 py-0.5 rounded animate-pulse">{t.stockDetail.deciding}</span>}
                           </CardTitle>
                           <CardDescription>
                             <Bot className="w-3 h-3 inline mr-1" />
@@ -2143,7 +2148,7 @@ export default function StockAnalysisPage() {
                   <CardContent>
                     <div className="prose prose-sm max-w-none prose-headings:text-blue-800 prose-headings:font-semibold">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {debateResult.quick_analysis.analysis || '分析完成'}
+                        {debateResult.quick_analysis.analysis || t.stockDetail.analysisComplete}
                       </ReactMarkdown>
                     </div>
                   </CardContent>
@@ -2165,12 +2170,12 @@ export default function StockAnalysisPage() {
                       const session = loadSession(stockCode, sessionId)
                       if (session) {
                         setChatMessages(session.messages)
-                        toast.success('已加载历史会话')
+                        toast.success(t.stockDetail.historySessionLoaded)
                       }
                     }}
                     onClearHistory={() => {
                       clearStockHistory(stockCode)
-                      toast.success('已清除历史记录')
+                      toast.success(t.stockDetail.allHistoryCleared)
                     }}
                     onConfirmSearch={handleConfirmSearch}
                     onCancelSearch={handleCancelSearch}
@@ -2183,14 +2188,15 @@ export default function StockAnalysisPage() {
                           <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
                             <Scale className="w-5 h-5 text-blue-600" />
                           </div>
-                          📊 投资决策摘要
+                          📊 {t.stockDetail.managerDecision}
                           {debateResult.final_decision?.rating && (
                             <Badge 
                               className={`ml-2 ${
                                 debateResult.final_decision.rating === '强烈推荐' || debateResult.final_decision.rating === '推荐' ||
-                                debateResult.final_decision.rating === t.stockDetail.stronglyRec || debateResult.final_decision.rating === t.stockDetail.recommend
+                                debateResult.final_decision.rating === t.stockDetail.stronglyRec || debateResult.final_decision.rating === t.stockDetail.recommend ||
+                                debateResult.final_decision.rating === 'Strongly Recommend' || debateResult.final_decision.rating === 'Recommend'
                                   ? 'bg-emerald-500' 
-                                  : debateResult.final_decision.rating === '中性'
+                                  : debateResult.final_decision.rating === '中性' || debateResult.final_decision.rating === 'Neutral'
                                   ? 'bg-amber-500'
                                   : 'bg-rose-500'
                               }`}
@@ -2221,7 +2227,7 @@ export default function StockAnalysisPage() {
                           </CardTitle>
                           <CardDescription>
                             <Bot className="w-3 h-3 inline mr-1" />
-                            {debateResult.bull_analysis?.agent_name || 'BullResearcher'} · {lang === 'zh' ? '看多研究员' : 'Bull Researcher'}
+                            {debateResult.bull_analysis?.agent_name || 'BullResearcher'} · {t.stockDetail.bullResearcher}
                           </CardDescription>
                         </div>
                         {/* 操作按钮组 */}
@@ -2262,7 +2268,7 @@ export default function StockAnalysisPage() {
                     <CardContent>
                       <div className="prose prose-sm max-w-none prose-headings:text-emerald-800 prose-headings:font-semibold">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {debateResult.bull_analysis?.analysis || '分析生成中...'}
+                          {debateResult.bull_analysis?.analysis || t.stockDetail.analysisGenerating}
                         </ReactMarkdown>
                       </div>
                     </CardContent>
@@ -2281,7 +2287,7 @@ export default function StockAnalysisPage() {
                           </CardTitle>
                           <CardDescription>
                             <Bot className="w-3 h-3 inline mr-1" />
-                            {debateResult.bear_analysis?.agent_name || 'BearResearcher'} · {lang === 'zh' ? '看空研究员' : 'Bear Researcher'}
+                            {debateResult.bear_analysis?.agent_name || 'BearResearcher'} · {t.stockDetail.bearResearcher}
                           </CardDescription>
                         </div>
                         {/* 操作按钮组 */}
@@ -2322,7 +2328,7 @@ export default function StockAnalysisPage() {
                     <CardContent>
                       <div className="prose prose-sm max-w-none prose-headings:text-rose-800 prose-headings:font-semibold">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {debateResult.bear_analysis?.analysis || '分析生成中...'}
+                          {debateResult.bear_analysis?.analysis || t.stockDetail.analysisGenerating}
                         </ReactMarkdown>
                       </div>
                     </CardContent>
@@ -2342,10 +2348,12 @@ export default function StockAnalysisPage() {
                               <Badge 
                                 className={`ml-2 ${
                                   debateResult.final_decision.rating === '强烈推荐' || debateResult.final_decision.rating === '推荐' ||
-                                  debateResult.final_decision.rating === t.stockDetail.stronglyRec || debateResult.final_decision.rating === t.stockDetail.recommend
+                                  debateResult.final_decision.rating === t.stockDetail.stronglyRec || debateResult.final_decision.rating === t.stockDetail.recommend ||
+                                  debateResult.final_decision.rating === 'Strongly Recommend' || debateResult.final_decision.rating === 'Recommend'
                                     ? 'bg-emerald-500'
                                     : debateResult.final_decision.rating === '回避' || debateResult.final_decision.rating === '谨慎' ||
-                                      debateResult.final_decision.rating === t.stockDetail.avoid || debateResult.final_decision.rating === t.stockDetail.caution
+                                      debateResult.final_decision.rating === t.stockDetail.avoid || debateResult.final_decision.rating === t.stockDetail.caution ||
+                                      debateResult.final_decision.rating === 'Avoid' || debateResult.final_decision.rating === 'Caution'
                                     ? 'bg-rose-500'
                                     : 'bg-amber-500'
                                 }`}
@@ -2357,7 +2365,7 @@ export default function StockAnalysisPage() {
                           <CardDescription className="flex items-center gap-4">
                             <span>
                               <Bot className="w-3 h-3 inline mr-1" />
-                              {debateResult.final_decision?.agent_name || 'InvestmentManager'} · {lang === 'zh' ? '投资经理' : 'Investment Manager'}
+                              {debateResult.final_decision?.agent_name || 'InvestmentManager'} · {t.stockDetail.investmentManager}
                             </span>
                             {debateResult.execution_time && (
                               <span className="text-xs bg-blue-100 px-2 py-0.5 rounded">
@@ -2404,7 +2412,7 @@ export default function StockAnalysisPage() {
                     <CardContent>
                       <div className="prose prose-sm max-w-none prose-headings:text-blue-800 prose-headings:font-semibold">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {debateResult.final_decision?.decision || '决策生成中...'}
+                          {debateResult.final_decision?.decision || t.stockDetail.decisionGenerating}
                         </ReactMarkdown>
                       </div>
                     </CardContent>
@@ -2418,7 +2426,7 @@ export default function StockAnalysisPage() {
           {debateResult && !debateResult.success && (
             <Card className="bg-rose-50 border-rose-200">
               <CardContent className="py-6">
-                <p className="text-rose-700">辩论分析失败: {debateResult.error}</p>
+                <p className="text-rose-700">{t.stockDetail.debateFailed}: {debateResult.error}</p>
               </CardContent>
             </Card>
           )}
@@ -2457,18 +2465,18 @@ export default function StockAnalysisPage() {
         onLoadSession={(session) => {
           restoreSessionState(session)
           setShowHistorySidebar(false)
-          toast.success(`${t.stockDetail.historySessionLoaded || '已加载历史会话'}：${session.mode === 'realtime_debate' ? t.stockDetail.realtimeDebate : session.mode === 'parallel' ? t.stockDetail.parallelAnalysis : t.stockDetail.quickAnalysis}`)
+          toast.success(`${t.stockDetail.historySessionLoaded || '已加载历史会话'}：${session.mode === 'realtime_debate' ? t.stockDetail.realtimeDebate : session.mode === 'parallel' ? t.stockDetail.parallelAnalysis : (t.stockDetail.quickAnalysis || 'Quick Analysis')}`)
         }}
         onDeleteSession={(sessionId) => {
           deleteSession(stockCode, sessionId)
-          toast.success('已删除会话')
+          toast.success(t.stockDetail.sessionDeleted)
         }}
         onClearHistory={() => {
           clearStockHistory(stockCode)
           setDebateResult(null)
           setStreamingContent({ bull: '', bear: '', manager: '', quick: '' })
           setChatMessages([])
-          toast.success('已清除所有历史记录')
+          toast.success(t.stockDetail.allHistoryCleared)
         }}
         isOpen={showHistorySidebar}
         onToggle={() => setShowHistorySidebar(!showHistorySidebar)}
