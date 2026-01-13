@@ -45,7 +45,27 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    console.error('API Error:', error.response?.data || error.message)
+    // 详细的错误日志
+    if (error.response) {
+      // 服务器返回了错误响应
+      console.error('API Error Response:', {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data,
+        url: error.config?.url,
+      })
+    } else if (error.request) {
+      // 请求已发出但没有收到响应
+      console.error('API Error Request:', {
+        message: error.message,
+        url: error.config?.url,
+        baseURL: error.config?.baseURL,
+        timeout: error.code === 'ECONNABORTED' ? 'Request timeout' : 'Network error',
+      })
+    } else {
+      // 请求配置出错
+      console.error('API Error Config:', error.message)
+    }
     return Promise.reject(error)
   }
 )
@@ -123,6 +143,14 @@ export const newsApi = {
   deleteNews: async (newsId: number): Promise<void> => {
     await apiClient.delete(`/news/${newsId}`)
   },
+
+  /**
+   * 批量删除新闻
+   */
+  batchDeleteNews: async (newsIds: number[]): Promise<{ success: boolean; message: string; deleted_count: number }> => {
+    const response = await apiClient.post('/news/batch/delete', { news_ids: newsIds })
+    return response.data
+  },
 }
 
 /**
@@ -158,6 +186,40 @@ export const analysisApi = {
    */
   getNewsAnalyses: async (newsId: number): Promise<Analysis[]> => {
     const response = await apiClient.get<Analysis[]>(`/analysis/news/${newsId}/all`)
+    return response.data
+  },
+
+  /**
+   * 批量分析新闻
+   * 注意：批量分析可能需要较长时间，超时时间设置为5分钟
+   */
+  batchAnalyzeNews: async (
+    newsIds: number[],
+    config?: { provider?: string; model?: string }
+  ): Promise<{ success: boolean; message: string; total_count: number; success_count: number; failed_count: number }> => {
+    // 确保newsIds是有效的数组
+    if (!Array.isArray(newsIds) || newsIds.length === 0) {
+      throw new Error('newsIds must be a non-empty array')
+    }
+    
+    const requestBody: { news_ids: number[]; provider?: string; model?: string } = {
+      news_ids: newsIds
+    }
+    
+    // 只有当config存在且值不为undefined和空字符串时才添加到请求体
+    if (config) {
+      if (config.provider !== undefined && config.provider !== null && config.provider !== '') {
+        requestBody.provider = config.provider
+      }
+      if (config.model !== undefined && config.model !== null && config.model !== '') {
+        requestBody.model = config.model
+      }
+    }
+    
+    // 批量分析可能需要较长时间，设置5分钟超时
+    const response = await apiClient.post('/analysis/news/batch', requestBody, {
+      timeout: 5 * 60 * 1000  // 5分钟超时
+    })
     return response.data
   },
 }
