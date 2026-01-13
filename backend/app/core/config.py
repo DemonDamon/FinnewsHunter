@@ -135,6 +135,8 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = Field(default="text-embedding-ada-002")
     EMBEDDING_BATCH_SIZE: int = Field(default=100)
     EMBEDDING_BASE_URL: Optional[str] = Field(default=None)  # 自定义 Embedding API 端点
+    EMBEDDING_TIMEOUT: int = Field(default=30, description="Embedding API 超时时间（秒），建议设置为20-30秒")
+    EMBEDDING_MAX_RETRIES: int = Field(default=2, description="Embedding API 最大重试次数，建议设置为1-2次以避免等待太久")
     
     # 爬虫配置
     CRAWLER_USER_AGENT: str = Field(
