@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from starlette.concurrency import run_in_threadpool
+from ..models.database import AsyncSessionLocal
 
 from ..agents import create_news_analyst
 from ..models.news import News
@@ -114,24 +115,53 @@ class AnalysisService:
             news.sentiment_score = structured_data.get("sentiment_score")
             
             # 5. 向量化新闻内容（如果尚未向量化）
+            # 注意：embedding是可选功能，失败不应影响分析结果
+            # 在后台异步执行，不阻塞分析流程
             if not news.is_embedded:
-                try:
-                    # 组合标题和内容进行向量化
-                    text_to_embed = f"{news.title}\n{news.content[:1000]}"
-                    embedding = self.embedding_service.embed_text(text_to_embed)
-                    
-                    # 存储到 Milvus
-                    self.vector_storage.store_embedding(
-                        news_id=news_id,
-                        embedding=embedding,
-                        text=text_to_embed
-                    )
-                    
-                    news.is_embedded = 1
-                    logger.info(f"Vectorized news: {news_id}")
+                # 使用 asyncio.create_task 在后台执行，不等待结果
+                # 这样即使embedding超时或失败，也不会影响分析结果的返回
+                import asyncio
                 
-                except Exception as e:
-                    logger.warning(f"Failed to vectorize news {news_id}: {e}")
+                async def vectorize_in_background():
+                    try:
+                        # 组合标题和内容进行向量化
+                        text_to_embed = f"{news.title}\n{news.content[:1000]}"
+                        
+                        # 使用异步方法，避免事件循环问题
+                        embedding = await asyncio.wait_for(
+                            self.embedding_service.aembed_text(text_to_embed),
+                            timeout=20.0  # 20秒超时，避免等待太久
+                        )
+                        
+                        # 存储到 Milvus（也在线程池中执行）
+                        await run_in_threadpool(
+                            self.vector_storage.store_embedding,
+                            news_id=news_id,
+                            embedding=embedding,
+                            text=text_to_embed
+                        )
+                        
+                        # 更新数据库中的is_embedded标志（需要新的数据库会话）
+                        async with AsyncSessionLocal() as update_db:
+                            try:
+                                result = await update_db.execute(
+                                    select(News).where(News.id == news_id)
+                                )
+                                update_news = result.scalar_one_or_none()
+                                if update_news:
+                                    update_news.is_embedded = 1
+                                    await update_db.commit()
+                                    logger.info(f"Vectorized news: {news_id}")
+                            except Exception as e:
+                                logger.warning(f"Failed to update is_embedded flag for news {news_id}: {e}")
+                                await update_db.rollback()
+                    except asyncio.TimeoutError:
+                        logger.warning(f"Embedding timeout for news {news_id} (20s), skipping vectorization")
+                    except Exception as e:
+                        logger.warning(f"Failed to vectorize news {news_id}: {e}")
+                
+                # 在后台执行，不等待完成
+                asyncio.create_task(vectorize_in_background())
             
             await db.commit()
             await db.refresh(analysis)
