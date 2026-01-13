@@ -348,7 +348,9 @@ def create_custom_llm_provider(
                 agent_code=settings.BAILIAN_AGENT_CODE,
                 region_id=settings.BAILIAN_REGION_ID,
                 temperature=_temperature,
-                max_tokens=_max_tokens
+                max_tokens=_max_tokens,
+                timeout=float(settings.LLM_TIMEOUT),  # 从配置读取超时时间
+                max_retries=2  # 减少重试次数，避免总耗时过长
             )
         
         elif _provider == 'openai':
