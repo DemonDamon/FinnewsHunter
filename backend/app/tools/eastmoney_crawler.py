@@ -64,6 +64,9 @@ class EastmoneyCrawlerTool(BaseCrawler):
             except:
                 response = self._fetch_page(self.BASE_URL)
             
+            # 东方财富编码处理
+            if response.encoding == 'ISO-8859-1' or not response.encoding:
+                response.encoding = 'utf-8'
             soup = self._parse_html(response.text)
             
             # 提取新闻列表
@@ -93,23 +96,69 @@ class EastmoneyCrawlerTool(BaseCrawler):
         # 查找新闻链接
         all_links = soup.find_all('a', href=True)
         
+        # 东方财富新闻URL模式（扩展更多模式）
+        eastmoney_patterns = [
+            '/news/',             # 新闻频道
+            '/stock/',            # 股票频道
+            '/a/',                # 文章
+            '/article/',          # 文章
+            '.html',              # HTML页面
+            '/guba/',             # 股吧
+        ]
+        
         for link in all_links:
             href = link.get('href', '')
             title = link.get_text(strip=True)
             
-            # 东方财富新闻URL模式
-            if ('eastmoney.com' in href and ('/news/' in href or '/stock/' in href or '.html' in href)) and title:
+            # 检查是否匹配东方财富URL模式
+            is_eastmoney_url = False
+            
+            # 方式1: 检查是否包含eastmoney.com域名
+            if 'eastmoney.com' in href or 'eastmoney.cn' in href:
+                for pattern in eastmoney_patterns:
+                    if pattern in href:
+                        is_eastmoney_url = True
+                        break
+            
+            # 方式2: 相对路径且匹配模式
+            if not is_eastmoney_url and href.startswith('/'):
+                for pattern in eastmoney_patterns:
+                    if pattern in href:
+                        is_eastmoney_url = True
+                        break
+            
+            # 方式3: 检查data属性或class中包含新闻标识
+            if not is_eastmoney_url:
+                link_class = link.get('class', [])
+                if isinstance(link_class, list):
+                    link_class_str = ' '.join(link_class)
+                else:
+                    link_class_str = str(link_class)
+                if any(kw in link_class_str.lower() for kw in ['news', 'article', 'item', 'title']):
+                    if any(pattern in href for pattern in ['/a/', '/news/', '.html']):
+                        is_eastmoney_url = True
+            
+            if is_eastmoney_url and title and len(title.strip()) > 5:
                 # 确保是完整URL
                 if href.startswith('//'):
                     href = 'https:' + href
                 elif href.startswith('/'):
-                    href = 'https://stock.eastmoney.com' + href
+                    # 判断是stock还是www域名
+                    if '/stock/' in href or '/guba/' in href:
+                        href = 'https://stock.eastmoney.com' + href
+                    else:
+                        href = 'https://www.eastmoney.com' + href
                 elif not href.startswith('http'):
                     href = 'https://stock.eastmoney.com/' + href.lstrip('/')
                 
+                # 过滤掉明显不是新闻的链接
+                if any(skip in href.lower() for skip in ['javascript:', 'mailto:', '#', 'void(0)', '/guba/']):
+                    continue
+                
                 if href not in [n['url'] for n in news_links]:
-                    news_links.append({'url': href, 'title': title})
+                    news_links.append({'url': href, 'title': title.strip()})
         
+        logger.debug(f"Eastmoney: Found {len(news_links)} potential news links")
         return news_links
     
     def _extract_news_item(self, link_info: dict) -> Optional[NewsItem]:

@@ -61,6 +61,13 @@ class JwviewCrawlerTool(BaseCrawler):
         try:
             # 尝试爬取主页或股票专栏
             response = self._fetch_page(self.BASE_URL)
+            # 金融界可能使用 gbk 编码
+            if response.encoding == 'ISO-8859-1' or not response.encoding:
+                try:
+                    response.content.decode('gbk')
+                    response.encoding = 'gbk'
+                except:
+                    response.encoding = 'utf-8'
             soup = self._parse_html(response.text)
             
             # 提取新闻列表

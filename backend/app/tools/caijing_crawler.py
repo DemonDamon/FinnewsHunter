@@ -65,6 +65,9 @@ class CaijingCrawlerTool(BaseCrawler):
             except:
                 response = self._fetch_page(self.BASE_URL)
             
+            # 财经网编码处理
+            if response.encoding == 'ISO-8859-1' or not response.encoding:
+                response.encoding = 'utf-8'
             soup = self._parse_html(response.text)
             
             # 提取新闻列表
@@ -94,12 +97,44 @@ class CaijingCrawlerTool(BaseCrawler):
         # 查找新闻链接
         all_links = soup.find_all('a', href=True)
         
+        # 财经网新闻URL模式（扩展更多模式）
+        caijing_patterns = [
+            r'/\d{4}/',           # 日期路径 /2024/
+            '/article/',         # 文章
+            '.shtml',            # 静态HTML
+            '/finance/',         # 财经频道
+            '/stock/',           # 股票频道
+        ]
+        
         for link in all_links:
             href = link.get('href', '')
             title = link.get_text(strip=True)
             
-            # 财经网新闻URL模式
-            if ('/\d{4}/' in href or '/article/' in href or '.shtml' in href) and title:
+            # 检查是否匹配财经网URL模式
+            is_caijing_url = False
+            
+            # 方式1: 检查URL模式
+            for pattern in caijing_patterns:
+                if re.search(pattern, href):
+                    is_caijing_url = True
+                    break
+            
+            # 方式2: 检查是否包含caijing.com.cn域名
+            if 'caijing.com.cn' in href or 'finance.caijing.com.cn' in href:
+                is_caijing_url = True
+            
+            # 方式3: 检查链接的class或data属性
+            if not is_caijing_url:
+                link_class = link.get('class', [])
+                if isinstance(link_class, list):
+                    link_class_str = ' '.join(link_class)
+                else:
+                    link_class_str = str(link_class)
+                if any(kw in link_class_str.lower() for kw in ['news', 'article', 'item', 'title', 'list']):
+                    if href.startswith('/') or 'caijing.com.cn' in href:
+                        is_caijing_url = True
+            
+            if is_caijing_url and title and len(title.strip()) > 5:
                 # 规范化 URL，优先 https，避免重复前缀
                 if href.startswith('//'):
                     href = 'https:' + href
@@ -110,9 +145,14 @@ class CaijingCrawlerTool(BaseCrawler):
                 elif not href.startswith('http'):
                     href = 'https://www.caijing.com.cn/' + href.lstrip('/')
                 
+                # 过滤掉明显不是新闻的链接
+                if any(skip in href.lower() for skip in ['javascript:', 'mailto:', '#', 'void(0)', '/tag/', '/author/', '/user/']):
+                    continue
+                
                 if href not in [n['url'] for n in news_links]:
-                    news_links.append({'url': href, 'title': title})
+                    news_links.append({'url': href, 'title': title.strip()})
         
+        logger.debug(f"Caijing: Found {len(news_links)} potential news links")
         return news_links
     
     def _extract_news_item(self, link_info: dict) -> Optional[NewsItem]:

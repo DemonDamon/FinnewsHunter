@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
-from tenacity import retry, stop_after_attempt, wait_exponential
+import requests.exceptions
 
 from agenticx import BaseTool
 from agenticx.core import ToolMetadata, ToolCategory
@@ -88,13 +88,9 @@ class BaseCrawler(BaseTool):
         self.session = requests.Session()
         self.session.headers.update({'User-Agent': self.user_agent})
     
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10)
-    )
     def _fetch_page(self, url: str) -> requests.Response:
         """
-        获取网页内容（带重试机制）
+        获取网页内容（带重试机制，但503错误不重试）
         
         Args:
             url: 目标URL
@@ -102,14 +98,66 @@ class BaseCrawler(BaseTool):
         Returns:
             响应对象
         """
-        try:
-            response = self.session.get(url, timeout=self.timeout)
-            response.raise_for_status()
-            time.sleep(self.delay)  # 请求间隔
-            return response
-        except Exception as e:
-            logger.error(f"Failed to fetch {url}: {e}")
-            raise
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = self.session.get(url, timeout=self.timeout)
+                
+                # 对于503错误，不重试，直接抛出（让调用者处理）
+                if response.status_code == 503:
+                    logger.debug(f"503 error for {url}, skipping retry (server overloaded)")
+                    response.raise_for_status()
+                
+                response.raise_for_status()
+                
+                # 修复编码问题：优先使用 apparent_encoding，如果检测失败则尝试常见编码
+                if response.encoding is None or response.encoding == 'ISO-8859-1':
+                    # 尝试检测真实编码
+                    if response.apparent_encoding:
+                        response.encoding = response.apparent_encoding
+                    else:
+                        # 对于中文网站，尝试常见编码
+                        encodings = ['utf-8', 'gb2312', 'gbk', 'gb18030']
+                        for enc in encodings:
+                            try:
+                                # 尝试解码验证
+                                response.content.decode(enc)
+                                response.encoding = enc
+                                break
+                            except (UnicodeDecodeError, LookupError):
+                                continue
+                        else:
+                            # 如果都失败，默认使用 utf-8
+                            response.encoding = 'utf-8'
+                
+                time.sleep(self.delay)  # 请求间隔
+                return response
+                
+            except requests.exceptions.HTTPError as e:
+                # 503错误不重试，直接抛出
+                if e.response and e.response.status_code == 503:
+                    logger.debug(f"503 error for {url}, not retrying")
+                    raise
+                # 其他HTTP错误，重试
+                if attempt < max_retries - 1:
+                    wait_time = min(2 ** attempt, 10)
+                    logger.warning(f"HTTP error fetching {url} (attempt {attempt + 1}/{max_retries}): {e}, retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"HTTP error fetching {url} after {max_retries} attempts: {e}")
+                    raise
+            except Exception as e:
+                # 其他错误，重试
+                if attempt < max_retries - 1:
+                    wait_time = min(2 ** attempt, 10)
+                    logger.warning(f"Error fetching {url} (attempt {attempt + 1}/{max_retries}): {e}, retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"Failed to fetch {url} after {max_retries} attempts: {e}")
+                    raise
+        
+        # 理论上不会到达这里
+        raise Exception(f"Failed to fetch {url} after {max_retries} attempts")
     
     def _parse_html(self, html: str) -> BeautifulSoup:
         """
@@ -255,6 +303,10 @@ class BaseCrawler(BaseTool):
         筛选股票相关新闻
         组合URL路径和标题关键词两种策略
         
+        策略调整：
+        - 如果过滤后没有新闻，返回所有新闻（避免过度过滤）
+        - 对于财经类网站，放宽筛选条件
+        
         Args:
             news_list: 原始新闻列表
             
@@ -262,15 +314,38 @@ class BaseCrawler(BaseTool):
             股票相关新闻列表
         """
         filtered_news = []
+        url_matched = 0
+        title_matched = 0
+        filtered_out = 0
+        
         for news in news_list:
             # URL匹配 或 标题匹配
-            if self._is_stock_related_by_url(news.url) or self._is_stock_related_by_title(news.title):
+            url_match = self._is_stock_related_by_url(news.url)
+            title_match = self._is_stock_related_by_title(news.title)
+            
+            if url_match or title_match:
                 filtered_news.append(news)
-                logger.debug(f"Stock news matched: {news.title[:50]}...")
+                if url_match:
+                    url_matched += 1
+                if title_match:
+                    title_matched += 1
+                logger.debug(f"✓ Stock news matched: {news.title[:50]}... (URL:{url_match}, Title:{title_match})")
             else:
-                logger.debug(f"Filtered out: {news.title[:50]}...")
+                filtered_out += 1
+                # 只记录前5条被过滤的，避免日志过多
+                if filtered_out <= 5:
+                    logger.debug(f"✗ Filtered out: {news.title[:50]}...")
         
-        logger.info(f"Stock filter: {len(news_list)} -> {len(filtered_news)} items")
+        logger.info(f"Stock filter [{self.SOURCE_NAME}]: {len(news_list)} -> {len(filtered_news)} items "
+                   f"(URL matched: {url_matched}, Title matched: {title_matched}, Filtered: {filtered_out})")
+        
+        # 如果过滤后没有新闻，返回所有新闻（避免过度过滤）
+        # 这对于财经类网站特别重要，因为它们的新闻通常都与金融相关
+        if len(news_list) > 0 and len(filtered_news) == 0:
+            logger.warning(f"⚠️  All {len(news_list)} news items were filtered out for source {self.SOURCE_NAME}. "
+                          f"Returning all news to avoid over-filtering.")
+            return news_list
+        
         return filtered_news
     
     def crawl(self, start_page: int = 1, end_page: int = 1) -> List[NewsItem]:

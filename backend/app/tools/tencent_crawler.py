@@ -20,7 +20,7 @@ class TencentCrawlerTool(BaseCrawler):
     爬取腾讯财经频道最新新闻
     """
     
-    BASE_URL = "https://news.qq.com/ch/finance/"
+    BASE_URL = "https://news.qq.com/ch/finance_stock/"
     # 腾讯新闻API（如果页面动态加载，可能需要调用API）
     API_URL = "https://pacaio.match.qq.com/irs/rcd"
     SOURCE_NAME = "tencent"
@@ -60,6 +60,8 @@ class TencentCrawlerTool(BaseCrawler):
         """
         爬取单页新闻
         
+        优先使用API获取新闻，如果API失败则回退到HTML解析
+        
         Args:
             page: 页码
             
@@ -68,15 +70,42 @@ class TencentCrawlerTool(BaseCrawler):
         """
         news_items = []
         
+        # 先尝试使用API获取新闻
+        try:
+            logger.info(f"[Tencent] Attempting API fetch for page {page}")
+            api_news = self._fetch_api_news(page)
+            logger.info(f"[Tencent] API returned {len(api_news) if api_news else 0} news items")
+            if api_news:
+                logger.info(f"Fetched {len(api_news)} news from API")
+                for news_data in api_news[:20]:  # 限制20条
+                    try:
+                        news_item = self._parse_api_news_item(news_data)
+                        if news_item:
+                            news_items.append(news_item)
+                    except Exception as e:
+                        logger.warning(f"Failed to parse API news item: {e}")
+                        continue
+                if news_items:
+                    logger.info(f"[Tencent] Successfully parsed {len(news_items)} news items from API")
+                    return news_items
+            else:
+                logger.info(f"[Tencent] API returned empty list, falling back to HTML")
+        except Exception as e:
+            logger.warning(f"API fetch failed, fallback to HTML: {e}")
+        
+        # API失败，回退到HTML解析
         try:
             response = self._fetch_page(self.BASE_URL)
+            # 腾讯新闻可能使用动态加载，确保编码正确
+            if response.encoding == 'ISO-8859-1' or not response.encoding:
+                response.encoding = 'utf-8'
             soup = self._parse_html(response.text)
             
             # 提取新闻列表
             # 腾讯的新闻可能在各种容器中，尝试提取所有新闻链接
             news_links = self._extract_news_links(soup)
             
-            logger.info(f"Found {len(news_links)} potential news links")
+            logger.info(f"Found {len(news_links)} potential news links from HTML")
             
             # 限制爬取数量，避免过多请求
             max_news = 20
@@ -94,6 +123,147 @@ class TencentCrawlerTool(BaseCrawler):
         
         return news_items
     
+    def _fetch_api_news(self, page: int = 0) -> List[dict]:
+        """
+        通过API获取新闻列表
+        
+        Args:
+            page: 页码（从0开始）
+            
+        Returns:
+            新闻列表
+        """
+        try:
+            # 腾讯新闻API参数（根据实际API文档调整）
+            params = {
+                "cid": "finance_stock",  # 股票频道
+                "page": page,
+                "num": 20,  # 每页20条
+                "ext": "finance_stock",  # 扩展参数
+            }
+            
+            headers = {
+                "User-Agent": self.user_agent,
+                "Referer": self.BASE_URL,
+                "Accept": "application/json, text/javascript, */*; q=0.01",
+            }
+            
+            logger.info(f"[Tencent] Calling API: {self.API_URL} with params: {params}")
+            response = self.session.get(
+                self.API_URL,
+                params=params,
+                headers=headers,
+                timeout=self.timeout
+            )
+            logger.info(f"[Tencent] API response status: {response.status_code}")
+            response.raise_for_status()
+            
+            # 解析JSON响应（可能是JSONP格式）
+            content = response.text.strip()
+            logger.info(f"[Tencent] API response preview (first 500 chars): {content[:500]}")
+            
+            # 尝试解析JSONP格式
+            if content.startswith('callback(') or content.startswith('jQuery'):
+                # 提取JSON部分
+                import re
+                json_match = re.search(r'\((.*)\)$', content)
+                if json_match:
+                    content = json_match.group(1)
+            
+            data = json.loads(content)
+            logger.info(f"[Tencent] Parsed API response type: {type(data)}, keys: {list(data.keys()) if isinstance(data, dict) else 'N/A'}")
+            
+            if isinstance(data, dict):
+                if 'data' in data:
+                    logger.info(f"[Tencent] Found 'data' key with {len(data['data']) if isinstance(data['data'], list) else 'non-list'} items")
+                    return data['data']
+                elif 'list' in data:
+                    logger.info(f"[Tencent] Found 'list' key with {len(data['list']) if isinstance(data['list'], list) else 'non-list'} items")
+                    return data['list']
+                elif 'result' in data:
+                    logger.info(f"[Tencent] Found 'result' key with {len(data['result']) if isinstance(data['result'], list) else 'non-list'} items")
+                    return data['result']
+                else:
+                    logger.warning(f"[Tencent] Unexpected API response format, keys: {list(data.keys())}")
+            elif isinstance(data, list):
+                logger.info(f"[Tencent] API returned list with {len(data)} items")
+                return data
+            
+            logger.warning(f"Unexpected API response format: {type(data)}")
+            return []
+            
+        except json.JSONDecodeError as e:
+            logger.warning(f"API JSON decode failed: {e}, response preview: {response.text[:200] if 'response' in locals() else 'N/A'}")
+            return []
+        except Exception as e:
+            logger.warning(f"API fetch failed: {e}")
+            return []
+    
+    def _parse_api_news_item(self, news_data: dict) -> Optional[NewsItem]:
+        """
+        解析API返回的新闻数据
+        
+        Args:
+            news_data: API返回的单条新闻数据
+            
+        Returns:
+            NewsItem对象
+        """
+        try:
+            # 提取基本信息
+            title = news_data.get('title', '').strip()
+            url = news_data.get('url', '') or news_data.get('surl', '')
+            
+            # 确保URL是完整的
+            if url and not url.startswith('http'):
+                if url.startswith('//'):
+                    url = 'https:' + url
+                elif url.startswith('/'):
+                    url = 'https://news.qq.com' + url
+                else:
+                    url = 'https://news.qq.com/' + url.lstrip('/')
+            
+            if not title or not url:
+                return None
+            
+            # 提取发布时间
+            publish_time_str = news_data.get('time', '') or news_data.get('publish_time', '')
+            publish_time = self._parse_time_string(publish_time_str) if publish_time_str else datetime.now()
+            
+            # 提取摘要作为内容（API通常不返回完整内容）
+            content = news_data.get('abstract', '') or news_data.get('intro', '') or title
+            
+            # 提取作者
+            author = news_data.get('author', '') or news_data.get('source', '')
+            
+            # 尝试获取完整内容
+            try:
+                response = self._fetch_page(url)
+                if response.encoding == 'ISO-8859-1' or not response.encoding:
+                    response.encoding = 'utf-8'
+                raw_html = response.text
+                soup = self._parse_html(raw_html)
+                full_content = self._extract_content(soup)
+                if full_content and len(full_content) > len(content):
+                    content = full_content
+            except Exception as e:
+                logger.debug(f"Failed to fetch full content from {url}: {e}")
+                raw_html = None
+            
+            return NewsItem(
+                title=title,
+                content=content,
+                url=url,
+                source=self.SOURCE_NAME,
+                publish_time=publish_time,
+                author=author if author else None,
+                raw_html=raw_html,
+            )
+            
+        except Exception as e:
+            logger.warning(f"Failed to parse API news item: {e}")
+            return None
+    
     def _extract_news_links(self, soup: BeautifulSoup) -> List[dict]:
         """
         从页面中提取新闻链接
@@ -106,27 +276,56 @@ class TencentCrawlerTool(BaseCrawler):
         """
         news_links = []
         
-        # 查找所有包含 /rain/a/ 或 /omn/article/ 的链接（腾讯新闻的URL模式）
+        # 查找所有链接
         all_links = soup.find_all('a', href=True)
+        
+        # 腾讯新闻URL模式（扩展更多模式）
+        tencent_patterns = [
+            '/rain/a/',           # 旧模式
+            '/omn/',              # 旧模式
+            '/a/',                # 新模式
+            '/finance/',          # 财经频道
+            'finance.qq.com',     # 财经域名
+            '/stock/',            # 股票相关
+        ]
         
         for link in all_links:
             href = link.get('href', '')
+            title = link.get_text(strip=True)
             
-            # 腾讯新闻URL模式
-            if '/rain/a/' in href or '/omn/' in href:
+            # 检查是否匹配腾讯新闻URL模式
+            is_tencent_url = False
+            for pattern in tencent_patterns:
+                if pattern in href:
+                    is_tencent_url = True
+                    break
+            
+            # 或者检查是否是qq.com域名且包含新闻相关关键词
+            if not is_tencent_url:
+                if 'qq.com' in href and any(kw in href for kw in ['/a/', '/article/', '/news/', '/finance/']):
+                    is_tencent_url = True
+            
+            if is_tencent_url and title and len(title.strip()) > 5:
                 # 确保是完整URL
                 if not href.startswith('http'):
-                    href = 'https:' + href if href.startswith('//') else 'https://news.qq.com' + href
+                    if href.startswith('//'):
+                        href = 'https:' + href
+                    elif href.startswith('/'):
+                        href = 'https://news.qq.com' + href
+                    else:
+                        href = 'https://news.qq.com/' + href.lstrip('/')
                 
-                # 提取标题（可能在链接文本或内部元素中）
-                title = link.get_text(strip=True)
+                # 过滤掉明显不是新闻的链接
+                if any(skip in href.lower() for skip in ['javascript:', 'mailto:', '#', 'void(0)']):
+                    continue
                 
-                if title and href not in [n['url'] for n in news_links]:
+                if href not in [n['url'] for n in news_links]:
                     news_links.append({
                         'url': href,
-                        'title': title
+                        'title': title.strip()
                     })
         
+        logger.debug(f"Tencent: Found {len(news_links)} potential news links")
         return news_links
     
     def _extract_news_item(self, link_info: dict) -> Optional[NewsItem]:
@@ -145,6 +344,9 @@ class TencentCrawlerTool(BaseCrawler):
         try:
             # 获取新闻详情页
             response = self._fetch_page(url)
+            # 确保编码正确
+            if response.encoding == 'ISO-8859-1' or not response.encoding:
+                response.encoding = 'utf-8'
             raw_html = response.text  # 保存原始 HTML
             soup = self._parse_html(raw_html)
             

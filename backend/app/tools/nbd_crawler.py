@@ -73,7 +73,12 @@ class NbdCrawlerTool(BaseCrawler):
                     if news_item:
                         news_items.append(news_item)
                 except Exception as e:
-                    logger.warning(f"Failed to extract news item: {e}")
+                    # 如果是503错误，记录但继续处理其他URL
+                    error_str = str(e)
+                    if '503' in error_str or 'Service Temporarily Unavailable' in error_str:
+                        logger.warning(f"Skipping {link_info.get('url', 'unknown')} due to 503 error (server overloaded)")
+                    else:
+                        logger.warning(f"Failed to extract news item: {e}")
                     continue
             
         except Exception as e:
@@ -88,12 +93,44 @@ class NbdCrawlerTool(BaseCrawler):
         # 查找新闻链接
         all_links = soup.find_all('a', href=True)
         
+        # NBD新闻URL模式（扩展更多模式）
+        nbd_patterns = [
+            '/articles/',        # 文章列表
+            '/article/',         # 文章
+            '.html',             # HTML页面
+            '/columns/',         # 栏目
+            '/finance/',         # 财经
+        ]
+        
         for link in all_links:
             href = link.get('href', '')
             title = link.get_text(strip=True)
             
-            # NBD新闻URL模式
-            if ('/articles/' in href or '/article/' in href or '.html' in href) and title:
+            # 检查是否匹配NBD URL模式
+            is_nbd_url = False
+            
+            # 方式1: 检查URL模式
+            for pattern in nbd_patterns:
+                if pattern in href:
+                    is_nbd_url = True
+                    break
+            
+            # 方式2: 检查是否包含nbd.com.cn域名
+            if 'nbd.com.cn' in href:
+                is_nbd_url = True
+            
+            # 方式3: 检查链接的class或data属性
+            if not is_nbd_url:
+                link_class = link.get('class', [])
+                if isinstance(link_class, list):
+                    link_class_str = ' '.join(link_class)
+                else:
+                    link_class_str = str(link_class)
+                if any(kw in link_class_str.lower() for kw in ['news', 'article', 'item', 'title', 'list']):
+                    if href.startswith('/') or 'nbd.com.cn' in href:
+                        is_nbd_url = True
+            
+            if is_nbd_url and title and len(title.strip()) > 5:
                 # 确保是完整URL
                 if href.startswith('//'):
                     href = 'https:' + href
@@ -102,9 +139,14 @@ class NbdCrawlerTool(BaseCrawler):
                 elif not href.startswith('http'):
                     href = 'https://www.nbd.com.cn/' + href.lstrip('/')
                 
+                # 过滤掉明显不是新闻的链接
+                if any(skip in href.lower() for skip in ['javascript:', 'mailto:', '#', 'void(0)', '/tag/', '/author/', '/user/', '/login']):
+                    continue
+                
                 if href not in [n['url'] for n in news_links]:
-                    news_links.append({'url': href, 'title': title})
+                    news_links.append({'url': href, 'title': title.strip()})
         
+        logger.debug(f"NBD: Found {len(news_links)} potential news links")
         return news_links
     
     def _extract_news_item(self, link_info: dict) -> Optional[NewsItem]:
@@ -139,8 +181,15 @@ class NbdCrawlerTool(BaseCrawler):
             )
             
         except Exception as e:
-            logger.warning(f"Failed to extract news from {url}: {e}")
-            return None
+            # 检查是否是503错误（服务器过载）
+            error_str = str(e)
+            if '503' in error_str or 'Service Temporarily Unavailable' in error_str:
+                logger.debug(f"Skipping {url} due to 503 error (server overloaded, will retry later)")
+                # 对于503错误，直接返回None，不记录为警告，因为这是临时性问题
+                return None
+            else:
+                logger.warning(f"Failed to extract news from {url}: {e}")
+                return None
     
     def _extract_content(self, soup: BeautifulSoup) -> str:
         """提取新闻正文"""

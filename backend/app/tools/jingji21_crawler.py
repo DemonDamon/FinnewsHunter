@@ -116,7 +116,23 @@ class Jingji21CrawlerTool(BaseCrawler):
         
         try:
             response = self._fetch_page(url)
-            raw_html = response.text  # 保存原始 HTML
+            # 确保编码正确：21经济网可能使用 gbk 编码
+            if '21jingji.com' in url:
+                # 尝试多种编码
+                encodings = ['utf-8', 'gbk', 'gb2312', 'gb18030']
+                raw_html = None
+                for enc in encodings:
+                    try:
+                        raw_html = response.content.decode(enc)
+                        # 验证是否包含中文字符（避免乱码）
+                        if '\u4e00' <= raw_html[0:100] <= '\u9fff' or any('\u4e00' <= c <= '\u9fff' for c in raw_html[:500]):
+                            break
+                    except (UnicodeDecodeError, LookupError):
+                        continue
+                if raw_html is None:
+                    raw_html = response.text
+            else:
+                raw_html = response.text  # 保存原始 HTML
             soup = self._parse_html(raw_html)
             
             # 提取正文

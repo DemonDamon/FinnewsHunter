@@ -101,19 +101,54 @@ class EeoCrawlerTool(BaseCrawler):
             response.raise_for_status()
             
             # 处理JSONP响应
-            # 响应格式: jQuery11130...callback({"status":1,"data":[...]})
-            content = response.text
+            # 响应格式可能是: jQuery11130...callback({"code":200,"data":[...]})
+            # 或者直接是JSON: {"code":200,"data":[...]}
+            content = response.text.strip()
+            logger.debug(f"[EEO] API response preview (first 300 chars): {content[:300]}")
             
-            # 提取JSON部分（去掉JSONP包装）
+            # 尝试1: 如果是JSONP格式，提取JSON部分
             json_match = re.search(r'\((.*)\)$', content)
             if json_match:
-                json_str = json_match.group(1)
-                data = json.loads(json_str)
-                
-                if data.get('status') == 1 and 'data' in data:
-                    return data['data']
+                try:
+                    json_str = json_match.group(1)
+                    data = json.loads(json_str)
+                    # 支持两种格式：status==1 或 code==200
+                    if (data.get('status') == 1 or data.get('code') == 200) and 'data' in data:
+                        logger.info(f"[EEO] Successfully parsed JSONP, found {len(data['data'])} items")
+                        return data['data']
+                except json.JSONDecodeError as e:
+                    logger.debug(f"[EEO] JSONP parse failed: {e}")
+                    pass
             
-            logger.warning(f"Failed to parse API response")
+            # 尝试2: 直接解析JSON
+            try:
+                data = json.loads(content)
+                if isinstance(data, dict):
+                    # 支持两种格式：status==1 或 code==200
+                    if (data.get('status') == 1 or data.get('code') == 200) and 'data' in data:
+                        logger.info(f"[EEO] Successfully parsed JSON, found {len(data['data'])} items")
+                        return data['data']
+                elif isinstance(data, list):
+                    logger.info(f"[EEO] API returned list with {len(data)} items")
+                    return data
+            except json.JSONDecodeError as e:
+                logger.debug(f"[EEO] JSON parse failed: {e}")
+                pass
+            
+            # 尝试3: 查找JSON对象（更宽松的匹配）
+            json_obj_match = re.search(r'\{[^{}]*"(status|code)"[^{}]*"data"[^{}]*\}', content, re.DOTALL)
+            if json_obj_match:
+                try:
+                    data = json.loads(json_obj_match.group(0))
+                    # 支持两种格式：status==1 或 code==200
+                    if (data.get('status') == 1 or data.get('code') == 200) and 'data' in data:
+                        logger.info(f"[EEO] Successfully parsed with regex, found {len(data['data'])} items")
+                        return data['data']
+                except json.JSONDecodeError as e:
+                    logger.debug(f"[EEO] Regex parse failed: {e}")
+                    pass
+            
+            logger.warning(f"Failed to parse API response, content preview: {content[:200]}")
             return []
             
         except Exception as e:
@@ -179,8 +214,8 @@ class EeoCrawlerTool(BaseCrawler):
             if not title or not url:
                 return None
             
-            # 提取发布时间
-            publish_time_str = news_data.get('publishDate', '')
+            # 提取发布时间（API返回的字段可能是 published 或 publishDate）
+            publish_time_str = news_data.get('published', '') or news_data.get('publishDate', '')
             publish_time = self._parse_time_string(publish_time_str) if publish_time_str else datetime.now()
             
             # 提取作者
@@ -266,12 +301,45 @@ class EeoCrawlerTool(BaseCrawler):
         # 查找新闻链接
         all_links = soup.find_all('a', href=True)
         
+        # 经济观察网新闻URL模式（扩展更多模式）
+        eeo_patterns = [
+            r'/\d{4}/',           # 日期路径 /2024/
+            '.shtml',              # 静态HTML
+            '/jg/',                # 经济观察
+            '/jinrong/',           # 金融
+            '/zhengquan/',         # 证券
+            '/article/',           # 文章
+        ]
+        
         for link in all_links:
             href = link.get('href', '')
             title = link.get_text(strip=True)
             
-            # 经济观察网新闻URL模式
-            if ('/\d{4}/' in href or '.shtml' in href) and title:
+            # 检查是否匹配经济观察网URL模式
+            is_eeo_url = False
+            
+            # 方式1: 检查URL模式
+            for pattern in eeo_patterns:
+                if re.search(pattern, href):
+                    is_eeo_url = True
+                    break
+            
+            # 方式2: 检查是否包含eeo.com.cn域名
+            if 'eeo.com.cn' in href:
+                is_eeo_url = True
+            
+            # 方式3: 检查链接的class或data属性
+            if not is_eeo_url:
+                link_class = link.get('class', [])
+                if isinstance(link_class, list):
+                    link_class_str = ' '.join(link_class)
+                else:
+                    link_class_str = str(link_class)
+                if any(kw in link_class_str.lower() for kw in ['news', 'article', 'item', 'title', 'list']):
+                    if href.startswith('/') or 'eeo.com.cn' in href:
+                        is_eeo_url = True
+            
+            if is_eeo_url and title and len(title.strip()) > 5:
                 # 确保是完整URL
                 if href.startswith('//'):
                     href = 'https:' + href
@@ -280,9 +348,14 @@ class EeoCrawlerTool(BaseCrawler):
                 elif not href.startswith('http'):
                     href = 'https://www.eeo.com.cn/' + href.lstrip('/')
                 
+                # 过滤掉明显不是新闻的链接
+                if any(skip in href.lower() for skip in ['javascript:', 'mailto:', '#', 'void(0)', '/tag/', '/author/']):
+                    continue
+                
                 if href not in [n['url'] for n in news_links]:
-                    news_links.append({'url': href, 'title': title})
+                    news_links.append({'url': href, 'title': title.strip()})
         
+        logger.debug(f"EEO: Found {len(news_links)} potential news links from HTML")
         return news_links
     
     def _extract_news_item(self, link_info: dict) -> Optional[NewsItem]:
