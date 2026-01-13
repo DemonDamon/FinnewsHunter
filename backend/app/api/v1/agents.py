@@ -29,6 +29,172 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+# ============ 多语言提示词辅助函数 ============
+
+def get_prompts(language: str = "zh") -> Dict[str, str]:
+    """获取多语言提示词"""
+    if language == "en":
+        return {
+            "quick_analyst_system": "You are a professional stock analyst, skilled in quick analysis and decision-making.",
+            "quick_analysis_prompt": """Please provide a quick investment analysis for {stock_name}({stock_code}).
+
+Background:
+{context}
+
+Related News:
+{news}
+
+Please quickly provide:
+1. Core Viewpoint (one sentence)
+2. Bullish Factors (3 points)
+3. Bearish Factors (3 points)
+4. Investment Recommendation (Buy/Hold/Sell)
+5. Risk Warning""",
+            "data_collector_content": "📊 Collected relevant data for {stock_name}: {count} news items, financial data ready.\n\nDebate will begin in {rounds} rounds.",
+            "bull_system": "You are a bullish researcher, skilled at analyzing stocks from a positive perspective. When answering user questions, maintain an optimistic but rational attitude.",
+            "bear_system": "You are a bearish researcher, skilled at identifying risks. When answering user questions, remain cautious and focus on potential risks.",
+            "manager_system": "You are an experienced investment manager, skilled at comprehensive analysis and providing investment advice. Answer user questions objectively and professionally.",
+            "phase_start": "Starting {mode} mode analysis",
+            "phase_analyzing": "Quick analyst is analyzing...",
+            "phase_data_collection": "Data Collector is gathering materials...",
+            "role_quick_analyst": "Quick Analyst",
+            "role_data_collector": "Data Collector",
+            "round_debate": "Round {round}/{max_rounds} debate",
+            "role_bull": "Bull Researcher",
+            "role_bear": "Bear Researcher",
+            "bull_first_round": """You are a bullish researcher participating in a bull vs bear debate about {stock_name}({stock_code}).
+
+Background: {context}
+News: {news}
+
+This is Round 1. Please make an opening statement (about 150 words):
+1. State your core bullish view
+2. Provide 2-3 key arguments""",
+            "bull_subsequent_rounds": """You are a bullish researcher debating with a bearish researcher about {stock_name}.
+
+This is Round {round}.
+
+The bearish researcher just said:
+"{bear_last_statement}"
+
+Please refute the opponent's arguments and add new points (about 120 words):
+1. Point out flaws in the opponent's arguments
+2. Add new bullish reasons""",
+            "bear_first_round": """You are a bearish researcher participating in a bull vs bear debate about {stock_name}({stock_code}).
+
+Background: {context}
+News: {news}
+
+This is Round 1. Please make an opening statement (about 150 words):
+1. State your core bearish view
+2. Provide 2-3 key risk points""",
+            "bear_subsequent_rounds": """You are a bearish researcher debating with a bullish researcher about {stock_name}.
+
+This is Round {round}.
+
+The bullish researcher just said:
+"{bull_last_statement}"
+
+Please refute the opponent's arguments and add new points (about 120 words):
+1. Point out flaws in the opponent's arguments
+2. Add new risk points""",
+            "manager_decision": """You are an investment manager synthesizing the debate between bullish and bearish researchers to make a final investment decision.
+
+Stock: {stock_name}({stock_code})
+
+Bullish Researcher's View:
+{bull_analysis}
+
+Bearish Researcher's View:
+{bear_analysis}
+
+Please provide the final decision (about 200 words):
+1. Comprehensive evaluation of both views
+2. Investment recommendation (Strongly Recommend/Recommend/Neutral/Avoid/Caution)
+3. Reasoning and risk warnings""",
+        }
+    else:  # zh (default)
+        return {
+            "quick_analyst_system": "你是一位专业的股票分析师，擅长快速分析和决策。",
+            "quick_analysis_prompt": """请对 {stock_name}({stock_code}) 进行快速投资分析。
+
+背景资料:
+{context}
+
+相关新闻:
+{news}
+
+请快速给出：
+1. 核心观点（一句话）
+2. 看多因素（3点）
+3. 看空因素（3点）
+4. 投资建议（买入/持有/卖出）
+5. 风险提示""",
+            "data_collector_content": "📊 已搜集 {stock_name} 的相关数据：{count} 条新闻，财务数据已就绪。\n\n辩论即将开始，共 {rounds} 轮。",
+            "bull_system": "你是一位看多研究员，擅长从积极角度分析股票。回答用户问题时保持乐观但理性的态度。",
+            "bear_system": "你是一位看空研究员，擅长发现风险。回答用户问题时保持谨慎，重点指出潜在风险。",
+            "manager_system": "你是一位经验丰富的投资经理，擅长综合分析和给出投资建议。回答用户问题时客观、专业。",
+            "phase_start": "开始{mode}模式分析",
+            "phase_analyzing": "快速分析师正在分析...",
+            "phase_data_collection": "数据专员正在搜集资料...",
+            "role_quick_analyst": "快速分析师",
+            "role_data_collector": "数据专员",
+            "round_debate": "第 {round}/{max_rounds} 轮辩论",
+            "role_bull": "看多研究员",
+            "role_bear": "看空研究员",
+            "bull_first_round": """你是看多研究员，正在参与关于 {stock_name}({stock_code}) 的多空辩论。
+
+背景资料: {context}
+新闻: {news}
+
+这是第1轮辩论，请做开场陈述（约150字）：
+1. 表明你的核心看多观点
+2. 给出2-3个关键论据""",
+            "bull_subsequent_rounds": """你是看多研究员，正在与看空研究员辩论 {stock_name}。
+
+这是第{round}轮辩论。
+
+对方（看空研究员）刚才说：
+"{bear_last_statement}"
+
+请反驳对方观点并补充新论据（约120字）：
+1. 指出对方论据的漏洞
+2. 补充新的看多理由""",
+            "bear_first_round": """你是看空研究员，正在参与关于 {stock_name}({stock_code}) 的多空辩论。
+
+背景资料: {context}
+新闻: {news}
+
+这是第1轮辩论，请做开场陈述（约150字）：
+1. 表明你的核心看空观点
+2. 给出2-3个关键风险点""",
+            "bear_subsequent_rounds": """你是看空研究员，正在与看多研究员辩论 {stock_name}。
+
+这是第{round}轮辩论。
+
+对方（看多研究员）刚才说：
+"{bull_last_statement}"
+
+请反驳对方观点并补充新论据（约120字）：
+1. 指出对方论据的漏洞
+2. 补充新的风险点""",
+            "manager_decision": """你是投资经理，正在综合看多和看空研究员的辩论，做出最终投资决策。
+
+股票: {stock_name}({stock_code})
+
+看多研究员观点:
+{bull_analysis}
+
+看空研究员观点:
+{bear_analysis}
+
+请给出最终决策（约200字）：
+1. 综合评估双方观点
+2. 给出投资建议（强烈推荐/推荐/中性/回避/谨慎）
+3. 说明理由和风险提示""",
+        }
+
+
 # ============ 模拟数据存储（生产环境应使用数据库） ============
 
 # 存储执行日志
@@ -48,6 +214,7 @@ class DebateRequest(BaseModel):
     provider: Optional[str] = Field(None, description="LLM提供商")
     model: Optional[str] = Field(None, description="模型名称")
     mode: Optional[str] = Field("parallel", description="辩论模式: parallel, realtime_debate, quick_analysis")
+    language: Optional[str] = Field("zh", description="语言设置: zh=中文, en=英文")
 
 
 class DebateResponse(BaseModel):
@@ -313,7 +480,8 @@ async def generate_debate_stream(
     mode: str,
     context: str,
     news_data: List[Dict],
-    llm_provider
+    llm_provider,
+    language: str = "zh"
 ) -> AsyncGenerator[str, None]:
     """
     生成辩论的 SSE 流
@@ -326,6 +494,7 @@ async def generate_debate_stream(
     - error: 错误信息
     """
     debate_id = f"debate_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    prompts = get_prompts(language)
     
     def sse_event(event_type: str, data: Dict) -> str:
         """格式化 SSE 事件"""
@@ -335,31 +504,24 @@ async def generate_debate_stream(
         # 发送开始事件
         yield sse_event("phase", {
             "phase": "start",
-            "message": f"开始{mode}模式分析",
+            "message": prompts["phase_start"].format(mode=mode),
             "debate_id": debate_id
         })
         
         if mode == "quick_analysis":
             # 快速分析模式 - 使用流式输出
-            yield sse_event("phase", {"phase": "analyzing", "message": "快速分析师正在分析..."})
+            yield sse_event("phase", {"phase": "analyzing", "message": prompts["phase_analyzing"]})
             
-            prompt = f"""请对 {stock_name}({stock_code}) 进行快速投资分析。
-
-背景资料:
-{context[:2000]}
-
-相关新闻:
-{json.dumps([n.get('title', '') for n in news_data[:5]], ensure_ascii=False)}
-
-请快速给出：
-1. 核心观点（一句话）
-2. 看多因素（3点）
-3. 看空因素（3点）
-4. 投资建议（买入/持有/卖出）
-5. 风险提示"""
+            news_titles = json.dumps([n.get('title', '') for n in news_data[:5]], ensure_ascii=False)
+            prompt = prompts["quick_analysis_prompt"].format(
+                stock_name=stock_name,
+                stock_code=stock_code,
+                context=context[:2000],
+                news=news_titles
+            )
             
             messages = [
-                {"role": "system", "content": "你是一位专业的股票分析师，擅长快速分析和决策。"},
+                {"role": "system", "content": prompts["quick_analyst_system"]},
                 {"role": "user", "content": prompt}
             ]
             
@@ -368,7 +530,7 @@ async def generate_debate_stream(
                 full_response += chunk
                 yield sse_event("agent", {
                     "agent": "QuickAnalyst",
-                    "role": "快速分析师",
+                    "role": prompts["role_quick_analyst"],
                     "content": chunk,
                     "is_chunk": True
                 })
@@ -389,14 +551,18 @@ async def generate_debate_stream(
             # 实时辩论模式 - 多轮交锋
             max_rounds = 3  # 最大辩论轮数
             
-            yield sse_event("phase", {"phase": "data_collection", "message": "数据专员正在搜集资料..."})
+            yield sse_event("phase", {"phase": "data_collection", "message": prompts["phase_data_collection"]})
             await asyncio.sleep(0.3)
             
             # 数据搜集
             yield sse_event("agent", {
                 "agent": "DataCollector",
-                "role": "数据专员",
-                "content": f"📊 已搜集 {stock_name} 的相关数据：{len(news_data)} 条新闻，财务数据已就绪。\n\n辩论即将开始，共 {max_rounds} 轮。",
+                "role": prompts["role_data_collector"],
+                "content": prompts["data_collector_content"].format(
+                    stock_name=stock_name,
+                    count=len(news_data),
+                    rounds=max_rounds
+                ),
                 "is_chunk": False
             })
             
@@ -409,7 +575,7 @@ async def generate_debate_stream(
             for round_num in range(1, max_rounds + 1):
                 yield sse_event("phase", {
                     "phase": "debate",
-                    "message": f"第 {round_num}/{max_rounds} 轮辩论",
+                    "message": prompts["round_debate"].format(round=round_num, max_rounds=max_rounds),
                     "round": round_num,
                     "max_rounds": max_rounds
                 })
@@ -417,7 +583,7 @@ async def generate_debate_stream(
                 # === Bull 发言 ===
                 yield sse_event("agent", {
                     "agent": "BullResearcher",
-                    "role": "看多研究员",
+                    "role": prompts["role_bull"],
                     "content": "",
                     "is_start": True,
                     "round": round_num
@@ -425,30 +591,25 @@ async def generate_debate_stream(
                 
                 if round_num == 1:
                     # 第一轮：开场陈述
-                    bull_prompt = f"""你是看多研究员，正在参与关于 {stock_name}({stock_code}) 的多空辩论。
-
-背景资料: {context[:800]}
-新闻: {json.dumps([n.get('title', '') for n in news_data[:3]], ensure_ascii=False)}
-
-这是第1轮辩论，请做开场陈述（约150字）：
-1. 表明你的核心看多观点
-2. 给出2-3个关键论据"""
+                    news_titles = json.dumps([n.get('title', '') for n in news_data[:3]], ensure_ascii=False)
+                    bull_prompt = prompts["bull_first_round"].format(
+                        stock_name=stock_name,
+                        stock_code=stock_code,
+                        context=context[:800],
+                        news=news_titles
+                    )
                 else:
                     # 后续轮次：反驳对方
                     last_bear = debate_history[-1]["content"] if debate_history else ""
-                    bull_prompt = f"""你是看多研究员，正在与看空研究员辩论 {stock_name}。
-
-这是第{round_num}轮辩论。
-
-对方（看空研究员）刚才说：
-"{last_bear[:300]}"
-
-请反驳对方观点并补充新论据（约120字）：
-1. 指出对方论据的漏洞
-2. 补充新的看多理由"""
+                    bull_prompt = prompts["bull_subsequent_rounds"].format(
+                        stock_name=stock_name,
+                        round=round_num,
+                        bear_last_statement=last_bear[:300]
+                    )
                 
+                bull_system_msg = prompts["bull_system"] if language == "en" else "你是一位辩论中的看多研究员。言简意赅，有理有据，语气自信但不傲慢。"
                 bull_messages = [
-                    {"role": "system", "content": "你是一位辩论中的看多研究员。言简意赅，有理有据，语气自信但不傲慢。"},
+                    {"role": "system", "content": bull_system_msg},
                     {"role": "user", "content": bull_prompt}
                 ]
                 
@@ -464,12 +625,13 @@ async def generate_debate_stream(
                     })
                     await asyncio.sleep(0)
                 
-                bull_full += f"\n\n**【第{round_num}轮】**\n{bull_response}"
+                round_marker = f"\n\n**【Round {round_num}】**\n" if language == "en" else f"\n\n**【第{round_num}轮】**\n"
+                bull_full += round_marker + bull_response
                 debate_history.append({"agent": "Bull", "round": round_num, "content": bull_response})
                 
                 yield sse_event("agent", {
                     "agent": "BullResearcher",
-                    "role": "看多研究员",
+                    "role": prompts["role_bull"],
                     "content": "",
                     "is_end": True,
                     "round": round_num
@@ -478,37 +640,30 @@ async def generate_debate_stream(
                 # === Bear 发言（反驳） ===
                 yield sse_event("agent", {
                     "agent": "BearResearcher",
-                    "role": "看空研究员",
+                    "role": prompts["role_bear"],
                     "content": "",
                     "is_start": True,
                     "round": round_num
                 })
                 
                 if round_num == 1:
-                    bear_prompt = f"""你是看空研究员，正在与看多研究员辩论 {stock_name}({stock_code})。
-
-背景资料: {context[:800]}
-
-对方（看多研究员）刚才说：
-"{bull_response[:300]}"
-
-这是第1轮辩论，请反驳对方并陈述你的看空观点（约150字）：
-1. 指出对方论据的问题
-2. 给出2-3个风险因素"""
+                    news_titles = json.dumps([n.get('title', '') for n in news_data[:3]], ensure_ascii=False)
+                    bear_prompt = prompts["bear_first_round"].format(
+                        stock_name=stock_name,
+                        stock_code=stock_code,
+                        context=context[:800],
+                        news=news_titles
+                    )
                 else:
-                    bear_prompt = f"""你是看空研究员，正在与看多研究员辩论 {stock_name}。
-
-这是第{round_num}轮辩论。
-
-对方（看多研究员）刚才说：
-"{bull_response[:300]}"
-
-请反驳对方观点并补充新论据（约120字）：
-1. 驳斥对方的新论据
-2. 强化你的风险警示"""
+                    bear_prompt = prompts["bear_subsequent_rounds"].format(
+                        stock_name=stock_name,
+                        round=round_num,
+                        bull_last_statement=bull_response[:300]
+                    )
                 
+                bear_system_msg = prompts["bear_system"] if language == "en" else "你是一位辩论中的看空研究员。言简意赅，善于发现风险，语气谨慎但有说服力。"
                 bear_messages = [
-                    {"role": "system", "content": "你是一位辩论中的看空研究员。言简意赅，善于发现风险，语气谨慎但有说服力。"},
+                    {"role": "system", "content": bear_system_msg},
                     {"role": "user", "content": bear_prompt}
                 ]
                 
@@ -517,30 +672,32 @@ async def generate_debate_stream(
                     bear_response += chunk
                     yield sse_event("agent", {
                         "agent": "BearResearcher",
-                        "role": "看空研究员",
+                        "role": prompts["role_bear"],
                         "content": chunk,
                         "is_chunk": True,
                         "round": round_num
                     })
                     await asyncio.sleep(0)
                 
-                bear_full += f"\n\n**【第{round_num}轮】**\n{bear_response}"
+                bear_full += round_marker + bear_response
                 debate_history.append({"agent": "Bear", "round": round_num, "content": bear_response})
                 
                 yield sse_event("agent", {
                     "agent": "BearResearcher",
-                    "role": "看空研究员",
+                    "role": prompts["role_bear"],
                     "content": "",
                     "is_end": True,
                     "round": round_num
                 })
             
             # === 投资经理总结决策 ===
-            yield sse_event("phase", {"phase": "decision", "message": "辩论结束，投资经理正在做最终决策..."})
+            decision_msg = "Debate ended, Investment Manager is making final decision..." if language == "en" else "辩论结束，投资经理正在做最终决策..."
+            yield sse_event("phase", {"phase": "decision", "message": decision_msg})
             
+            manager_role = "Investment Manager" if language == "en" else "投资经理"
             yield sse_event("agent", {
                 "agent": "InvestmentManager",
-                "role": "投资经理",
+                "role": manager_role,
                 "content": "",
                 "is_start": True
             })
@@ -551,19 +708,16 @@ async def generate_debate_stream(
                 for h in debate_history
             ])
             
-            decision_prompt = f"""你是投资经理，刚刚主持了一场关于 {stock_name}({stock_code}) 的多空辩论。
-
-辩论回顾：
-{debate_summary}
-
-请做出最终投资决策（约200字）：
-1. 评价双方辩论表现
-2. 指出最有说服力的论点
-3. **最终评级**：[强烈推荐/推荐/中性/谨慎/回避]
-4. 给出操作建议"""
+            decision_prompt = prompts["manager_decision"].format(
+                stock_name=stock_name,
+                stock_code=stock_code,
+                bull_analysis=bull_full[:1000],
+                bear_analysis=bear_full[:1000]
+            )
             
+            manager_system_msg = prompts["manager_system"] if language == "en" else "你是一位经验丰富的投资经理，善于在多空观点中做出理性决策。"
             decision_messages = [
-                {"role": "system", "content": "你是一位经验丰富的投资经理，善于在多空观点中做出理性决策。"},
+                {"role": "system", "content": manager_system_msg},
                 {"role": "user", "content": decision_prompt}
             ]
             
@@ -572,7 +726,7 @@ async def generate_debate_stream(
                 decision += chunk
                 yield sse_event("agent", {
                     "agent": "InvestmentManager",
-                    "role": "投资经理",
+                    "role": manager_role,
                     "content": chunk,
                     "is_chunk": True
                 })
@@ -580,17 +734,24 @@ async def generate_debate_stream(
             
             yield sse_event("agent", {
                 "agent": "InvestmentManager",
-                "role": "投资经理",
+                "role": manager_role,
                 "content": "",
                 "is_end": True
             })
             
             # 提取评级
-            rating = "中性"
-            for r in ["强烈推荐", "推荐", "中性", "谨慎", "回避"]:
-                if r in decision:
-                    rating = r
-                    break
+            if language == "en":
+                rating = "Neutral"
+                for r in ["Strongly Recommend", "Recommend", "Neutral", "Caution", "Avoid"]:
+                    if r in decision:
+                        rating = r
+                        break
+            else:
+                rating = "中性"
+                for r in ["强烈推荐", "推荐", "中性", "谨慎", "回避"]:
+                    if r in decision:
+                        rating = r
+                        break
             
             # 发送完成事件
             yield sse_event("result", {
@@ -598,9 +759,9 @@ async def generate_debate_stream(
                 "mode": mode,
                 "debate_id": debate_id,
                 "total_rounds": max_rounds,
-                "bull_analysis": {"analysis": bull_full.strip(), "success": True, "agent_name": "BullResearcher", "agent_role": "看多研究员"},
-                "bear_analysis": {"analysis": bear_full.strip(), "success": True, "agent_name": "BearResearcher", "agent_role": "看空研究员"},
-                "final_decision": {"decision": decision, "rating": rating, "success": True, "agent_name": "InvestmentManager", "agent_role": "投资经理"},
+                "bull_analysis": {"analysis": bull_full.strip(), "success": True, "agent_name": "BullResearcher", "agent_role": prompts["role_bull"]},
+                "bear_analysis": {"analysis": bear_full.strip(), "success": True, "agent_name": "BearResearcher", "agent_role": prompts["role_bear"]},
+                "final_decision": {"decision": decision, "rating": rating, "success": True, "agent_name": "InvestmentManager", "agent_role": manager_role},
                 "debate_history": debate_history
             })
             
@@ -747,8 +908,10 @@ async def run_stock_debate_stream(
     mode = request.mode or "parallel"
     stock_name = request.stock_name or code
     
+    language = request.language or "zh"
+    
     return StreamingResponse(
-        generate_debate_stream(code, stock_name, mode, full_context, news_data, llm_provider),
+        generate_debate_stream(code, stock_name, mode, full_context, news_data, llm_provider, language),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
