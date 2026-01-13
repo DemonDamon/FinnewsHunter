@@ -1,436 +1,440 @@
-# FinnewsHunter：金融新闻驱动的多智能体投资决策平台
+# FinnewsHunter: Multi-Agent Investment Decision Platform Driven by Financial News
+
+<div align="right">
+  <a href="README_zn.md">中文版</a> | <a href="README.md">English</a>
+</div>
 
 <div align="center">
   <img src="assets/images/FINNEWS_HUNTER_LOGO.png" alt="FinnewsHunter Logo" width="450">
 </div>
 
-基于 [AgenticX](https://github.com/DemonDamon/AgenticX) 框架构建的企业级金融新闻分析系统，融合实时新闻流、深度量化分析和多智能体辩论机制。
+An enterprise-grade financial news analysis system built on the [AgenticX](https://github.com/DemonDamon/AgenticX) framework, integrating real-time news streams, deep quantitative analysis, and multi-agent debate mechanisms.
 
-FinnewsHunter 不再局限于传统的文本分类，而是部署多智能体战队（NewsAnalyst, Researcher 等），实时监控新浪财经、每经网、金融界、证券时报等多源财经资讯。利用大模型进行深度解读、情感分析与市场影响评估，并结合知识图谱挖掘潜在的投资机会与风险，为量化交易提供决策级别的阿尔法信号。
-
----
-
-## 🎯 项目特色
-
-- ✅ **AgenticX 原生**: 深度集成 AgenticX 框架，使用 Agent、Tool、Workflow 等核心抽象
-- ✅ **AgenticX 组件集成**: 直接使用 AgenticX 的 `BailianEmbeddingProvider` 和 `MilvusStorage`，避免重复造轮子
-- ✅ **智能体驱动**: NewsAnalyst 智能体自动分析新闻情感和市场影响
-- ✅ **多厂商 LLM 支持**: 支持百炼、OpenAI、DeepSeek、Kimi、智谱 5 大厂商，前端一键切换
-- ✅ **批量操作**: 支持批量选择、批量删除、批量分析新闻，提高操作效率
-- ✅ **股票 K 线分析**: 集成 akshare 真实行情数据，支持日K/分K多周期展示
-- ✅ **股票智能搜索**: 支持代码和名称模糊查询，预加载 5000+ A股数据
-- ✅ **完整技术栈**: FastAPI + PostgreSQL + Milvus + Redis + React
-- ✅ **实时搜索**: 支持标题、内容、股票代码多维度搜索，关键词高亮
-- ✅ **异步向量化**: 后台异步执行向量化，不阻塞分析流程
-- ✅ **生产就绪**: Docker Compose 一键部署，日志、监控完备
+FinnewsHunter goes beyond traditional text classification by deploying multi-agent teams (NewsAnalyst, Researcher, etc.) to monitor multiple financial news sources in real-time, including Sina Finance, National Business Daily, Financial World, Securities Times, and more. It leverages large language models for deep interpretation, sentiment analysis, and market impact assessment, combined with knowledge graphs to mine potential investment opportunities and risks, providing decision-level alpha signals for quantitative trading.
 
 ---
 
-## 🏗️ 系统架构
+## 🎯 Project Features
+
+- ✅ **AgenticX Native**: Deeply integrated with AgenticX framework, using core abstractions like Agent, Tool, and Workflow
+- ✅ **AgenticX Component Integration**: Direct use of AgenticX's `BailianEmbeddingProvider` and `MilvusStorage`, avoiding reinventing the wheel
+- ✅ **Agent-Driven**: NewsAnalyst agent automatically analyzes news sentiment and market impact
+- ✅ **Multi-Provider LLM Support**: Supports 5 major LLM providers (Bailian, OpenAI, DeepSeek, Kimi, Zhipu), switchable with one click in the frontend
+- ✅ **Batch Operations**: Supports batch selection, batch deletion, and batch analysis of news, improving operational efficiency
+- ✅ **Stock K-Line Analysis**: Integrated with akshare real market data, supporting daily/minute K-line multi-period display
+- ✅ **Intelligent Stock Search**: Supports code and name fuzzy queries, pre-loaded with 5000+ A-share data
+- ✅ **Complete Tech Stack**: FastAPI + PostgreSQL + Milvus + Redis + React
+- ✅ **Real-time Search**: Supports multi-dimensional search by title, content, stock code, with keyword highlighting
+- ✅ **Async Vectorization**: Background async vectorization execution, non-blocking analysis flow
+- ✅ **Production Ready**: One-click deployment with Docker Compose, complete logging and monitoring
+
+---
+
+## 🏗️ System Architecture
 
 ![FinnewsHunter Architecture](assets/images/arch-20251201.png)
 
-系统采用分层架构设计：
-- **M6 前端交互层**: React + TypeScript + Shadcn UI
-- **M1 平台服务层**: FastAPI Gateway + Task Manager
-- **M4/M5 智能体协同层**: AgenticX Agent + Debate Workflow
-- **M2/M3 基础设施层**: Crawler Service + LLM Service + Embedding
-- **M7-M11 存储与学习层**: PostgreSQL + Milvus + Redis + ACE Framework
+The system adopts a layered architecture design:
+- **M6 Frontend Interaction Layer**: React + TypeScript + Shadcn UI
+- **M1 Platform Service Layer**: FastAPI Gateway + Task Manager
+- **M4/M5 Agent Collaboration Layer**: AgenticX Agent + Debate Workflow
+- **M2/M3 Infrastructure Layer**: Crawler Service + LLM Service + Embedding
+- **M7-M11 Storage & Learning Layer**: PostgreSQL + Milvus + Redis + ACE Framework
 
 ---
 
-## 🚀 快速开始
+## 🚀 Quick Start
 
-### 前置条件
+### Prerequisites
 
 - Python 3.11+
 - Docker & Docker Compose
-- (可选) OpenAI API Key 或本地 LLM
-- Node.js 18+ (前端开发)
+- (Optional) OpenAI API Key or local LLM
+- Node.js 18+ (for frontend development)
 
-### 1. 安装 AgenticX
+### 1. Install AgenticX
 
 ```bash
 cd /Users/damon/myWork/AgenticX
 pip install -e .
 ```
 
-### 2. 安装后端依赖
+### 2. Install Backend Dependencies
 
 ```bash
 cd FinnewsHunter/backend
 pip install -r requirements.txt
 ```
 
-### 3. 配置环境变量
+### 3. Configure Environment Variables
 
 ```bash
 cd FinnewsHunter/backend
 cp env.example .env
-# 编辑 .env 文件，填入 LLM API Key 等配置
+# Edit .env file and fill in LLM API Key and other configurations
 ```
 
-**多厂商 LLM 配置说明：**
+**Multi-Provider LLM Configuration:**
 
-系统支持 5 个 LLM 厂商，至少配置一个即可使用：
+The system supports 5 LLM providers, at least one needs to be configured:
 
-| 厂商 | 环境变量 | 获取地址 |
-|------|----------|----------|
-| 百炼（阿里云） | `DASHSCOPE_API_KEY` | https://dashscope.console.aliyun.com/ |
+| Provider | Environment Variable | Registration URL |
+|----------|---------------------|------------------|
+| Bailian (Alibaba Cloud) | `DASHSCOPE_API_KEY` | https://dashscope.console.aliyun.com/ |
 | OpenAI | `OPENAI_API_KEY` | https://platform.openai.com/api-keys |
 | DeepSeek | `DEEPSEEK_API_KEY` | https://platform.deepseek.com/ |
-| Kimi（Moonshot） | `MOONSHOT_API_KEY` | https://platform.moonshot.cn/ |
-| 智谱 | `ZHIPU_API_KEY` | https://open.bigmodel.cn/ |
+| Kimi (Moonshot) | `MOONSHOT_API_KEY` | https://platform.moonshot.cn/ |
+| Zhipu | `ZHIPU_API_KEY` | https://open.bigmodel.cn/ |
 
-**示例配置（推荐百炼）：**
+**Example Configuration (Recommended: Bailian):**
 
 ```bash
-# 百炼（阿里云）- 推荐，国内访问快
+# Bailian (Alibaba Cloud) - Recommended, fast access in China
 DASHSCOPE_API_KEY=sk-your-dashscope-key
 DASHSCOPE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 BAILIAN_MODELS=qwen-plus,qwen-max,qwen-turbo
 
-# 可选：其他厂商
+# Optional: Other providers
 OPENAI_API_KEY=sk-your-openai-key
 DEEPSEEK_API_KEY=sk-your-deepseek-key
 ```
 
-### 4. 启动基础服务（PostgreSQL、Redis、Milvus）
+### 4. Start Base Services (PostgreSQL, Redis, Milvus)
 
 ```bash
 cd FinnewsHunter
 docker compose -f deploy/docker-compose.dev.yml up -d postgres redis milvus-etcd milvus-minio milvus-standalone
 ```
 
-### 5. 初始化数据库
+### 5. Initialize Database
 
 ```bash
 cd FinnewsHunter/backend
 python init_db.py
 ```
 
-### 5.1 初始化股票数据（可选，用于股票搜索功能）
+### 5.1 Initialize Stock Data (Optional, for stock search functionality)
 
 ```bash
 cd FinnewsHunter/backend
 python -m app.scripts.init_stocks
-# 将从 akshare 获取全部 A 股数据（约 5000+ 只）并存入数据库
+# Will fetch all A-share data (approximately 5000+ stocks) from akshare and save to database
 ```
 
-### 6. 启动后端API服务
+### 6. Start Backend API Service
 
 ```bash
 cd FinnewsHunter/backend
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 7. 启动Celery Worker和Beat（自动爬取）
+### 7. Start Celery Worker and Beat (Auto Crawling)
 
 ```bash
-# 新开一个终端
+# Open a new terminal
 cd FinnewsHunter
 docker compose -f deploy/docker-compose.dev.yml up -d celery-worker celery-beat
 ```
 
-### 8. 启动前端服务
+### 8. Start Frontend Service
 
 ```bash
-# 新开一个终端
+# Open a new terminal
 cd FinnewsHunter/frontend
-npm install  # 首次需要安装依赖
+npm install  # First time requires dependency installation
 npm run dev
 ```
 
-### 9. 访问应用
+### 9. Access Application
 
-- **前端界面**: http://localhost:3000
-- **后端 API**: http://localhost:8000
-- **API 文档**: http://localhost:8000/docs
+- **Frontend Interface**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **API Documentation**: http://localhost:8000/docs
 
 ---
 
-## 🔄 服务管理
+## 🔄 Service Management
 
-### 查看所有服务状态
+### View All Service Status
 
 ```bash
 cd FinnewsHunter
 docker compose -f deploy/docker-compose.dev.yml ps
 ```
 
-### 重启所有服务
+### Restart All Services
 
 ```bash
 cd FinnewsHunter
 
-# 重启Docker服务（基础设施 + Celery）
+# Restart Docker services (infrastructure + Celery)
 docker compose -f deploy/docker-compose.dev.yml restart
 
-# 如果后端API是独立启动的，需要手动重启
-# Ctrl+C 停止后端进程，然后重新运行：
+# If backend API is started independently, manually restart it
+# Press Ctrl+C to stop backend process, then rerun:
 cd backend
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 重启特定服务
+### Restart Specific Service
 
 ```bash
 cd FinnewsHunter
 
-# 只重启Celery（应用代码更改后）
+# Restart only Celery (after code changes)
 docker compose -f deploy/docker-compose.dev.yml restart celery-worker celery-beat
 
-# 只重启数据库
+# Restart only database
 docker compose -f deploy/docker-compose.dev.yml restart postgres
 
-# 只重启Redis
+# Restart only Redis
 docker compose -f deploy/docker-compose.dev.yml restart redis
 ```
 
-### 停止所有服务
+### Stop All Services
 
 ```bash
 cd FinnewsHunter
 docker compose -f deploy/docker-compose.dev.yml down
 ```
 
-### 查看日志
+### View Logs
 
 ```bash
 cd FinnewsHunter
 
-# 查看Celery Worker日志
+# View Celery Worker logs
 docker compose -f deploy/docker-compose.dev.yml logs -f celery-worker
 
-# 查看Celery Beat日志（定时任务调度）
+# View Celery Beat logs (scheduled task dispatch)
 docker compose -f deploy/docker-compose.dev.yml logs -f celery-beat
 
-# 查看PostgreSQL日志
+# View PostgreSQL logs
 docker compose -f deploy/docker-compose.dev.yml logs -f postgres
 
-# 查看所有服务日志
+# View all service logs
 docker compose -f deploy/docker-compose.dev.yml logs -f
 ```
 
 ---
 
-## 🗑️ 重置数据库
+## 🗑️ Reset Database
 
-### 方式1：使用一键重置脚本（推荐）⭐
+### Method 1: Use One-Click Reset Script (Recommended) ⭐
 
 ```bash
 cd FinnewsHunter
 
-# 执行重置脚本
+# Execute reset script
 ./reset_all_data.sh
 
-# 输入 yes 确认
+# Enter yes to confirm
 ```
 
-**脚本会自动完成：**
-1. ✅ 清空PostgreSQL中的所有新闻和任务数据
-2. ✅ 清空Redis缓存
-3. ✅ 重置数据库自增ID（从1重新开始）
-4. ✅ 清空Celery调度文件
-5. ✅ 自动重启Celery服务
+**The script will automatically complete:**
+1. ✅ Clear all news and task data in PostgreSQL
+2. ✅ Clear Redis cache
+3. ✅ Reset database auto-increment IDs (restart from 1)
+4. ✅ Clear Celery schedule files
+5. ✅ Automatically restart Celery services
 
-**执行后等待：**
-- 5-10分钟系统会自动重新爬取数据
-- 访问前端查看新数据
+**After execution, wait:**
+- 5-10 minutes for the system to automatically re-crawl data
+- Access frontend to view new data
 
 ---
 
-### 方式2：手动重置（高级）
+### Method 2: Manual Reset (Advanced)
 
-#### 步骤1：清空PostgreSQL数据
+#### Step 1: Clear PostgreSQL Data
 
 ```bash
-# 进入PostgreSQL容器
+# Enter PostgreSQL container
 docker exec -it finnews_postgres psql -U finnews -d finnews_db
 ```
 
-在PostgreSQL命令行中执行：
+Execute in PostgreSQL command line:
 
 ```sql
--- 清空新闻表
+-- Clear news table
 DELETE FROM news;
 
--- 清空任务表
+-- Clear task table
 DELETE FROM crawl_tasks;
 
--- 清空分析表
+-- Clear analysis table
 DELETE FROM analyses;
 
--- 重置自增ID
+-- Reset auto-increment IDs
 ALTER SEQUENCE news_id_seq RESTART WITH 1;
 ALTER SEQUENCE crawl_tasks_id_seq RESTART WITH 1;
 ALTER SEQUENCE analyses_id_seq RESTART WITH 1;
 
--- 验证结果（应该都是0）
-SELECT 'news表', COUNT(*) FROM news;
-SELECT 'crawl_tasks表', COUNT(*) FROM crawl_tasks;
-SELECT 'analyses表', COUNT(*) FROM analyses;
+-- Verify results (should all be 0)
+SELECT 'news table', COUNT(*) FROM news;
+SELECT 'crawl_tasks table', COUNT(*) FROM crawl_tasks;
+SELECT 'analyses table', COUNT(*) FROM analyses;
 
--- 退出
+-- Exit
 \q
 ```
 
-#### 步骤2：清空Redis缓存
+#### Step 2: Clear Redis Cache
 
 ```bash
 cd FinnewsHunter
 docker exec finnews_redis redis-cli FLUSHDB
 ```
 
-#### 步骤3：清空Celery调度文件
+#### Step 3: Clear Celery Schedule Files
 
 ```bash
 cd FinnewsHunter/backend
 rm -f celerybeat-schedule*
 ```
 
-#### 步骤4：重启Celery服务
+#### Step 4: Restart Celery Services
 
 ```bash
 cd FinnewsHunter
 docker compose -f deploy/docker-compose.dev.yml restart celery-worker celery-beat
 ```
 
-#### 步骤5：验证数据已清空
+#### Step 5: Verify Data Cleared
 
 ```bash
-# 检查新闻数量（应该是0）
+# Check news count (should be 0)
 docker exec finnews_postgres psql -U finnews -d finnews_db -c "SELECT COUNT(*) FROM news;"
 
-# 检查Redis（应该是0或很小）
+# Check Redis (should be 0 or very small)
 docker exec finnews_redis redis-cli DBSIZE
 
-# 查看Celery是否开始爬取
+# Check if Celery has started crawling
 docker compose -f deploy/docker-compose.dev.yml logs -f celery-beat
-# 应该看到每分钟触发10个爬取任务
+# Should see 10 crawl tasks triggered per minute
 ```
 
 ---
 
-### 方式3：使用Python脚本重置
+### Method 3: Use Python Script Reset
 
 ```bash
 cd FinnewsHunter/backend
 python reset_database.py
-# 输入 yes 确认
+# Enter yes to confirm
 ```
 
 ---
 
-### 方式4：快速手动清理（一行命令）🔥
+### Method 4: Quick Manual Cleanup (One-Line Commands) 🔥
 
-**适用场景：** 当重置脚本不工作时，使用此方法最快速
+**Use Case:** When reset script doesn't work, this is the fastest method
 
 ```bash
 cd FinnewsHunter
 
-# 步骤1：清空数据库表
+# Step 1: Clear database tables
 docker exec finnews_postgres psql -U finnews -d finnews_db -c "DELETE FROM news; DELETE FROM crawl_tasks; DELETE FROM analyses;"
 
-# 步骤2：重置自增ID
+# Step 2: Reset auto-increment IDs
 docker exec finnews_postgres psql -U finnews -d finnews_db -c "ALTER SEQUENCE news_id_seq RESTART WITH 1; ALTER SEQUENCE crawl_tasks_id_seq RESTART WITH 1; ALTER SEQUENCE analyses_id_seq RESTART WITH 1;"
 
-# 步骤3：清空Redis缓存
+# Step 3: Clear Redis cache
 docker exec finnews_redis redis-cli FLUSHDB
 
-# 步骤4：清空Celery调度文件
+# Step 4: Clear Celery schedule files
 rm -f backend/celerybeat-schedule*
 
-# 步骤5：重启Celery服务
+# Step 5: Restart Celery services
 docker compose -f deploy/docker-compose.dev.yml restart celery-worker celery-beat
 
-# 步骤6：验证是否清空（应该显示0）
+# Step 6: Verify cleared (should display 0)
 docker exec finnews_postgres psql -U finnews -d finnews_db -c "SELECT COUNT(*) FROM news;"
 ```
 
-**执行后立即刷新浏览器：**
+**Immediately refresh browser after execution:**
 - Mac: `Command + Shift + R`
 - Windows: `Ctrl + Shift + R`
 
 ---
 
-### 🖥️ 清除前端缓存（重要！）
+### 🖥️ Clear Frontend Cache (Important!)
 
-**数据清空后，前端可能仍显示旧数据，这是因为浏览器缓存。**
+**After data is cleared, frontend may still display old data due to browser cache.**
 
-#### 方法1：硬刷新浏览器（推荐）⭐
+#### Method 1: Hard Refresh Browser (Recommended) ⭐
 
-**Mac系统：**
+**Mac System:**
 ```
-按 Command + Shift + R
-或 Command + Option + R
-```
-
-**Windows/Linux系统：**
-```
-按 Ctrl + Shift + R
-或 Ctrl + F5
+Press Command + Shift + R
+or Command + Option + R
 ```
 
-#### 方法2：开发者工具清空缓存
+**Windows/Linux System:**
+```
+Press Ctrl + Shift + R
+or Ctrl + F5
+```
 
-1. 按 `F12` 打开开发者工具
-2. 右键点击刷新按钮（地址栏旁边）
-3. 选择 **"清空缓存并硬性重新加载"**
+#### Method 2: Developer Tools Clear Cache
 
-#### 方法3：清除浏览器缓存
+1. Press `F12` to open developer tools
+2. Right-click the refresh button (next to address bar)
+3. Select **"Empty Cache and Hard Reload"**
+
+#### Method 3: Clear Browser Cache
 
 1. **Chrome/Edge:**
-   - `Command + Shift + Delete` (Mac) 或 `Ctrl + Shift + Delete` (Windows)
-   - 勾选"缓存的图片和文件"
-   - 时间范围选择"全部"
-   - 点击"清除数据"
+   - `Command + Shift + Delete` (Mac) or `Ctrl + Shift + Delete` (Windows)
+   - Check "Cached images and files"
+   - Time range select "All time"
+   - Click "Clear data"
 
-2. **刷新页面后，再次硬刷新**
-   - 确保React Query缓存也被清除
+2. **After refreshing page, hard refresh again**
+   - Ensure React Query cache is also cleared
 
-#### 方法4：重启前端开发服务器（最彻底）
+#### Method 4: Restart Frontend Dev Server (Most Thorough)
 
 ```bash
-# 在前端终端按 Ctrl+C 停止服务
-# 然后重新启动
+# Press Ctrl+C in frontend terminal to stop service
+# Then restart
 cd FinnewsHunter/frontend
 npm run dev
 ```
 
 ---
 
-## 📊 重置后的数据恢复时间线
+## 📊 Data Recovery Timeline After Reset
 
-| 时间 | 事件 | 预期结果 |
-|------|------|----------|
-| 0分钟 | 执行重置脚本 | 数据库清空，Redis清空 |
-| 1分钟 | Celery Beat开始调度 | 10个爬取任务被触发 |
-| 2-5分钟 | 第一批新闻保存 | 数据库开始有数据 |
-| 5-10分钟 | 所有源都有数据 | 前端可看到100+条新闻 |
-| 30分钟 | 数据持续增长 | 500+条新闻 |
-| 1小时 | 稳定运行 | 1000-2000条新闻 |
+| Time | Event | Expected Result |
+|------|-------|----------------|
+| 0 min | Execute reset script | Database cleared, Redis cleared |
+| 1 min | Celery Beat starts scheduling | 10 crawl tasks triggered |
+| 2-5 min | First batch of news saved | Database starts having data |
+| 5-10 min | All sources have data | Frontend can see 100+ news |
+| 30 min | Data continues growing | 500+ news |
+| 1 hour | Stable operation | 1000-2000 news |
 
-**注意：**
-- 重置后需要等待5-10分钟才能看到新数据
-- **前端必须硬刷新**（Command+Shift+R / Ctrl+Shift+R）清除缓存
-- 不要频繁重置，会影响系统稳定性
+**Notes:**
+- Need to wait 5-10 minutes after reset to see new data
+- **Frontend must hard refresh** (Command+Shift+R / Ctrl+Shift+R) to clear cache
+- Don't reset frequently, affects system stability
 
-**重置后立即硬刷新前端的步骤：**
-1. 执行重置命令
-2. **立即**在浏览器按 `Command + Shift + R` (Mac) 或 `Ctrl + Shift + R` (Windows)
-3. 等待5-10分钟后再次刷新查看新数据
+**Steps to immediately hard refresh frontend after reset:**
+1. Execute reset command
+2. **Immediately** press `Command + Shift + R` (Mac) or `Ctrl + Shift + R` (Windows) in browser
+3. Wait 5-10 minutes then refresh again to view new data
 
 ---
 
-## ⚠️ 爬虫状态检查
+## ⚠️ Crawler Status Check
 
-### 查看哪些源正常工作
+### Check Which Sources Are Working
 
 ```bash
 cd FinnewsHunter
 
-# 查看各源的新闻数量
+# View news count by source
 docker exec finnews_postgres psql -U finnews -d finnews_db -c "
 SELECT source, COUNT(*) as count 
 FROM news 
@@ -439,7 +443,7 @@ GROUP BY source
 ORDER BY count DESC;
 "
 
-# 查看最近的爬取任务状态
+# View recent crawl task status
 docker exec finnews_postgres psql -U finnews -d finnews_db -c "
 SELECT source, 
        crawled_count, 
@@ -453,70 +457,70 @@ LIMIT 20;
 "
 ```
 
-### 查看爬取错误
+### View Crawl Errors
 
 ```bash
 cd FinnewsHunter
 
-# 查看ERROR日志
+# View ERROR logs
 docker compose -f deploy/docker-compose.dev.yml logs celery-worker | grep ERROR
 
-# 查看特定源的问题
+# View specific source issues
 docker compose -f deploy/docker-compose.dev.yml logs celery-worker | grep "jwview"
 ```
 
 ---
 
-## 📚 使用指南
+## 📚 User Guide
 
-### 自动爬取模式（推荐）⭐
+### Auto Crawl Mode (Recommended) ⭐
 
-**系统已配置10个新闻源的自动爬取：**
+**System is configured with automatic crawling for 10 news sources:**
 
-1. 🌐 新浪财经
-2. 🐧 腾讯财经
-3. 💰 金融界
-4. 📊 经济观察网
-5. 📈 财经网
-6. 📉 21经济网
-7. 📰 每日经济新闻
-8. 🎯 第一财经
-9. 📧 网易财经
-10. 💎 东方财富
+1. 🌐 Sina Finance
+2. 🐧 Tencent Finance
+3. 💰 Financial World
+4. 📊 Economic Observer
+5. 📈 Caijing.com
+6. 📉 21st Century Business Herald
+7. 📰 National Business Daily
+8. 🎯 Yicai
+9. 📧 NetEase Finance
+10. 💎 East Money
 
-**工作方式：**
-- ✅ Celery Beat 每1分钟自动触发所有源的爬取
-- ✅ 自动去重（URL级别）
-- ✅ 智能时间筛选（保留24小时内新闻）
-- ✅ 股票关键词筛选
-- ✅ 无需手动操作
+**How it works:**
+- ✅ Celery Beat automatically triggers crawling for all sources every 1 minute
+- ✅ Automatic deduplication (URL level)
+- ✅ Smart time filtering (keep news within 24 hours)
+- ✅ Stock keyword filtering
+- ✅ No manual operation needed
 
-**查看爬取进度：**
+**View crawl progress:**
 
 ```bash
-# 查看Celery Beat调度日志
+# View Celery Beat scheduling logs
 cd FinnewsHunter
 docker compose -f deploy/docker-compose.dev.yml logs -f celery-beat
 
-# 查看Celery Worker执行日志
+# View Celery Worker execution logs
 docker compose -f deploy/docker-compose.dev.yml logs -f celery-worker
 ```
 
 ---
 
-### 手动刷新（立即获取最新）
+### Manual Refresh (Get Latest Immediately)
 
-**方式 1: 通过前端**
-1. 访问 http://localhost:3000/news
-2. 点击右上角"🔄 立即刷新"按钮
-3. 系统会立即触发爬取，约2分钟后数据更新
+**Method 1: Via Frontend**
+1. Visit http://localhost:3000/news
+2. Click the "🔄 Refresh Now" button in the top right
+3. System will immediately trigger crawling, data updates in about 2 minutes
 
-**方式 2: 通过 API**
+**Method 2: Via API**
 ```bash
-# 强制刷新新浪财经
+# Force refresh Sina Finance
 curl -X POST "http://localhost:8000/api/v1/news/refresh?source=sina"
 
-# 强制刷新所有源（需要逐个调用）
+# Force refresh all sources (need to call individually)
 for source in sina tencent jwview eeo caijing jingji21 nbd yicai 163 eastmoney; do
   curl -X POST "http://localhost:8000/api/v1/news/refresh?source=$source"
   sleep 1
@@ -525,60 +529,60 @@ done
 
 ---
 
-### 查看新闻列表
+### View News List
 
-**方式 1: 通过前端（推荐）**
-- 访问 http://localhost:3000
-- 首页：查看来源统计和最新新闻
-- 新闻流：按来源和情感筛选新闻
-- 支持批量选择：使用复选框选择多条新闻，支持 Shift 键范围选择
-- 批量操作：全选/取消全选、批量删除、批量分析
+**Method 1: Via Frontend (Recommended)**
+- Visit http://localhost:3000
+- Homepage: View source statistics and latest news
+- News Feed: Filter news by source and sentiment
+- Batch selection support: Use checkboxes to select multiple news, supports Shift key range selection
+- Batch operations: Select all/deselect all, batch delete, batch analyze
 
-**方式 2: 通过 API**
+**Method 2: Via API**
 
 ```bash
-# 获取所有来源的最新新闻（200条）
+# Get latest news from all sources (200 items)
 curl "http://localhost:8000/api/v1/news/latest?limit=200"
 
-# 获取特定来源的新闻
+# Get news from specific source
 curl "http://localhost:8000/api/v1/news/latest?source=sina&limit=50"
 
-# 按情感筛选（使用旧接口）
+# Filter by sentiment (using old API)
 curl "http://localhost:8000/api/v1/news/?sentiment=positive&limit=20"
 
-# 获取所有可用的新闻源列表
+# Get all available news source list
 curl "http://localhost:8000/api/v1/news/sources"
 ```
 
 ---
 
-### 批量操作新闻
+### Batch Operations on News
 
-**前端操作：**
-1. **批量选择**：
-   - 点击新闻卡片左侧的复选框选择单条新闻
-   - 按住 Shift 键点击可进行范围选择
-   - 使用顶部工具栏的"全选"按钮选择当前筛选结果的所有新闻
-   - 切换新闻源或筛选条件时，选择状态会自动清空
+**Frontend Operations:**
+1. **Batch Selection**:
+   - Click checkbox on the left of news card to select single news
+   - Hold Shift key and click for range selection
+   - Use "Select All" button in top toolbar to select all news in current filter results
+   - Selection state automatically clears when switching news source or filter conditions
 
-2. **批量删除**：
-   - 选择多条新闻后，点击顶部工具栏的"批量删除"按钮
-   - 确认删除对话框后，选中的新闻将被删除
-   - 删除后会自动刷新列表
+2. **Batch Delete**:
+   - After selecting multiple news, click "Batch Delete" button in top toolbar
+   - After confirming delete dialog, selected news will be deleted
+   - List automatically refreshes after deletion
 
-3. **批量分析**：
-   - 选择多条新闻后，点击顶部工具栏的"批量分析"按钮
-   - 系统会依次分析选中的新闻，显示进度和结果统计
-   - 分析完成后会显示成功/失败数量
+3. **Batch Analysis**:
+   - After selecting multiple news, click "Batch Analyze" button in top toolbar
+   - System will analyze selected news sequentially, showing progress and result statistics
+   - After analysis completes, shows success/failure count
 
-**API 操作：**
+**API Operations:**
 ```bash
-# 批量删除新闻
+# Batch delete news
 curl -X POST "http://localhost:8000/api/v1/news/batch/delete" \
   -H "Content-Type: application/json" \
   -d '{"news_ids": [1, 2, 3]}'
 
-# 批量分析新闻
+# Batch analyze news
 curl -X POST "http://localhost:8000/api/v1/analysis/batch" \
   -H "Content-Type: application/json" \
   -d '{"news_ids": [1, 2, 3], "provider": "bailian", "model": "qwen-plus"}'
@@ -586,356 +590,356 @@ curl -X POST "http://localhost:8000/api/v1/analysis/batch" \
 
 ---
 
-### 分析新闻
+### Analyze News
 
-**方式 1: 通过前端**
-- 在新闻卡片上点击"✨ 分析"按钮
-- 等待3-5秒查看分析结果
-- 点击新闻卡片打开详情抽屉，查看完整分析内容
+**Method 1: Via Frontend**
+- Click "✨ Analyze" button on news card
+- Wait 3-5 seconds to view analysis results
+- Click news card to open detail drawer, view complete analysis content
 
-**方式 2: 通过 API**
+**Method 2: Via API**
 ```bash
-# 分析指定ID的新闻（使用默认模型）
+# Analyze news with specified ID (using default model)
 curl -X POST http://localhost:8000/api/v1/analysis/news/1
 
-# 分析新闻（指定模型）
+# Analyze news (specify model)
 curl -X POST http://localhost:8000/api/v1/analysis/news/1 \
   -H "Content-Type: application/json" \
   -d '{"provider": "bailian", "model": "qwen-max"}'
 
-# 查看分析结果
+# View analysis results
 curl http://localhost:8000/api/v1/analysis/1
 ```
 
 ---
 
-### 切换 LLM 模型
+### Switch LLM Model
 
-**前端操作：**
-1. 点击右上角的模型选择器（显示当前模型名称）
-2. 在下拉菜单中选择不同的厂商和模型
-3. 选择后自动保存，后续分析将使用新模型
+**Frontend Operations:**
+1. Click model selector in top right (shows current model name)
+2. Select different provider and model from dropdown menu
+3. Selection automatically saves, subsequent analyses will use new model
 
-**支持的模型：**
-- 🔥 **百炼**: qwen-plus, qwen-max, qwen-turbo, qwen-long
+**Supported Models:**
+- 🔥 **Bailian**: qwen-plus, qwen-max, qwen-turbo, qwen-long
 - 🤖 **OpenAI**: gpt-4, gpt-4-turbo, gpt-3.5-turbo
 - 🧠 **DeepSeek**: deepseek-chat, deepseek-coder
 - 🌙 **Kimi**: moonshot-v1-8k, moonshot-v1-32k, moonshot-v1-128k
-- 🔮 **智谱**: glm-4, glm-4-plus, glm-4-air
+- 🔮 **Zhipu**: glm-4, glm-4-plus, glm-4-air
 
-**API 获取可用模型列表：**
+**API to Get Available Model List:**
 ```bash
 curl http://localhost:8000/api/v1/llm/config
 ```
 
 ---
 
-### 搜索新闻
+### Search News
 
-**前端操作：**
-1. 在顶部搜索框输入关键词
-2. 支持搜索：标题、内容、股票代码、来源
-3. 匹配的关键词会高亮显示
-4. 搜索带有 300ms 防抖，输入停止后自动搜索
+**Frontend Operations:**
+1. Enter keywords in top search box
+2. Supports search: title, content, stock code, source
+3. Matching keywords will be highlighted
+4. Search has 300ms debounce, automatically searches after input stops
 
-**搜索示例：**
-- 搜索股票代码：`600519`（贵州茅台）
-- 搜索关键词：`新能源`、`半导体`
-- 搜索来源：`sina`、`eastmoney`
-
----
-
-### 查看新闻详情
-
-**前端操作：**
-1. 点击任意新闻卡片
-2. 右侧滑出详情抽屉，展示：
-   - 📰 新闻标题和来源
-   - 📊 情感评分（利好/利空/中性）
-   - 📈 关联股票代码
-   - 📝 完整新闻内容
-   - 🤖 AI 分析结果（Markdown 格式）
-   - 🔗 原文链接
-3. 点击"复制分析内容"可复制 Markdown 格式的分析报告
+**Search Examples:**
+- Search stock code: `600519` (Kweichow Moutai)
+- Search keywords: `新能源` (new energy), `半导体` (semiconductor)
+- Search source: `sina`, `eastmoney`
 
 ---
 
-### 股票 K 线分析
+### View News Details
 
-**前端操作：**
-1. 访问 http://localhost:3000/stocks/SH600519（贵州茅台示例）
-2. 使用右上角搜索框输入股票代码或名称（如 `茅台`、`600519`）
-3. 选择时间周期：日K、60分、30分、15分、5分、1分
-4. 图表支持：
-   - 📈 K 线蜡烛图（OHLC）
-   - 📊 成交量柱状图
-   - 📉 MA 均线（5/10/30/60日）
+**Frontend Operations:**
+1. Click any news card
+2. Detail drawer slides out from right, displaying:
+   - 📰 News title and source
+   - 📊 Sentiment score (positive/negative/neutral)
+   - 📈 Associated stock codes
+   - 📝 Complete news content
+   - 🤖 AI analysis results (Markdown format)
+   - 🔗 Original article link
+3. Click "Copy Analysis Content" to copy analysis report in Markdown format
 
-**API 操作：**
+---
+
+### Stock K-Line Analysis
+
+**Frontend Operations:**
+1. Visit http://localhost:3000/stocks/SH600519 (Kweichow Moutai example)
+2. Use top right search box to enter stock code or name (e.g., `茅台` (Moutai), `600519`)
+3. Select time period: Daily K, 60min, 30min, 15min, 5min, 1min
+4. Chart supports:
+   - 📈 K-line candlestick chart (OHLC)
+   - 📊 Volume bar chart
+   - 📉 MA moving averages (5/10/30/60 day)
+
+**API Operations:**
 
 ```bash
-# 获取 K 线数据（日线，默认180条）
+# Get K-line data (daily, default 180 items)
 curl "http://localhost:8000/api/v1/stocks/SH600519/kline?period=daily&limit=180"
 
-# 获取分钟 K 线（60分钟线）
+# Get minute K-line (60-minute line)
 curl "http://localhost:8000/api/v1/stocks/SH600519/kline?period=60m&limit=200"
 
-# 搜索股票
+# Search stocks
 curl "http://localhost:8000/api/v1/stocks/search/realtime?q=茅台&limit=10"
 
-# 查看数据库中的股票数量
+# View stock count in database
 curl "http://localhost:8000/api/v1/stocks/count"
 ```
 
 ---
 
-### 按来源筛选查看
+### Filter by Source
 
-**前端操作：**
+**Frontend Operations:**
 
-1. **首页（Dashboard）**
-   - 查看"新闻来源统计"卡片
-   - 点击任意来源按钮筛选
-   - 显示该来源的新闻数量和列表
+1. **Homepage (Dashboard)**
+   - View "News Source Statistics" card
+   - Click any source button to filter
+   - Display news count and list for that source
 
-2. **新闻流页面**
-   - 顶部有10个来源筛选按钮
-   - 点击切换查看不同来源
-   - 支持来源+情感双重筛选
+2. **News Feed Page**
+   - Top has 10 source filter buttons
+   - Click to switch and view different sources
+   - Supports source + sentiment dual filtering
 
-**API操作：**
+**API Operations:**
 
 ```bash
-# 查看新浪财经的新闻
+# View Sina Finance news
 curl "http://localhost:8000/api/v1/news/latest?source=sina&limit=50"
 
-# 查看每日经济新闻
+# View National Business Daily news
 curl "http://localhost:8000/api/v1/news/latest?source=nbd&limit=50"
 
-# 查看所有来源
+# View all sources
 curl "http://localhost:8000/api/v1/news/latest?limit=200"
 ```
 
 ---
 
-## 🏗️ 项目结构
+## 🏗️ Project Structure
 
 ```
 FinnewsHunter/
-├── backend/                    # 后端服务
+├── backend/                    # Backend service
 │   ├── app/
-│   │   ├── agents/            # 智能体定义（NewsAnalyst、辩论智能体等）
-│   │   ├── api/v1/            # FastAPI 路由
-│   │   │   ├── analysis.py    # 分析 API（支持批量分析）
-│   │   │   ├── llm_config.py  # LLM 配置 API
-│   │   │   ├── news_v2.py     # 新闻 API（支持批量删除）
+│   │   ├── agents/            # Agent definitions (NewsAnalyst, debate agents, etc.)
+│   │   ├── api/v1/            # FastAPI routes
+│   │   │   ├── analysis.py    # Analysis API (supports batch analysis)
+│   │   │   ├── llm_config.py  # LLM config API
+│   │   │   ├── news_v2.py     # News API (supports batch delete)
 │   │   │   └── ...
-│   │   ├── core/              # 核心配置（config, database, redis, neo4j）
-│   │   ├── models/            # SQLAlchemy 数据模型
-│   │   ├── services/          # 业务服务
-│   │   │   ├── llm_service.py      # LLM 服务（支持多厂商）
-│   │   │   ├── analysis_service.py # 分析服务（异步向量化）
-│   │   │   ├── embedding_service.py # 向量化服务（基于 AgenticX BailianEmbeddingProvider）
-│   │   │   └── stock_data_service.py # 股票数据服务
-│   │   ├── storage/           # 存储封装
-│   │   │   └── vector_storage.py # Milvus 向量存储（基于 AgenticX MilvusStorage）
-│   │   ├── tasks/             # Celery 任务
-│   │   └── tools/              # AgenticX 工具（Crawler, Cleaner）
-│   ├── tests/                 # 测试和工具脚本
-│   │   ├── check_milvus_data.py           # 检查 Milvus 向量存储数据
-│   │   ├── check_news_embedding_status.py # 检查新闻向量化状态
-│   │   └── manual_vectorize.py           # 手动向量化指定新闻
-│   ├── env.example            # 环境变量模板
-│   └── requirements.txt       # Python 依赖
-├── frontend/                  # React 前端
+│   │   ├── core/              # Core configuration (config, database, redis, neo4j)
+│   │   ├── models/            # SQLAlchemy data models
+│   │   ├── services/          # Business services
+│   │   │   ├── llm_service.py      # LLM service (multi-provider support)
+│   │   │   ├── analysis_service.py # Analysis service (async vectorization)
+│   │   │   ├── embedding_service.py # Vectorization service (based on AgenticX BailianEmbeddingProvider)
+│   │   │   └── stock_data_service.py # Stock data service
+│   │   ├── storage/           # Storage wrapper
+│   │   │   └── vector_storage.py # Milvus vector storage (based on AgenticX MilvusStorage)
+│   │   ├── tasks/             # Celery tasks
+│   │   └── tools/              # AgenticX tools (Crawler, Cleaner)
+│   ├── tests/                 # Test and utility scripts
+│   │   ├── check_milvus_data.py           # Check Milvus vector storage data
+│   │   ├── check_news_embedding_status.py # Check news vectorization status
+│   │   └── manual_vectorize.py           # Manually vectorize specified news
+│   ├── env.example            # Environment variable template
+│   └── requirements.txt       # Python dependencies
+├── frontend/                  # React frontend
 │   └── src/
-│       ├── components/        # 组件
-│       │   ├── ModelSelector.tsx    # LLM 模型选择器
-│       │   ├── NewsDetailDrawer.tsx # 新闻详情抽屉
-│       │   └── HighlightText.tsx    # 关键词高亮
+│       ├── components/        # Components
+│       │   ├── ModelSelector.tsx    # LLM model selector
+│       │   ├── NewsDetailDrawer.tsx # News detail drawer
+│       │   └── HighlightText.tsx    # Keyword highlighting
 │       ├── context/           # React Context
-│       ├── hooks/             # 自定义 Hooks
-│       │   └── useDebounce.ts # 防抖 Hook
-│       ├── layout/            # 布局组件
-│       └── pages/             # 页面组件
-│           └── NewsListPage.tsx # 新闻列表页面（支持批量操作）
-├── deploy/                    # 部署配置
-│   ├── docker-compose.dev.yml # Docker Compose 配置
-│   ├── Dockerfile.celery     # Celery 镜像构建文件
-│   └── celery-entrypoint.sh  # Celery 容器启动脚本
-├── conclusions/               # 模块摘要文档
-│   ├── backend/              # 后端模块总结
-│   └── frontend/             # 前端模块总结
-└── .dev-docs/                 # 开发文档
+│       ├── hooks/             # Custom Hooks
+│       │   └── useDebounce.ts # Debounce Hook
+│       ├── layout/            # Layout components
+│       └── pages/             # Page components
+│           └── NewsListPage.tsx # News list page (supports batch operations)
+├── deploy/                    # Deployment configuration
+│   ├── docker-compose.dev.yml # Docker Compose configuration
+│   ├── Dockerfile.celery     # Celery image build file
+│   └── celery-entrypoint.sh  # Celery container startup script
+├── conclusions/               # Module summary documentation
+│   ├── backend/              # Backend module summaries
+│   └── frontend/             # Frontend module summaries
+└── .dev-docs/                 # Development documentation
 ```
 
 ---
 
-## 🧪 测试与验收
+## 🧪 Testing & Acceptance
 
-### MVP 验收标准
+### MVP Acceptance Criteria
 
-- [x] 新闻爬取成功并存入 PostgreSQL
-- [x] NewsAnalyst 调用 LLM 完成分析
-- [x] 分析结果包含情感评分
-- [x] 前端能够展示新闻和分析结果
-- [x] 支持多厂商 LLM 动态切换
-- [x] 新闻详情展示完整分析内容
-- [x] 实时搜索和筛选功能
-- [x] 批量选择、批量删除、批量分析功能
-- [x] 基于 AgenticX 的向量化和存储服务
-- [x] 异步向量化，不阻塞分析流程
+- [x] News crawling successful and saved to PostgreSQL
+- [x] NewsAnalyst calls LLM to complete analysis
+- [x] Analysis results include sentiment scores
+- [x] Frontend can display news and analysis results
+- [x] Support multi-provider LLM dynamic switching
+- [x] News details display complete analysis content
+- [x] Real-time search and filtering functionality
+- [x] Batch selection, batch delete, batch analysis functionality
+- [x] Vectorization and storage services based on AgenticX
+- [x] Async vectorization, non-blocking analysis flow
 
-### 测试流程
+### Testing Process
 
-1. **启动所有服务**
+1. **Start All Services**
    ```bash
    ./start.sh
    ```
 
-2. **检查 Docker 容器状态**
+2. **Check Docker Container Status**
    ```bash
    docker ps
-   # 应看到: postgres, redis, milvus-standalone, milvus-etcd, milvus-minio
+   # Should see: postgres, redis, milvus-standalone, milvus-etcd, milvus-minio
    ```
 
-3. **测试新闻爬取**
+3. **Test News Crawling**
    ```bash
    curl -X POST http://localhost:8000/api/v1/news/crawl \
      -H "Content-Type: application/json" \
      -d '{"source": "sina", "start_page": 1, "end_page": 1}'
    
-   # 等待 5-10 秒后查看结果
+   # Wait 5-10 seconds then check results
    curl http://localhost:8000/api/v1/news/?limit=5
    ```
 
-4. **测试智能体分析**
+4. **Test Agent Analysis**
    ```bash
-   # 获取第一条新闻的ID
+   # Get first news ID
    NEWS_ID=$(curl -s http://localhost:8000/api/v1/news/?limit=1 | jq '.[0].id')
    
-   # 触发分析
+   # Trigger analysis
    curl -X POST http://localhost:8000/api/v1/analysis/news/$NEWS_ID
    
-   # 查看分析结果
+   # View analysis results
    curl http://localhost:8000/api/v1/analysis/1
    ```
 
-5. **测试前端界面**
-   - 打开 `frontend/index.html`
-   - 点击"爬取新闻"并等待完成
-   - 选择一条新闻点击"分析"
-   - 查看情感评分是否显示
+5. **Test Frontend Interface**
+   - Open `frontend/index.html`
+   - Click "Crawl News" and wait for completion
+   - Select a news item and click "Analyze"
+   - Check if sentiment score is displayed
 
 ---
 
-## 🔧 故障排查
+## 🔧 Troubleshooting
 
-### 问题 1: 数据库连接失败
+### Issue 1: Database Connection Failed
 
-**症状：** 后端启动报错 `could not connect to database`
+**Symptom:** Backend startup error `could not connect to database`
 
-**解决方法：**
+**Solution:**
 
 ```bash
 cd FinnewsHunter
 
-# 检查 PostgreSQL 是否启动
+# Check if PostgreSQL is running
 docker ps | grep postgres
 
-# 查看日志
+# View logs
 docker compose -f deploy/docker-compose.dev.yml logs postgres
 
-# 重启容器
+# Restart container
 docker compose -f deploy/docker-compose.dev.yml restart postgres
 
-# 等待30秒后重试后端启动
+# Wait 30 seconds then retry backend startup
 ```
 
 ---
 
-### 问题 2: Celery任务不执行
+### Issue 2: Celery Tasks Not Executing
 
-**症状：** 前端显示新闻数量为0，没有自动爬取
+**Symptom:** Frontend shows 0 news count, no automatic crawling
 
-**排查步骤：**
+**Troubleshooting Steps:**
 
 ```bash
 cd FinnewsHunter
 
-# 1. 检查Celery Worker是否运行
+# 1. Check if Celery Worker is running
 docker ps | grep celery
 
-# 2. 查看Celery Beat日志（应该看到每分钟触发任务）
+# 2. View Celery Beat logs (should see tasks triggered every minute)
 docker compose -f deploy/docker-compose.dev.yml logs celery-beat --tail=100
 
-# 3. 查看Celery Worker日志（查看任务执行情况）
+# 3. View Celery Worker logs (check task execution)
 docker compose -f deploy/docker-compose.dev.yml logs celery-worker --tail=100
 
-# 4. 检查Redis连接
+# 4. Check Redis connection
 docker exec finnews_redis redis-cli PING
-# 应该返回 PONG
+# Should return PONG
 
-# 5. 重启Celery服务
+# 5. Restart Celery services
 docker compose -f deploy/docker-compose.dev.yml restart celery-worker celery-beat
 ```
 
 ---
 
-### 问题 3: 爬取失败（404错误）
+### Issue 3: Crawling Failed (404 Error)
 
-**症状：** Celery日志显示 `404 Client Error: Not Found`
+**Symptom:** Celery logs show `404 Client Error: Not Found`
 
-**原因：** 新闻网站URL已变更
+**Cause:** News website URL has changed
 
-**解决方法：**
+**Solution:**
 
 ```bash
-# 1. 手动访问URL验证是否可用
+# 1. Manually visit URL to verify if available
 curl -I https://finance.caijing.com.cn/
 
-# 2. 如果URL变更，更新对应爬虫的配置
-# 编辑 backend/app/tools/{source}_crawler.py
-# 更新 BASE_URL 和 STOCK_URL
+# 2. If URL changed, update corresponding crawler configuration
+# Edit backend/app/tools/{source}_crawler.py
+# Update BASE_URL and STOCK_URL
 
-# 3. 清理Python缓存
+# 3. Clear Python cache
 cd FinnewsHunter/backend
 find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
-# 4. 重启Celery
+# 4. Restart Celery
 cd ..
 docker compose -f deploy/docker-compose.dev.yml restart celery-worker celery-beat
 ```
 
 ---
 
-### 问题 4: 只有新浪财经有数据
+### Issue 4: Only Sina Finance Has Data
 
-**症状：** 其他9个来源没有新闻
+**Symptom:** Other 9 sources have no news
 
-**可能原因：**
-1. Celery Beat配置不完整
-2. 爬虫代码有错误
-3. 网站URL不正确
+**Possible Causes:**
+1. Celery Beat configuration incomplete
+2. Crawler code has errors
+3. Website URL incorrect
 
-**解决方法：**
+**Solution:**
 
 ```bash
 cd FinnewsHunter
 
-# 1. 检查Celery Beat配置
+# 1. Check Celery Beat configuration
 docker compose -f deploy/docker-compose.dev.yml logs celery-beat | grep "crawl-"
-# 应该看到10个定时任务（crawl-sina, crawl-tencent, ..., crawl-eastmoney）
+# Should see 10 scheduled tasks (crawl-sina, crawl-tencent, ..., crawl-eastmoney)
 
-# 2. 手动测试单个源的爬取
+# 2. Manually test single source crawling
 docker exec -it finnews_celery_worker python -c "
 from app.tools import get_crawler_tool
-crawler = get_crawler_tool('nbd')  # 测试每日经济新闻
+crawler = get_crawler_tool('nbd')  # Test National Business Daily
 news = crawler.crawl()
-print(f'爬取到 {len(news)} 条新闻')
+print(f'Crawled {len(news)} news items')
 "
 
-# 3. 查看数据库中各源的数据量
+# 3. View data volume by source in database
 docker exec finnews_postgres psql -U finnews -d finnews_db -c "
 SELECT source, COUNT(*) as count 
 FROM news 
@@ -943,221 +947,221 @@ GROUP BY source
 ORDER BY count DESC;
 "
 
-# 4. 如果某个源一直失败，查看详细错误
+# 4. If a source keeps failing, view detailed errors
 docker compose -f deploy/docker-compose.dev.yml logs celery-worker | grep "ERROR"
 ```
 
 ---
 
-### 问题 5: LLM 调用失败
+### Issue 5: LLM Call Failed
 
-**症状：** 分析功能不工作，报错 `LLM Provider NOT provided`
+**Symptom:** Analysis functionality not working, error `LLM Provider NOT provided`
 
-**解决方法：**
+**Solution:**
 
 ```bash
 cd FinnewsHunter/backend
 
-# 1. 检查 API Key 是否配置
+# 1. Check if API Key is configured
 grep -E "DASHSCOPE_API_KEY|OPENAI_API_KEY|DEEPSEEK_API_KEY" .env
 
-# 2. 检查 Base URL 是否正确（百炼必须配置）
+# 2. Check if Base URL is correct (Bailian must configure)
 grep DASHSCOPE_BASE_URL .env
-# 应该是: https://dashscope.aliyuncs.com/compatible-mode/v1
+# Should be: https://dashscope.aliyuncs.com/compatible-mode/v1
 
-# 3. 验证 LLM 配置 API 是否正常
+# 3. Verify LLM config API is normal
 curl http://localhost:8000/api/v1/llm/config | jq '.providers[].has_api_key'
-# 至少有一个返回 true
+# At least one should return true
 
-# 4. 如果使用百炼，确保配置完整
+# 4. If using Bailian, ensure complete configuration
 cat >> .env << EOF
 DASHSCOPE_API_KEY=sk-your-key
 DASHSCOPE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 BAILIAN_MODELS=qwen-plus,qwen-max
 EOF
 
-# 5. 重启后端服务
+# 5. Restart backend service
 ```
 
 ---
 
-### 问题 6: 前端显示空白或CORS错误
+### Issue 6: Frontend Shows Blank or CORS Error
 
-**症状：** 前端无法加载数据，浏览器Console显示CORS错误
+**Symptom:** Frontend cannot load data, browser Console shows CORS error
 
-**解决方法：**
+**Solution:**
 
 ```bash
-# 1. 检查后端CORS配置
+# 1. Check backend CORS configuration
 cd FinnewsHunter/backend
 grep BACKEND_CORS_ORIGINS .env
-# 应该包含 http://localhost:3000
+# Should include http://localhost:3000
 
-# 2. 检查前端API地址配置
+# 2. Check frontend API address configuration
 cd ../frontend
 cat .env
-# VITE_API_URL 应该是 http://localhost:8000
+# VITE_API_URL should be http://localhost:8000
 
-# 3. 硬刷新浏览器
-# Chrome/Edge: Ctrl+Shift+R (Windows) 或 Cmd+Shift+R (Mac)
+# 3. Hard refresh browser
+# Chrome/Edge: Ctrl+Shift+R (Windows) or Cmd+Shift+R (Mac)
 
-# 4. 重启前端开发服务器
+# 4. Restart frontend dev server
 npm run dev
 ```
 
 ---
 
-### 问题 7: Milvus 连接失败
+### Issue 7: Milvus Connection Failed
 
-**症状：** 向量搜索功能不工作
+**Symptom:** Vector search functionality not working
 
-**解决方法：**
+**Solution:**
 
 ```bash
 cd FinnewsHunter
 
-# Milvus 需要较长启动时间（约 60 秒）
+# Milvus requires longer startup time (approximately 60 seconds)
 docker compose -f deploy/docker-compose.dev.yml logs milvus-standalone
 
-# 检查健康状态
+# Check health status
 docker inspect finnews_milvus | grep -A 10 Health
 
-# 重启Milvus相关服务
+# Restart Milvus related services
 docker compose -f deploy/docker-compose.dev.yml restart milvus-etcd milvus-minio milvus-standalone
 ```
 
 ---
 
-### 问题 8: 数据统计不准确
+### Issue 8: Data Statistics Inaccurate
 
-**症状：** 首页显示的新闻数和实际不符
+**Symptom:** Homepage shows news count doesn't match actual
 
-**解决方法：**
+**Solution:**
 
 ```bash
-# 使用重置脚本清空数据重新开始
+# Use reset script to clear data and start fresh
 cd FinnewsHunter
 ./reset_all_data.sh
 ```
 
 ---
 
-### 常用调试命令
+### Common Debugging Commands
 
 ```bash
 cd FinnewsHunter
 
-# 查看所有容器状态
+# View all container status
 docker compose -f deploy/docker-compose.dev.yml ps
 
-# 查看某个服务的完整日志
+# View complete logs for a service
 docker compose -f deploy/docker-compose.dev.yml logs celery-worker --tail=500
 
-# 进入容器调试
+# Enter container for debugging
 docker exec -it finnews_celery_worker bash
 
-# 查看数据库连接
+# View database connection
 docker exec finnews_postgres psql -U finnews -d finnews_db -c "\conninfo"
 
-# 查看Redis连接
+# View Redis connection
 docker exec finnews_redis redis-cli INFO
 
-# 测试网络连通性
+# Test network connectivity
 docker exec finnews_celery_worker ping -c 3 postgres
 ```
 
 ---
 
-## ⚡ 快速参考（常用命令）
+## ⚡ Quick Reference (Common Commands)
 
-### 项目目录
+### Project Directory
 
 ```bash
 cd FinnewsHunter
 ```
 
-### 一键操作
+### One-Click Operations
 
 ```bash
-# 启动所有服务
+# Start all services
 docker compose -f deploy/docker-compose.dev.yml up -d
 
-# 停止所有服务
+# Stop all services
 docker compose -f deploy/docker-compose.dev.yml down
 
-# 重启Celery（代码更新后）
+# Restart Celery (after code updates)
 docker compose -f deploy/docker-compose.dev.yml restart celery-worker celery-beat
 
-# 清空所有数据重新开始
+# Clear all data and start fresh
 ./reset_all_data.sh
 ```
 
-### 查看状态
+### View Status
 
 ```bash
-# 服务状态
+# Service status
 docker compose -f deploy/docker-compose.dev.yml ps
 
-# 新闻数量
+# News count
 docker exec finnews_postgres psql -U finnews -d finnews_db -c "SELECT source, COUNT(*) FROM news GROUP BY source;"
 
-# 任务数量
+# Task count
 docker exec finnews_postgres psql -U finnews -d finnews_db -c "SELECT status, COUNT(*) FROM crawl_tasks GROUP BY status;"
 
-# Redis缓存
+# Redis cache
 docker exec finnews_redis redis-cli DBSIZE
 ```
 
-### 查看日志
+### View Logs
 
 ```bash
-# Celery Beat（定时调度）
+# Celery Beat (scheduled dispatch)
 docker compose -f deploy/docker-compose.dev.yml logs -f celery-beat
 
-# Celery Worker（任务执行）
+# Celery Worker (task execution)
 docker compose -f deploy/docker-compose.dev.yml logs -f celery-worker
 
 # PostgreSQL
 docker compose -f deploy/docker-compose.dev.yml logs -f postgres
 
-# 所有服务
+# All services
 docker compose -f deploy/docker-compose.dev.yml logs -f
 ```
 
-### 直接访问
+### Direct Access
 
-- **前端**: http://localhost:3000
-- **后端API**: http://localhost:8000
-- **API文档**: http://localhost:8000/docs
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **API Documentation**: http://localhost:8000/docs
 
 ---
 
-## 📊 数据库结构
+## 📊 Database Structure
 
-### News（新闻表）
+### News Table
 - id, title, content, url, source
 - publish_time, stock_codes
 - sentiment_score, is_embedded
 
-### Analysis（分析表）
+### Analysis Table
 - id, news_id, agent_name
 - sentiment, sentiment_score, confidence
 - analysis_result, structured_data
 
-### Stock（股票表）
+### Stock Table
 - id, code, name, industry, market
 
 ---
 
-## 🛠️ 开发指南
+## 🛠️ Development Guide
 
-### 添加新的爬虫
+### Add New Crawler
 
-1. 继承 `BaseCrawler` 类
-2. 实现 `crawl()` 方法
-3. 注册到 `tools/__init__.py`
+1. Inherit `BaseCrawler` class
+2. Implement `crawl()` method
+3. Register in `tools/__init__.py`
 
-示例：
+Example:
 ```python
 # backend/app/tools/custom_crawler.py
 from .crawler_base import BaseCrawler
@@ -1166,51 +1170,51 @@ class CustomCrawlerTool(BaseCrawler):
     name = "custom_crawler"
     
     def crawl(self, start_page, end_page):
-        # 实现爬取逻辑
+        # Implement crawling logic
         pass
 ```
 
-### 使用增强版爬虫（可选）
+### Use Enhanced Crawler (Optional)
 
-对于需要 JS 渲染或智能内容提取的场景，可使用增强版爬虫：
+For scenarios requiring JS rendering or intelligent content extraction, use enhanced crawler:
 
 ```python
 from app.tools.crawler_enhanced import crawl_url, EnhancedCrawler
 
-# 快速爬取单个 URL
+# Quick crawl single URL
 article = crawl_url("https://finance.sina.com.cn/xxx", engine='auto')
 print(article.to_markdown())
 
-# 获取 LLM 消息格式（多模态）
+# Get LLM message format (multimodal)
 llm_messages = article.to_llm_message()
 
-# 批量爬取（带缓存）
+# Batch crawl (with cache)
 crawler = EnhancedCrawler(use_cache=True)
 articles = crawler.crawl_batch(urls, delay=1.0)
 ```
 
-**支持的引擎：**
-- `requests`: 基础 HTTP 请求（默认）
-- `playwright`: JS 渲染（需安装 `playwright install chromium`）
-- `jina`: Jina Reader API（需配置 `JINA_API_KEY`）
-- `auto`: 自动选择最佳引擎
+**Supported Engines:**
+- `requests`: Basic HTTP requests (default)
+- `playwright`: JS rendering (requires `playwright install chromium`)
+- `jina`: Jina Reader API (requires `JINA_API_KEY` configuration)
+- `auto`: Automatically select best engine
 
-**安装可选依赖：**
+**Install Optional Dependencies:**
 
 ```bash
 pip install markdownify readabilipy playwright
-playwright install chromium  # 可选，用于 JS 渲染
+playwright install chromium  # Optional, for JS rendering
 ```
 
 ---
 
-### 添加新的智能体
+### Add New Agent
 
-1. 继承 `Agent` 类
-2. 定义 role、goal、backstory
-3. 实现业务方法
+1. Inherit `Agent` class
+2. Define role, goal, backstory
+3. Implement business methods
 
-示例：
+Example:
 ```python
 # backend/app/agents/risk_analyst.py
 from agenticx import Agent
@@ -1219,15 +1223,15 @@ class RiskAnalystAgent(Agent):
     def __init__(self, llm_provider):
         super().__init__(
             name="RiskAnalyst",
-            role="风险分析师",
-            goal="评估投资风险",
+            role="Risk Analyst",
+            goal="Assess investment risks",
             llm_provider=llm_provider
         )
 ```
 
 ---
 
-### 使用 AgenticX 组件
+### Using AgenticX Components
 
 FinnewsHunter deeply integrates AgenticX framework core components to avoid reinventing the wheel:
 
@@ -1319,157 +1323,156 @@ async def analyze_news(news_id: int, text: str):
 
 ---
 
-## 多智能体辩论架构
+## Multi-Agent Debate Architecture
 
-FinnewsHunter 的核心特色是 **多空辩论机制**，通过多个专业智能体的协作与对抗，深度挖掘个股的投资价值和风险。
+FinnewsHunter's core feature is the **bull-bear debate mechanism**, through collaboration and confrontation of multiple professional agents, deeply mining investment value and risks of individual stocks.
 
-### 核心参与角色
+### Core Participants
 
-| 智能体 | 角色定位 | 核心职责 |
-|--------|----------|----------|
-| **BullResearcher** | 看多研究员 | 挖掘增长潜力、核心利好、估值优势 |
-| **BearResearcher** | 看空研究员 | 识别下行风险、负面催化剂、反驳乐观预期 |
-| **SearchAnalyst** | 搜索分析师 | 动态获取数据（AkShare/BochaAI/浏览器搜索） |
-| **InvestmentManager** | 投资经理 | 主持辩论、评估论点质量、做出最终决策 |
+| Agent | Role | Core Responsibilities |
+|-------|------|---------------------|
+| **BullResearcher** | Bull Researcher | Mine growth potential, core positives, valuation advantages |
+| **BearResearcher** | Bear Researcher | Identify downside risks, negative catalysts, refute optimistic expectations |
+| **SearchAnalyst** | Search Analyst | Dynamically acquire data (AkShare/BochaAI/browser search) |
+| **InvestmentManager** | Investment Manager | Host debate, evaluate argument quality, make final decisions |
 
-### 辩论数据流架构
+### Debate Data Flow Architecture
 
 ```mermaid
 graph TD
-    subgraph 辩论启动
-        Manager[投资经理] -->|开场陈述| Orchestrator[辩论编排器]
+    subgraph Debate Initiation
+        Manager[Investment Manager] -->|Opening Statement| Orchestrator[Debate Orchestrator]
     end
     
-    subgraph 多轮辩论
-        Orchestrator -->|第N轮| Bull[看多研究员]
-        Bull -->|发言 + 数据请求| Orchestrator
-        Orchestrator -->|触发搜索| Searcher[搜索分析师]
+    subgraph Multi-Round Debate
+        Orchestrator -->|Round N| Bull[Bull Researcher]
+        Bull -->|Statement + Data Request| Orchestrator
+        Orchestrator -->|Trigger Search| Searcher[Search Analyst]
         
-        Searcher -->|财务数据| AkShare[AkShare]
-        Searcher -->|实时新闻| BochaAI[BochaAI]
-        Searcher -->|网页搜索| Browser[浏览器引擎]
+        Searcher -->|Financial Data| AkShare[AkShare]
+        Searcher -->|Real-time News| BochaAI[BochaAI]
+        Searcher -->|Web Search| Browser[Browser Engine]
         
-        AkShare --> Context[更新上下文]
+        AkShare --> Context[Update Context]
         BochaAI --> Context
         Browser --> Context
         
         Context --> Orchestrator
-        Orchestrator -->|第N轮| Bear[看空研究员]
-        Bear -->|发言 + 数据请求| Orchestrator
+        Orchestrator -->|Round N| Bear[Bear Researcher]
+        Bear -->|Statement + Data Request| Orchestrator
     end
     
-    subgraph 最终决策
-        Orchestrator -->|智能数据补充| Searcher
-        Orchestrator -->|综合判断| Manager
-        Manager -->|投资评级| Result[最终报告]
+    subgraph Final Decision
+        Orchestrator -->|Intelligent Data Supplement| Searcher
+        Orchestrator -->|Comprehensive Judgment| Manager
+        Manager -->|Investment Rating| Result[Final Report]
     end
 ```
 
-### 动态搜索机制
+### Dynamic Search Mechanism
 
-辩论过程中，智能体可以通过特定格式请求额外数据：
+During debate, agents can request additional data through specific format:
 
 ```
-[SEARCH: "最近的毛利率数据" source:akshare]   -- 从 AkShare 获取财务数据
-[SEARCH: "行业竞争格局分析" source:bochaai]   -- 从 BochaAI 搜索新闻
-[SEARCH: "近期资金流向" source:akshare]       -- 获取资金流向
-[SEARCH: "竞品对比分析"]                       -- 自动选择最佳数据源
+[SEARCH: "Recent gross margin data" source:akshare]   -- Get financial data from AkShare
+[SEARCH: "Industry competition analysis" source:bochaai]   -- Search news from BochaAI
+[SEARCH: "Recent fund flows" source:akshare]       -- Get fund flows
+[SEARCH: "Competitor comparison analysis"]                       -- Automatically select best data source
 ```
 
-**支持的数据源：**
-- **AkShare**: 财务指标、K线行情、资金流向、机构持仓
-- **BochaAI**: 实时新闻搜索、分析师报告
-- **浏览器搜索**: 百度资讯、搜狗、360等多引擎搜索
-- **知识库**: 历史新闻和分析数据
+**Supported Data Sources:**
+- **AkShare**: Financial indicators, K-line market data, fund flows, institutional holdings
+- **BochaAI**: Real-time news search, analyst reports
+- **Browser Search**: Baidu News, Sogou, 360 and other multi-engine search
+- **Knowledge Base**: Historical news and analysis data
 
 ---
 
-## 📈 路线图
+## 📈 Roadmap
 
-### Phase 1: MVP（已完成） ✅
-- [x] 项目基础设施
-- [x] 数据库模型
-- [x] 爬虫工具重构（10个新闻源）
-- [x] LLM 服务集成
-- [x] NewsAnalyst 智能体
-- [x] FastAPI 路由
-- [x] React + TypeScript 前端
+### Phase 1: MVP (Completed) ✅
+- [x] Project infrastructure
+- [x] Database models
+- [x] Crawler tool refactoring (10 news sources)
+- [x] LLM service integration
+- [x] NewsAnalyst agent
+- [x] FastAPI routes
+- [x] React + TypeScript frontend
 
-### Phase 1.5: 多厂商 LLM 支持（已完成） ✅
-- [x] 支持 5 大 LLM 厂商（百炼、OpenAI、DeepSeek、Kimi、智谱）
-- [x] 前端动态模型切换
-- [x] LLM 配置 API（`/api/v1/llm/config`）
-- [x] 新闻详情抽屉（完整内容 + AI 分析）
-- [x] 实时搜索功能（多维度 + 关键词高亮）
-- [x] Markdown 渲染（支持表格、代码块）
-- [x] 一键复制分析报告
+### Phase 1.5: Multi-Provider LLM Support (Completed) ✅
+- [x] Support 5 major LLM providers (Bailian, OpenAI, DeepSeek, Kimi, Zhipu)
+- [x] Frontend dynamic model switching
+- [x] LLM config API (`/api/v1/llm/config`)
+- [x] News detail drawer (complete content + AI analysis)
+- [x] Real-time search functionality (multi-dimensional + keyword highlighting)
+- [x] Markdown rendering (supports tables, code blocks)
+- [x] One-click copy analysis report
 
-### Phase 1.6: 股票分析与增强爬虫（已完成） ✅
-- [x] 股票 K 线图（集成 akshare + klinecharts）
-- [x] 多周期支持（日K/60分/30分/15分/5分/1分）
-- [x] 股票搜索（代码/名称模糊查询，预加载 5000+ A股）
-- [x] 增强版爬虫模块
-  - [x] 多引擎支持（Requests/Playwright/Jina）
-  - [x] 智能内容提取（readabilipy + 启发式算法）
-  - [x] 内容质量评估与自动重试
-  - [x] 缓存机制和统一 Article 模型
+### Phase 1.6: Stock Analysis & Enhanced Crawler (Completed) ✅
+- [x] Stock K-line charts (integrated akshare + klinecharts)
+- [x] Multi-period support (Daily K/60min/30min/15min/5min/1min)
+- [x] Stock search (code/name fuzzy query, pre-loaded 5000+ A-shares)
+- [x] Enhanced crawler module
+  - [x] Multi-engine support (Requests/Playwright/Jina)
+  - [x] Intelligent content extraction (readabilipy + heuristic algorithms)
+  - [x] Content quality assessment and auto-retry
+  - [x] Cache mechanism and unified Article model
 
-### Phase 1.7: AgenticX 深度集成与批量操作（已完成） ✅
-- [x] 迁移到 AgenticX BailianEmbeddingProvider（移除冗余批量处理逻辑）
-- [x] 迁移到 AgenticX MilvusStorage（简化存储封装，移除重复代码）
-- [x] 异步向量化接口（aembed_text/aembed_batch），避免事件循环冲突
-- [x] 后台异步向量化，不阻塞分析流程
-- [x] Milvus 统计信息优化（查询计数回退机制）
-- [x] 前端批量选择功能（复选框 + Shift 范围选择）
-- [x] 批量删除新闻功能
-- [x] 批量分析新闻功能（带进度显示和结果统计）
-- [x] Docker Compose 优化（Celery 镜像构建，提升启动性能）
+### Phase 1.7: AgenticX Deep Integration & Batch Operations (Completed) ✅
+- [x] Migrated to AgenticX BailianEmbeddingProvider (removed redundant batch processing logic)
+- [x] Migrated to AgenticX MilvusStorage (simplified storage wrapper, removed duplicate code)
+- [x] Async vectorization interfaces (aembed_text/aembed_batch), avoid event loop conflicts
+- [x] Background async vectorization, non-blocking analysis flow
+- [x] Milvus statistics optimization (query count fallback mechanism)
+- [x] Frontend batch selection functionality (checkboxes + Shift range selection)
+- [x] Batch delete news functionality
+- [x] Batch analyze news functionality (with progress display and result statistics)
+- [x] Docker Compose optimization (Celery image build, improved startup performance)
 
-### Phase 2: 多智能体辩论（已完成） ✅
-- [x] BullResearcher & BearResearcher 智能体
-- [x] SearchAnalyst 搜索分析师（动态数据获取）
-- [x] InvestmentManager 投资经理决策
-- [x] 辩论编排器（DebateOrchestrator）
-- [x] 动态搜索机制（辩论中按需获取数据）
-- [x] 三种辩论模式：并行分析、实时辩论、快速分析
-- [ ] 实时 WebSocket 推送（进行中）
-- [ ] 智能体执行轨迹可视化（进行中）
+### Phase 2: Multi-Agent Debate (Completed) ✅
+- [x] BullResearcher & BearResearcher agents
+- [x] SearchAnalyst search analyst (dynamic data acquisition)
+- [x] InvestmentManager investment manager decision
+- [x] Debate orchestrator (DebateOrchestrator)
+- [x] Dynamic search mechanism (on-demand data acquisition during debate)
+- [x] Three debate modes: parallel analysis, real-time debate, quick analysis
+- [ ] Real-time WebSocket push (in progress)
+- [ ] Agent execution trace visualization (in progress)
 
-### Phase 3: 知识增强（计划中）
-- [ ] 金融知识图谱（Neo4j）
-- [ ] 智能体记忆系统
-- [ ] GraphRetriever 图检索
+### Phase 3: Knowledge Enhancement (Planned)
+- [ ] Financial knowledge graph (Neo4j)
+- [ ] Agent memory system
+- [ ] GraphRetriever graph retrieval
 
-### Phase 4: 自我进化（计划中）
-- [ ] ACE 框架集成
-- [ ] 投资策略 Playbook
-- [ ] 决策效果评估与学习
-
----
-
-## 📄 许可证
-
-本项目遵循 AgenticX 的许可证。
+### Phase 4: Self-Evolution (Planned)
+- [ ] ACE framework integration
+- [ ] Investment strategy Playbook
+- [ ] Decision effectiveness evaluation and learning
 
 ---
 
-## 🙏 致谢
+## 📄 License
 
-- [AgenticX](https://github.com/yourusername/AgenticX) - 多智能体框架
-- [FastAPI](https://fastapi.tiangolo.com/) - Web 框架
-- [Milvus](https://milvus.io/) - 向量数据库
-- [阿里云百炼](https://dashscope.console.aliyun.com/) - LLM 服务
-- [Shadcn UI](https://ui.shadcn.com/) - 前端组件库
+This project follows the AgenticX license.
+
+---
+
+## 🙏 Acknowledgments
+
+- [AgenticX](https://github.com/yourusername/AgenticX) - Multi-agent framework
+- [FastAPI](https://fastapi.tiangolo.com/) - Web framework
+- [Milvus](https://milvus.io/) - Vector database
+- [Alibaba Cloud Bailian](https://dashscope.console.aliyun.com/) - LLM service
+- [Shadcn UI](https://ui.shadcn.com/) - Frontend component library
 
 ---
 
 ## ⭐ Star History
 
-如果你觉得这个项目对你有帮助，欢迎给个 Star ⭐️！
+If you find this project helpful, please give it a Star ⭐️!
 
 [![Star History Chart](https://api.star-history.com/svg?repos=DemonDamon/FinnewsHunter&type=Date)](https://star-history.com/#DemonDamon/FinnewsHunter&Date)
 
 ---
 
 **Built with ❤️ using AgenticX**
-
