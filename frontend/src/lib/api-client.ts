@@ -502,7 +502,7 @@ export const knowledgeGraphApi = {
  */
 // SSE 事件类型
 export interface SSEDebateEvent {
-  type: 'phase' | 'agent' | 'progress' | 'result' | 'error' | 'complete'
+  type: 'phase' | 'agent' | 'progress' | 'result' | 'error' | 'complete' | 'task_plan'
   data: {
     phase?: string
     message?: string
