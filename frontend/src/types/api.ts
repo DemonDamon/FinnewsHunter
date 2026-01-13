@@ -161,6 +161,7 @@ export interface DebateRequest {
   provider?: string
   model?: string
   mode?: 'parallel' | 'realtime_debate' | 'quick_analysis'  // 辩论模式
+  language?: 'zh' | 'en'  // 语言设置，影响AI回答的语言
 }
 
 export interface AgentAnalysis {
