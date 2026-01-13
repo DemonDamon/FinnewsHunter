@@ -1,5 +1,9 @@
 # FinnewsHunter：金融新闻驱动的多智能体投资决策平台
 
+<div align="right">
+  <a href="README_zn.md">中文版</a> | <a href="README.md">English</a>
+</div>
+
 <div align="center">
   <img src="assets/images/FINNEWS_HUNTER_LOGO.png" alt="FinnewsHunter Logo" width="450">
 </div>
