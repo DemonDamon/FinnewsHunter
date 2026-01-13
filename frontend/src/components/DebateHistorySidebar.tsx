@@ -15,6 +15,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { DebateSession } from '@/store/useDebateStore'
+import { useGlobalI18n } from '@/store/useLanguageStore'
 
 interface DebateHistorySidebarProps {
   sessions: DebateSession[]
@@ -26,63 +27,63 @@ interface DebateHistorySidebarProps {
   onToggle: () => void
 }
 
-// 获取模式图标和样式
-const getModeInfo = (mode: string) => {
+// 获取模式图标和样式（支持国际化）
+const getModeInfo = (mode: string, t: any) => {
   switch (mode) {
     case 'parallel':
       return {
         icon: <Zap className="w-3.5 h-3.5" />,
-        label: '并行分析',
+        label: t.stockDetail.parallelAnalysis,
         color: 'text-amber-600',
         bgColor: 'bg-amber-50'
       }
     case 'realtime_debate':
       return {
         icon: <Swords className="w-3.5 h-3.5" />,
-        label: '实时辩论',
+        label: t.stockDetail.realtimeDebate,
         color: 'text-purple-600',
         bgColor: 'bg-purple-50'
       }
     case 'quick_analysis':
       return {
         icon: <Activity className="w-3.5 h-3.5" />,
-        label: '快速分析',
+        label: t.stockDetail.quickAnalysis || 'Quick Analysis',
         color: 'text-blue-600',
         bgColor: 'bg-blue-50'
       }
     default:
       return {
         icon: <MessageSquare className="w-3.5 h-3.5" />,
-        label: '辩论',
+        label: t.stockDetail.bullBear || 'Debate',
         color: 'text-gray-600',
         bgColor: 'bg-gray-50'
       }
   }
 }
 
-// 格式化时间
-const formatTime = (date: Date) => {
+// 格式化时间（支持国际化）
+const formatTime = (date: Date, t: any) => {
   const now = new Date()
   const diff = now.getTime() - date.getTime()
   const minutes = Math.floor(diff / 60000)
   const hours = Math.floor(diff / 3600000)
   const days = Math.floor(diff / 86400000)
 
-  if (minutes < 1) return '刚刚'
-  if (minutes < 60) return `${minutes}分钟前`
-  if (hours < 24) return `${hours}小时前`
-  if (days < 7) return `${days}天前`
+  if (minutes < 1) return t.debateHistory.justNow
+  if (minutes < 60) return `${minutes}${t.debateHistory.minutesAgo}`
+  if (hours < 24) return `${hours}${t.debateHistory.hoursAgo}`
+  if (days < 7) return `${days}${t.debateHistory.daysAgo}`
   
-  return date.toLocaleDateString('zh-CN', {
+  return date.toLocaleDateString(t.debateHistory.justNow === '刚刚' ? 'zh-CN' : 'en-US', {
     month: 'short',
     day: 'numeric'
   })
 }
 
-// 会话预览内容
-const getSessionPreview = (session: DebateSession) => {
+// 会话预览内容（支持国际化）
+const getSessionPreview = (session: DebateSession, t: any) => {
   if (session.messages.length === 0) {
-    return '尚无消息'
+    return t.debateHistory.noMessages
   }
   
   // 获取最后一条非系统消息
@@ -91,19 +92,12 @@ const getSessionPreview = (session: DebateSession) => {
     .find(m => m.role !== 'system')
   
   if (lastMessage) {
-    const roleNames: Record<string, string> = {
-      user: '我',
-      bull: '多方',
-      bear: '空方',
-      manager: '经理',
-      data_collector: '数据专员'
-    }
-    const roleName = roleNames[lastMessage.role] || lastMessage.role
+    const roleName = t.debateHistory.roleNames[lastMessage.role] || lastMessage.role
     const content = lastMessage.content.slice(0, 40)
     return `${roleName}: ${content}${lastMessage.content.length > 40 ? '...' : ''}`
   }
   
-  return `${session.messages.length} 条消息`
+  return `${session.messages.length} ${t.debateHistory.messages}`
 }
 
 const DebateHistorySidebar: React.FC<DebateHistorySidebarProps> = ({
@@ -115,6 +109,7 @@ const DebateHistorySidebar: React.FC<DebateHistorySidebarProps> = ({
   isOpen,
   onToggle
 }) => {
+  const t = useGlobalI18n()
   const [searchTerm, setSearchTerm] = useState('')
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
@@ -158,13 +153,13 @@ const DebateHistorySidebar: React.FC<DebateHistorySidebarProps> = ({
       }
     })
 
-    if (todaySessions.length > 0) groups.push({ label: '今天', sessions: todaySessions })
-    if (yesterdaySessions.length > 0) groups.push({ label: '昨天', sessions: yesterdaySessions })
-    if (thisWeekSessions.length > 0) groups.push({ label: '本周', sessions: thisWeekSessions })
-    if (olderSessions.length > 0) groups.push({ label: '更早', sessions: olderSessions })
+    if (todaySessions.length > 0) groups.push({ label: t.debateHistory.today, sessions: todaySessions })
+    if (yesterdaySessions.length > 0) groups.push({ label: t.debateHistory.yesterday, sessions: yesterdaySessions })
+    if (thisWeekSessions.length > 0) groups.push({ label: t.debateHistory.thisWeek, sessions: thisWeekSessions })
+    if (olderSessions.length > 0) groups.push({ label: t.debateHistory.older, sessions: olderSessions })
 
     return groups
-  }, [filteredSessions])
+  }, [filteredSessions, t])
 
   return (
     <>
@@ -173,12 +168,12 @@ const DebateHistorySidebar: React.FC<DebateHistorySidebarProps> = ({
         <button
           onClick={onToggle}
           className="fixed right-0 top-1/2 -translate-y-1/2 z-40 bg-white shadow-lg rounded-l-lg px-2 py-4 border border-r-0 border-gray-200 hover:bg-gray-50 transition-colors group"
-          title="展开历史记录"
+          title={t.debateHistory.expandHistory}
         >
           <div className="flex flex-col items-center gap-2">
             <History className="w-5 h-5 text-gray-600 group-hover:text-indigo-600" />
             <span className="text-xs font-medium text-gray-600 writing-vertical group-hover:text-indigo-600">
-              历史
+              {t.debateHistory.history}
             </span>
             <span className="text-xs bg-indigo-100 text-indigo-600 rounded-full w-5 h-5 flex items-center justify-center">
               {sessions.length}
@@ -202,8 +197,8 @@ const DebateHistorySidebar: React.FC<DebateHistorySidebarProps> = ({
               <History className="w-4 h-4 text-indigo-600" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900 text-sm">历史记录</h3>
-              <p className="text-xs text-gray-500">{sessions.length} 个会话</p>
+              <h3 className="font-semibold text-gray-900 text-sm">{t.debateHistory.history}</h3>
+              <p className="text-xs text-gray-500">{sessions.length} {t.stockDetail.session}</p>
             </div>
           </div>
           <Button
@@ -224,7 +219,7 @@ const DebateHistorySidebar: React.FC<DebateHistorySidebarProps> = ({
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="搜索历史记录..."
+              placeholder={t.debateHistory.searchPlaceholder}
               className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
             />
           </div>
@@ -236,10 +231,10 @@ const DebateHistorySidebar: React.FC<DebateHistorySidebarProps> = ({
             <div className="flex flex-col items-center justify-center h-full text-gray-400 px-4">
               <History className="w-12 h-12 mb-3 opacity-50" />
               <p className="text-sm text-center">
-                {searchTerm ? '未找到匹配的记录' : '暂无历史记录'}
+                {searchTerm ? t.debateHistory.noMatchingRecords : t.debateHistory.noHistoryYet}
               </p>
               <p className="text-xs mt-1 text-center">
-                {searchTerm ? '尝试其他关键词' : '开始辩论后会自动保存'}
+                {searchTerm ? t.debateHistory.tryOtherKeywords : t.debateHistory.historyAutoSave}
               </p>
             </div>
           ) : (
@@ -251,7 +246,7 @@ const DebateHistorySidebar: React.FC<DebateHistorySidebarProps> = ({
                     {group.label}
                   </div>
                   {group.sessions.map(session => {
-                    const modeInfo = getModeInfo(session.mode)
+                    const modeInfo = getModeInfo(session.mode, t)
                     const isActive = session.id === currentSessionId
                     const isHovered = session.id === hoveredId
                     
@@ -297,7 +292,7 @@ const DebateHistorySidebar: React.FC<DebateHistorySidebarProps> = ({
                             </div>
                             
                             <p className="text-xs text-gray-500 mt-0.5 truncate">
-                              {getSessionPreview(session)}
+                              {getSessionPreview(session, t)}
                             </p>
                             
                             <div className="flex items-center gap-2 mt-1.5 text-[10px] text-gray-400">
@@ -308,7 +303,7 @@ const DebateHistorySidebar: React.FC<DebateHistorySidebarProps> = ({
                               <span>·</span>
                               <span className="flex items-center gap-1">
                                 <Clock className="w-3 h-3" />
-                                {formatTime(new Date(session.updatedAt))}
+                                {formatTime(new Date(session.updatedAt), t)}
                               </span>
                             </div>
                           </div>
@@ -326,7 +321,7 @@ const DebateHistorySidebar: React.FC<DebateHistorySidebarProps> = ({
                                 e.stopPropagation()
                                 onLoadSession(session)
                               }}
-                              title="继续辩论"
+                              title={t.debateHistory.continueDebate}
                             >
                               <PlayCircle className="w-3.5 h-3.5" />
                             </Button>
@@ -337,11 +332,11 @@ const DebateHistorySidebar: React.FC<DebateHistorySidebarProps> = ({
                                 className="h-6 w-6 text-rose-400 hover:text-rose-500 hover:bg-rose-50"
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  if (confirm('确定要删除这条记录吗？')) {
+                                  if (confirm(t.stockDetail.deleteSessionConfirm)) {
                                     onDeleteSession(session.id)
                                   }
                                 }}
-                                title="删除"
+                                title={t.debateHistory.delete}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </Button>
@@ -369,14 +364,14 @@ const DebateHistorySidebar: React.FC<DebateHistorySidebarProps> = ({
               variant="outline"
               size="sm"
               onClick={() => {
-                if (confirm('确定要清除所有历史记录吗？此操作不可恢复！')) {
+                if (confirm(t.stockDetail.clearAllHistoryConfirm)) {
                   onClearHistory()
                 }
               }}
               className="w-full text-rose-500 border-rose-200 hover:bg-rose-50 hover:text-rose-600"
             >
               <Trash2 className="w-3.5 h-3.5 mr-2" />
-              清除所有记录
+              {t.stockDetail.clearAllRecords}
             </Button>
           </div>
         )}
