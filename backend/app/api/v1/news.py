@@ -50,6 +50,18 @@ class CrawlResponse(BaseModel):
     source: str
 
 
+class BatchDeleteRequest(BaseModel):
+    """批量删除请求模型"""
+    news_ids: List[int] = Field(..., description="要删除的新闻ID列表")
+
+
+class BatchDeleteResponse(BaseModel):
+    """批量删除响应模型"""
+    success: bool
+    message: str
+    deleted_count: int
+
+
 # 后台任务：爬取并保存新闻（使用同步方式）
 def crawl_and_save_news_sync(
     source: str,
@@ -291,6 +303,57 @@ async def get_news_detail(
         raise
     except Exception as e:
         logger.error(f"Failed to get news {news_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/batch/delete", response_model=BatchDeleteResponse)
+async def batch_delete_news(
+    request: BatchDeleteRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    批量删除新闻
+    
+    - **news_ids**: 要删除的新闻ID列表
+    """
+    try:
+        if not request.news_ids:
+            raise HTTPException(status_code=400, detail="news_ids cannot be empty")
+        
+        # 查询要删除的新闻
+        result = await db.execute(
+            select(News).where(News.id.in_(request.news_ids))
+        )
+        news_list = result.scalars().all()
+        
+        deleted_count = len(news_list)
+        
+        if deleted_count == 0:
+            return BatchDeleteResponse(
+                success=True,
+                message="No news found to delete",
+                deleted_count=0
+            )
+        
+        # 批量删除
+        for news in news_list:
+            await db.delete(news)
+        
+        await db.commit()
+        
+        logger.info(f"Batch deleted {deleted_count} news items: {request.news_ids}")
+        
+        return BatchDeleteResponse(
+            success=True,
+            message=f"Successfully deleted {deleted_count} news items",
+            deleted_count=deleted_count
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to batch delete news: {e}")
+        await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 

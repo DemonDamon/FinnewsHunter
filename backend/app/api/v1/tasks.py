@@ -11,7 +11,7 @@ from datetime import datetime
 
 from ...core.database import get_db
 from ...models.crawl_task import CrawlTask, CrawlMode, TaskStatus
-from ...tasks.crawl_tasks import cold_start_crawl_task
+from ...tasks.crawl_tasks import cold_start_crawl_task, realtime_crawl_task
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +54,19 @@ class ColdStartResponse(BaseModel):
     success: bool
     message: str
     task_id: Optional[int] = None
+    celery_task_id: Optional[str] = None
+
+
+class RealtimeCrawlRequest(BaseModel):
+    """实时爬取请求模型"""
+    source: str = Field(description="新闻源（sina, tencent, eeo等）")
+    force_refresh: bool = Field(default=False, description="是否强制刷新（跳过缓存）")
+
+
+class RealtimeCrawlResponse(BaseModel):
+    """实时爬取响应模型"""
+    success: bool
+    message: str
     celery_task_id: Optional[str] = None
 
 
@@ -156,6 +169,43 @@ async def trigger_cold_start(
     
     except Exception as e:
         logger.error(f"Failed to trigger cold start: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/realtime", response_model=RealtimeCrawlResponse)
+async def trigger_realtime_crawl(
+    request: RealtimeCrawlRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    手动触发实时爬取任务
+    
+    - **source**: 新闻源（sina, tencent, eeo, jwview等）
+    - **force_refresh**: 是否强制刷新（跳过缓存）
+    
+    示例:
+    - POST /api/v1/tasks/realtime {"source": "tencent", "force_refresh": true}
+    - POST /api/v1/tasks/realtime {"source": "eeo"}
+    """
+    try:
+        logger.info(
+            f"手动触发实时爬取任务: {request.source}, "
+            f"force_refresh={request.force_refresh}"
+        )
+        
+        # 触发 Celery 任务
+        celery_task = realtime_crawl_task.apply_async(
+            args=(request.source, request.force_refresh)
+        )
+        
+        return RealtimeCrawlResponse(
+            success=True,
+            message=f"实时爬取任务已启动: {request.source}",
+            celery_task_id=celery_task.id
+        )
+    
+    except Exception as e:
+        logger.error(f"Failed to trigger realtime crawl: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
