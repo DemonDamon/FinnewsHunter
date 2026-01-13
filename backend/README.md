@@ -1,113 +1,122 @@
 # FinnewsHunter Backend
 
-基于 AgenticX 框架的金融新闻智能分析系统后端服务。
+Backend service for the financial news intelligent analysis system based on the AgenticX framework.
 
-## 📚 文档导航
+## Documentation Navigation
 
-### 快速开始
-- **[QUICKSTART.md](../QUICKSTART.md)** - 快速启动指南（推荐新手阅读）
+### Quick Start
+- **[QUICKSTART.md](../QUICKSTART.md)** - Quick start guide (recommended for beginners)
 
-### 配置指南
-- **[CONFIG_GUIDE.md](CONFIG_GUIDE.md)** - **统一配置指南**（推荐首选）
-  - 一个配置文件支持所有 LLM 服务商
-  - 快速切换 OpenAI / 百炼 / 代理
-  - 包含场景示例和工作原理
+### Configuration Guides
+- **[CONFIG_GUIDE.md](CONFIG_GUIDE.md)** - **Unified Configuration Guide** (recommended)
+  - Single configuration file supports all LLM providers
+  - Quick switching between OpenAI / Bailian / Proxy
+  - Includes scenario examples and working principles
   
-- **[env.example](env.example)** - 配置模板（包含所有场景的注释）
+- **[env.example](env.example)** - Configuration template (with comments for all scenarios)
 
-### 专项配置
-- **[BAILIAN_SETUP.md](BAILIAN_SETUP.md)** - 阿里云百炼详细配置（国内用户推荐）
-- **[API_PROXY_GUIDE.md](API_PROXY_GUIDE.md)** - API 代理配置详解
+### Specialized Configuration
+- **[BAILIAN_SETUP.md](BAILIAN_SETUP.md)** - Detailed Alibaba Cloud Bailian configuration (recommended for Chinese users)
+- **[API_PROXY_GUIDE.md](API_PROXY_GUIDE.md)** - API proxy configuration guide
 
 ---
 
-## 🚀 快速配置
+## Quick Configuration
 
-### 方法 1: 交互式脚本（推荐）
+### Method 1: Interactive Script (Recommended)
 
 ```bash
 chmod +x setup_env.sh
 ./setup_env.sh
 
-# 按提示选择：
-# 1) OpenAI 官方
-# 2) 阿里云百炼（推荐国内用户）
-# 3) 其他代理
-# 4) 手动配置
+# Follow the prompts to select:
+# 1) OpenAI Official
+# 2) Alibaba Cloud Bailian (recommended for Chinese users)
+# 3) Other Proxy
+# 4) Manual Configuration
 ```
 
-### 方法 2: 手动配置
+### Method 2: Manual Configuration
 
 ```bash
 cp env.example .env
-nano .env  # 根据注释选择配置方案
+nano .env  # Choose configuration scheme according to comments
 ```
 
 ---
 
-## 📦 主要功能
+## Main Features
 
-- **多智能体系统**：基于 AgenticX 框架
-  - NewsAnalyst：新闻分析智能体
-  - 更多智能体开发中...
+- **Multi-Agent System**: Based on AgenticX framework
+  - NewsAnalyst: News analysis agent
+  - More agents under development...
 
-- **数据采集**：
-  - 新浪财经爬虫
-  - 金融界爬虫
+- **Data Collection**:
+  - Sina Finance crawler
+  - JRJ Finance crawler
 
-- **存储系统**：
-  - PostgreSQL：关系数据存储
-  - Milvus：向量数据库
-  - Redis：缓存和任务队列
+- **Storage System**:
+  - PostgreSQL: Relational data storage
+  - Milvus: Vector database
+  - Redis: Cache and task queue
 
-- **LLM 支持**：
+- **LLM Support**:
   - OpenAI (GPT-3.5/GPT-4)
-  - 阿里云百炼（通义千问）
-  - 其他 OpenAI 兼容服务
+  - Alibaba Cloud Bailian (Qwen)
+  - Other OpenAI-compatible services
 
 ---
 
-## 🏗️ 项目结构
+## Project Structure
 
 ```
 backend/
 ├── app/
-│   ├── agents/          # 智能体定义
-│   ├── api/             # FastAPI 路由
-│   ├── core/            # 核心配置
-│   ├── models/          # 数据模型
-│   ├── services/        # 业务服务
-│   ├── storage/         # 存储封装
-│   └── tools/           # 爬虫和工具
-├── logs/                # 日志文件
-├── tests/               # 测试文件
-├── .env                 # 环境配置（从 env.example 复制）
-├── env.example          # 配置模板
-├── requirements.txt     # Python 依赖
-└── start.sh            # 启动脚本
+│   ├── agents/          # Agent definitions
+│   ├── api/             # FastAPI routes
+│   ├── core/            # Core configuration
+│   ├── models/          # Data models
+│   ├── services/        # Business services
+│   ├── storage/         # Storage wrappers
+│   └── tools/           # Crawlers and tools
+├── logs/                # Log files
+├── tests/               # Test files
+├── .env                 # Environment configuration (copy from env.example)
+├── env.example          # Configuration template
+├── requirements.txt     # Python dependencies
+└── start.sh            # Startup script
 ```
 
 ---
 
-## 🛠️ 开发指南
+## Development Guide
 
-### 启动开发环境
+### Start Development Environment
 
 ```bash
-# 1. 配置环境变量
+# 1. Configure environment variables
 ./setup_env.sh
 
-# 2. 启动服务（包括 Docker 容器）
+# 2. Start services (including Docker containers)
 ./start.sh
 ```
 
-### 测试导入
+### Utility Scripts
+
+The project provides some utility scripts located in the `tests/` directory:
 
 ```bash
-python test_imports.py
+# Check Milvus vector storage data
+python tests/check_milvus_data.py
+
+# Check news embedding status
+python tests/check_news_embedding_status.py
+
+# Manually vectorize a specific news item (for fixing unvectorized news)
+python tests/manual_vectorize.py <news_id>
 ```
 
-### 查看日志
+### View Logs
 
 ```bash
 tail -f logs/finnews.log
@@ -115,16 +124,16 @@ tail -f logs/finnews.log
 
 ---
 
-## 🔧 常用配置场景
+## Common Configuration Scenarios
 
-### OpenAI 官方
+### OpenAI Official
 ```bash
 LLM_MODEL=gpt-3.5-turbo
 OPENAI_API_KEY=sk-openai-key
 MILVUS_DIM=1536
 ```
 
-### 阿里云百炼（推荐国内）
+### Alibaba Cloud Bailian (Recommended for Chinese Users)
 ```bash
 LLM_MODEL=qwen-plus
 OPENAI_API_KEY=sk-bailian-key
@@ -132,7 +141,7 @@ OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 MILVUS_DIM=1024
 ```
 
-### OpenAI 代理
+### OpenAI Proxy
 ```bash
 LLM_MODEL=gpt-3.5-turbo
 OPENAI_API_KEY=sk-proxy-key
@@ -140,25 +149,21 @@ OPENAI_BASE_URL=https://your-proxy.com/v1
 MILVUS_DIM=1536
 ```
 
-详细说明见 **[CONFIG_GUIDE.md](CONFIG_GUIDE.md)**
+For detailed information, see **[CONFIG_GUIDE.md](CONFIG_GUIDE.md)**
 
 ---
 
-## 📝 API 文档
+## API Documentation
 
-启动服务后访问：
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
----
+### Troubleshooting
 
-## 🤝 贡献
+If the documentation page appears blank or keeps loading:
 
-欢迎提交 Issue 和 Pull Request！
-
----
-
-## 📄 许可
-
-MIT License
-
+1. **Check Browser Console**: Press F12 to open developer tools, check Console and Network tabs for errors
+2. **Try ReDoc**: If Swagger UI fails to load, try accessing ReDoc (uses a different CDN)
+3. **Clear Browser Cache**: Press `Ctrl+Shift+R` (Windows/Linux) or `Cmd+Shift+R` (Mac) to force refresh
+4. **Check Network Connection**: Documentation pages need to load JavaScript resources from CDN, ensure network connection is normal
+5. **Check Backend Service**: Ensure the backend service is running, verify by accessing http://localhost:8000/health
