@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -121,6 +121,11 @@ export default function NewsDetailDrawer({
     queryFn: () => newsApi.getNewsHtml(newsId!),
     enabled: !!newsId && open && showRawHtml,
   })
+
+  // 当切换到新新闻时，重置分析状态
+  useEffect(() => {
+    setAnalyzing(false)
+  }, [newsId])
 
   // 处理分享
   const handleShare = async () => {
