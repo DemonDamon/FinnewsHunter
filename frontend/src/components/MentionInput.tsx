@@ -12,6 +12,7 @@ import {
   X
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useGlobalI18n } from '@/store/useLanguageStore'
 
 // 可提及的目标类型
 export type MentionType = 'agent' | 'source' | 'stock'
@@ -115,11 +116,13 @@ const MentionInput: React.FC<MentionInputProps> = ({
   value,
   onChange,
   onSubmit,
-  placeholder = '输入消息，使用 @ 提及智能体或数据源...',
+  placeholder,
   disabled = false,
   className,
   stockOptions = []
 }) => {
+  const t = useGlobalI18n()
+  const defaultPlaceholder = placeholder || t.mentionInput.placeholder
   const [showPopup, setShowPopup] = useState(false)
   const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 })
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -161,12 +164,12 @@ const MentionInput: React.FC<MentionInputProps> = ({
     const stocks = filteredTargets.filter(t => t.type === 'stock')
     
     const groups: { label: string; items: MentionTarget[] }[] = []
-    if (agents.length > 0) groups.push({ label: '智能体', items: agents })
-    if (sources.length > 0) groups.push({ label: '数据源', items: sources })
-    if (stocks.length > 0) groups.push({ label: '股票', items: stocks.slice(0, 5) })
+    if (agents.length > 0) groups.push({ label: t.mentionInput.agents, items: agents })
+    if (sources.length > 0) groups.push({ label: t.mentionInput.sources, items: sources })
+    if (stocks.length > 0) groups.push({ label: t.mentionInput.stocks, items: stocks.slice(0, 5) })
     
     return groups
-  }, [filteredTargets])
+  }, [filteredTargets, t])
   
   // 扁平化用于键盘导航
   const flatTargets = useMemo(() => {
@@ -338,7 +341,7 @@ const MentionInput: React.FC<MentionInputProps> = ({
         value={value}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
-        placeholder={placeholder}
+            placeholder={defaultPlaceholder}
         disabled={disabled}
         className={cn(
           "w-full px-4 py-2 rounded-full bg-gray-50 border border-gray-200",
