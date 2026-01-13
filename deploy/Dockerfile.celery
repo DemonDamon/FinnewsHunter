@@ -1,0 +1,18 @@
+FROM python:3.11
+
+WORKDIR /app
+
+# 复制requirements文件和entrypoint脚本
+COPY backend/requirements.txt /app/requirements.txt
+COPY deploy/celery-entrypoint.sh /usr/local/bin/celery-entrypoint.sh
+
+# 安装依赖（构建时安装，用于生产环境）
+# 注意：开发环境使用 volumes 挂载会覆盖 /app，依赖会在 entrypoint 中重新安装
+RUN pip install --no-cache-dir -r requirements.txt && \
+    chmod +x /usr/local/bin/celery-entrypoint.sh
+
+# 设置entrypoint（用于开发环境：检查并安装依赖）
+ENTRYPOINT ["/usr/local/bin/celery-entrypoint.sh"]
+
+# 设置默认命令（可以被docker-compose覆盖）
+CMD ["celery", "-A", "app.core.celery_app", "worker", "--loglevel=info"]
