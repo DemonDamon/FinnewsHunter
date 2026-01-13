@@ -12,6 +12,7 @@ import MentionInput, { MentionTarget } from './MentionInput'
 import type { DebateSession } from '@/store/useDebateStore'
 import { agentApi, SSEDebateEvent } from '@/lib/api-client'
 import { toast } from 'sonner'
+import { useGlobalI18n, useLanguageStore } from '@/store/useLanguageStore'
 
 // 消息角色类型
 export type ChatRole = 'user' | 'bull' | 'bear' | 'manager' | 'system' | 'data_collector' | 'search'
@@ -47,17 +48,17 @@ export interface ChatMessage {
   searchStatus?: 'pending' | 'executing' | 'completed' | 'cancelled'
 }
 
-// 角色配置
-const ROLE_CONFIG: Record<ChatRole, {
+// 获取角色配置（支持国际化）
+const getRoleConfig = (t: any): Record<ChatRole, {
   name: string
   icon: React.ReactNode
   bgColor: string
   textColor: string
   borderColor: string
   align: 'left' | 'right'
-}> = {
+}> => ({
   user: {
-    name: '我',
+    name: t.debateHistory.roleNames.user,
     icon: <User className="w-4 h-4" />,
     bgColor: 'bg-blue-500',
     textColor: 'text-white',
@@ -65,7 +66,7 @@ const ROLE_CONFIG: Record<ChatRole, {
     align: 'right'
   },
   bull: {
-    name: '多方辩手',
+    name: t.debateHistory.roleNames.bull,
     icon: <TrendingUp className="w-4 h-4" />,
     bgColor: 'bg-emerald-500',
     textColor: 'text-white',
@@ -73,7 +74,7 @@ const ROLE_CONFIG: Record<ChatRole, {
     align: 'left'
   },
   bear: {
-    name: '空方辩手',
+    name: t.debateHistory.roleNames.bear,
     icon: <TrendingDown className="w-4 h-4" />,
     bgColor: 'bg-rose-500',
     textColor: 'text-white',
@@ -81,7 +82,7 @@ const ROLE_CONFIG: Record<ChatRole, {
     align: 'left'
   },
   manager: {
-    name: '投资经理',
+    name: t.debateHistory.roleNames.manager,
     icon: <Briefcase className="w-4 h-4" />,
     bgColor: 'bg-indigo-500',
     textColor: 'text-white',
@@ -89,7 +90,7 @@ const ROLE_CONFIG: Record<ChatRole, {
     align: 'left'
   },
   data_collector: {
-    name: '数据专员',
+    name: t.debateHistory.roleNames.data_collector,
     icon: <Bot className="w-4 h-4" />,
     bgColor: 'bg-purple-500',
     textColor: 'text-white',
@@ -97,7 +98,7 @@ const ROLE_CONFIG: Record<ChatRole, {
     align: 'left'
   },
   system: {
-    name: '系统',
+    name: 'System',
     icon: <Bot className="w-4 h-4" />,
     bgColor: 'bg-gray-400',
     textColor: 'text-white',
@@ -105,14 +106,14 @@ const ROLE_CONFIG: Record<ChatRole, {
     align: 'left'
   },
   search: {
-    name: '搜索结果',
+    name: 'Search Results',
     icon: <Bot className="w-4 h-4" />,
     bgColor: 'bg-cyan-500',
     textColor: 'text-white',
     borderColor: 'border-cyan-300',
     align: 'left'
   }
-}
+})
 
 interface DebateChatRoomProps {
   messages: ChatMessage[]
@@ -139,6 +140,7 @@ const SearchPlanCard: React.FC<{
   onConfirm: (plan: SearchPlan) => void,
   onCancel: () => void
 }> = ({ plan, status, onConfirm, onCancel }) => {
+  const t = useGlobalI18n()
   const isPending = status === 'pending'
   const isExecuting = status === 'executing'
   
@@ -146,7 +148,7 @@ const SearchPlanCard: React.FC<{
     <div className="mt-3 p-4 bg-slate-50 rounded-xl border border-slate-200 shadow-sm animate-in fade-in zoom-in duration-300">
       <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-200">
         <ListChecks className="w-5 h-5 text-indigo-500" />
-        <h4 className="font-semibold text-slate-800 text-sm">📋 搜索计划确认</h4>
+        <h4 className="font-semibold text-slate-800 text-sm">📋 {t.debateRoom.searchPlanConfirm}</h4>
       </div>
       
       <div className="space-y-2 mb-4">
@@ -155,7 +157,7 @@ const SearchPlanCard: React.FC<{
             <span className="mt-0.5">{task.icon || '🔍'}</span>
             <div className="flex-1">
               <p className="font-medium text-slate-700">{index + 1}. {task.description}</p>
-              <p className="text-[10px] text-slate-400">关键词: "{task.query}"</p>
+              <p className="text-[10px] text-slate-400">{t.debateRoom.roundPrefix === '第' ? '关键词' : 'Keyword'}: "{task.query}"</p>
             </div>
           </div>
         ))}
@@ -164,7 +166,7 @@ const SearchPlanCard: React.FC<{
       <div className="flex items-center justify-between pt-2">
         <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
           <Clock className="w-3 h-3" />
-          预计耗时: {plan.total_estimated_time}s
+          {t.debateRoom.estimatedTime}: {plan.total_estimated_time}{t.debateRoom.seconds}
         </div>
         
         {isPending && (
@@ -175,14 +177,14 @@ const SearchPlanCard: React.FC<{
               className="h-7 text-[10px] px-3 py-0"
               onClick={onCancel}
             >
-              取消
+              {t.debateRoom.searchPlanCancel}
             </Button>
             <Button 
               size="sm" 
               className="h-7 text-[10px] px-3 py-0 bg-indigo-500 hover:bg-indigo-600"
               onClick={() => onConfirm(plan)}
             >
-              确认执行
+              {t.debateRoom.searchPlanConfirmBtn}
             </Button>
           </div>
         )}
@@ -190,14 +192,14 @@ const SearchPlanCard: React.FC<{
         {isExecuting && (
           <div className="flex items-center gap-2 text-[10px] text-indigo-600 animate-pulse">
             <Loader2 className="w-3 h-3 animate-spin" />
-            正在搜索中...
+            {t.debateRoom.searchPlanExecuting}
           </div>
         )}
         
         {status === 'completed' && (
           <div className="flex items-center gap-1 text-[10px] text-emerald-600 font-medium">
             <CheckCircle2 className="w-3 h-3" />
-            执行完成
+            {t.debateRoom.searchPlanCompleted}
           </div>
         )}
       </div>
@@ -211,6 +213,8 @@ const ChatBubble: React.FC<{
   onConfirmSearch?: (plan: SearchPlan, msgId: string) => void,
   onCancelSearch?: (msgId: string) => void
 }> = ({ message, onConfirmSearch, onCancelSearch }) => {
+  const t = useGlobalI18n()
+  const ROLE_CONFIG = getRoleConfig(t)
   const config = ROLE_CONFIG[message.role]
   const isRight = config.align === 'right'
   
@@ -238,11 +242,11 @@ const ChatBubble: React.FC<{
           <span className="font-medium text-gray-600">{config.name}</span>
           {message.round && (
             <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 text-[10px]">
-              第{message.round}轮
+              {t.debateRoom.roundPrefix}{message.round}{t.debateRoom.roundSuffix}
             </span>
           )}
           <span className="text-gray-400">
-            {message.timestamp.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+            {message.timestamp.toLocaleTimeString(t.debateRoom.roundPrefix === '第' ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
           </span>
         </div>
         
@@ -266,11 +270,11 @@ const ChatBubble: React.FC<{
               )}
             </div>
           ) : message.searchPlan ? (
-            <div className="text-sm text-gray-500 italic">正在生成搜索计划...</div>
+            <div className="text-sm text-gray-500 italic">{t.stockDetail.generatingSearchPlan}</div>
           ) : (
             <div className="flex items-center gap-2 text-gray-400">
               <Loader2 className="w-4 h-4 animate-spin" />
-              <span className="text-sm">思考中...</span>
+              <span className="text-sm">{t.debateRoom.thinking}</span>
             </div>
           )}
           
@@ -314,6 +318,8 @@ const DebateChatRoom: React.FC<DebateChatRoomProps> = ({
   onConfirmSearch,
   onCancelSearch
 }) => {
+  const t = useGlobalI18n()
+  const ROLE_CONFIG = getRoleConfig(t)
   const [inputValue, setInputValue] = useState('')
   const [showHistoryDropdown, setShowHistoryDropdown] = useState(false)
   const [pendingMentions, setPendingMentions] = useState<MentionTarget[]>([])
@@ -364,7 +370,7 @@ const DebateChatRoom: React.FC<DebateChatRoomProps> = ({
     return (
       <div className="flex items-center gap-2 text-sm text-gray-500">
         <div className={cn("w-2 h-2 rounded-full animate-pulse", config.bgColor)} />
-        <span>{config.name} 正在输入...</span>
+        <span>{config.name} {t.debateRoom.typing}</span>
       </div>
     )
   }
@@ -387,9 +393,9 @@ const DebateChatRoom: React.FC<DebateChatRoomProps> = ({
           </div>
           <div>
             <h3 className="font-semibold text-gray-900">
-              {stockName ? `${stockName} 投资辩论` : '多空辩论室'}
+              {stockName ? `${stockName} ${t.debateRoom.title}` : t.debateRoom.titlePlaceholder}
             </h3>
-            <p className="text-xs text-gray-500">多方 vs 空方 · 投资经理主持</p>
+            <p className="text-xs text-gray-500">{t.debateRoom.subtitle}</p>
           </div>
         </div>
         
@@ -410,7 +416,7 @@ const DebateChatRoom: React.FC<DebateChatRoomProps> = ({
               ))}
             </div>
             <span className="text-xs font-medium text-purple-600">
-              第{currentRound.round}轮
+              {t.debateRoom.roundPrefix}{currentRound.round}{t.debateRoom.roundSuffix}
             </span>
           </div>
         )}
@@ -427,8 +433,8 @@ const DebateChatRoom: React.FC<DebateChatRoomProps> = ({
               <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
                 <Briefcase className="w-8 h-8 text-gray-300" />
               </div>
-              <p className="text-sm">点击「开始辩论」启动多空对决</p>
-              <p className="text-xs mt-1">您也可以在辩论过程中发言提问</p>
+              <p className="text-sm mb-2">{t.debateRoom.clickStartDebate}</p>
+              <p className="text-xs">{t.debateRoom.canSpeakDuringDebate}</p>
             </div>
           ) : (
             messages.map((msg) => (
@@ -464,7 +470,7 @@ const DebateChatRoom: React.FC<DebateChatRoomProps> = ({
             value={inputValue}
             onChange={setInputValue}
             onSubmit={handleSendWithMentions}
-            placeholder={isDebating ? "辩论进行中，输入 @ 提及智能体..." : "输入消息，使用 @ 提及角色..."}
+            placeholder={isDebating ? t.debateRoom.debateInProgress : t.mentionInput.placeholder}
             disabled={disabled}
           />
           <Button
@@ -481,11 +487,11 @@ const DebateChatRoom: React.FC<DebateChatRoomProps> = ({
         <div className="flex items-center justify-between mt-2 ml-10">
           {isDebating ? (
             <p className="text-xs text-gray-400">
-              💡 提示：使用 @多方辩手 @空方辩手 可以指定角色回答
+              💡 {t.debateRoom.mentionTip}
             </p>
           ) : (
             <p className="text-xs text-gray-400">
-              💡 输入 @ 可以选择智能体或数据源
+              💡 {t.stockDetail.history === '历史' ? '输入 @ 可以选择智能体或数据源' : 'Enter @ to select agents or data sources'}
           </p>
         )}
           
@@ -499,7 +505,7 @@ const DebateChatRoom: React.FC<DebateChatRoomProps> = ({
                 className="h-7 px-2 text-gray-500 hover:text-gray-700"
               >
                 <History className="w-3.5 h-3.5 mr-1" />
-                历史 ({historySessions.length})
+                {t.debateHistory.history} ({historySessions.length})
                 <ChevronDown className={cn("w-3 h-3 ml-1 transition-transform", showHistoryDropdown && "rotate-180")} />
               </Button>
               
@@ -507,11 +513,11 @@ const DebateChatRoom: React.FC<DebateChatRoomProps> = ({
               {showHistoryDropdown && (
                 <div className="absolute bottom-full right-0 mb-1 w-64 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50 animate-in fade-in slide-in-from-bottom-2 duration-200">
                   <div className="px-3 py-1 border-b border-gray-100 flex items-center justify-between">
-                    <span className="text-xs font-medium text-gray-500">历史会话</span>
+                    <span className="text-xs font-medium text-gray-500">{t.debateHistory.history} {t.stockDetail.session}</span>
                     {onClearHistory && (
                       <button 
                         onClick={() => {
-                          if (confirm('确定要清除所有历史记录吗？')) {
+                          if (confirm(t.agents.confirmClearLogs)) {
                             onClearHistory()
                             setShowHistoryDropdown(false)
                           }
@@ -519,7 +525,7 @@ const DebateChatRoom: React.FC<DebateChatRoomProps> = ({
                         className="text-xs text-rose-500 hover:text-rose-600 flex items-center gap-1"
                       >
                         <Trash2 className="w-3 h-3" />
-                        清除
+                        {t.common.cancel === '取消' ? '清除' : 'Clear'}
                       </button>
                     )}
                   </div>
@@ -541,7 +547,7 @@ const DebateChatRoom: React.FC<DebateChatRoomProps> = ({
                             {session.stockName || session.stockCode}
                           </div>
                           <div className="text-xs text-gray-400">
-                            {session.messages.length} 条消息 · {new Date(session.updatedAt).toLocaleDateString('zh-CN')}
+                            {session.messages.length} {t.debateHistory.messages} · {new Date(session.updatedAt).toLocaleDateString(t.debateRoom.roundPrefix === '第' ? 'zh-CN' : 'en-US')}
                           </div>
                         </div>
                       </button>
