@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { newsApi, analysisApi } from '@/lib/api-client'
 import { formatRelativeTime } from '@/lib/utils'
-import { RefreshCw, Sparkles, Calendar, Newspaper, TrendingUp, RefreshCcw, ChevronDown, ChevronUp, CheckCircle2, XCircle, MinusCircle, HelpCircle, Search, X } from 'lucide-react'
+import { RefreshCw, Sparkles, Calendar, Newspaper, TrendingUp, RefreshCcw, ChevronDown, ChevronUp, CheckCircle2, XCircle, MinusCircle, HelpCircle, Search, X, Check, Minus } from 'lucide-react'
 import NewsDetailDrawer from '@/components/NewsDetailDrawer'
 import { useNewsToolbar } from '@/context/NewsToolbarContext'
 import { useDebounce } from '@/hooks/useDebounce'
@@ -135,6 +135,8 @@ export default function NewsListPage() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('') // 搜索关键词
   const debouncedSearchQuery = useDebounce(searchQuery, 300) // 防抖处理
+  const [selectedNewsIds, setSelectedNewsIds] = useState<Set<number>>(new Set()) // 批量选择状态
+  const [lastSelectedNewsId, setLastSelectedNewsId] = useState<number | null>(null) // 最后选中的新闻ID（用于Shift范围选择）
   
   // 获取新闻源图标
   const getSourceIcon = useCallback((sourceValue: string) => {
@@ -219,8 +221,14 @@ export default function NewsListPage() {
     }
   }, [])
 
+  // 当切换新闻源时，清空选择状态
+  useEffect(() => {
+    setSelectedNewsIds(new Set())
+    setLastSelectedNewsId(null)
+  }, [activeSource])
+
   // Phase 2: 自动轮询最新新闻（1分钟刷新）
-  const { data: newsList, isLoading } = useQuery({
+  const { data: newsList, isLoading, isError, error } = useQuery({
     queryKey: ['news', 'latest', activeSource],
     queryFn: () => newsApi.getLatestNews({ 
       source: activeSource === 'all' ? undefined : activeSource, 
@@ -229,6 +237,12 @@ export default function NewsListPage() {
     staleTime: 1 * 60 * 1000,  // 1分钟内数据视为新鲜
     refetchInterval: 1 * 60 * 1000,  // 每1分钟自动刷新
     refetchIntervalInBackground: true,  // 后台也刷新
+    retry: 3,  // 失败时重试3次
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),  // 指数退避重试
+    onError: (error: Error) => {
+      console.error('Failed to fetch news:', error)
+      toast.error(`加载新闻失败: ${error.message}`)
+    },
   })
 
   // 这里保留 dataUpdatedAt，后续可以用于全局最后刷新时间展示
@@ -274,6 +288,107 @@ export default function NewsListPage() {
       toast.error(`${t.news.analysisFailed}: ${error.message}`)
     },
   })
+
+  // 批量分析 mutation
+  const batchAnalyzeMutation = useMutation({
+    mutationFn: (newsIds: number[]) => analysisApi.batchAnalyzeNews(newsIds, modelConfig),
+    onSuccess: (data) => {
+      if (data.success) {
+        const message = t.news.analysisComplete
+          .replace('{success}', data.success_count.toString())
+          .replace('{failed}', data.failed_count.toString())
+        toast.success(message)
+        queryClient.invalidateQueries({ queryKey: ['news'] })
+      } else {
+        toast.error(data.message || '批量分析失败')
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(`批量分析失败: ${error.message}`)
+    },
+  })
+
+  const handleBatchAnalyze = useCallback(() => {
+    if (selectedNewsIds.size === 0) return
+    batchAnalyzeMutation.mutate(Array.from(selectedNewsIds))
+  }, [selectedNewsIds, batchAnalyzeMutation])
+
+  const handleBatchReanalyze = useCallback(() => {
+    // 重新分析使用相同的API
+    handleBatchAnalyze()
+  }, [handleBatchAnalyze])
+
+  // 批量删除新闻 mutation
+  const batchDeleteMutation = useMutation({
+    mutationFn: (newsIds: number[]) => newsApi.batchDeleteNews(newsIds),
+    onSuccess: (data) => {
+      if (data.success) {
+        toast.success(data.message || t.news.deleteSelected)
+        setSelectedNewsIds(new Set()) // 清空选择状态
+        setLastSelectedNewsId(null) // 清除最后选中项
+        queryClient.invalidateQueries({ queryKey: ['news'] })
+      } else {
+        toast.error(data.message || '删除失败')
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(`删除失败: ${error.message}`)
+    },
+  })
+
+  // 切换新闻选择状态
+  const toggleNewsSelection = useCallback((newsId: number) => {
+    setSelectedNewsIds(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(newsId)) {
+        newSet.delete(newsId)
+      } else {
+        newSet.add(newsId)
+      }
+      return newSet
+    })
+  }, [])
+
+  // 范围选择函数（用于Shift点击）
+  const selectRange = useCallback((startId: number, endId: number, newsList: Array<{ id: number }>) => {
+    if (!newsList || newsList.length === 0) return
+    
+    const startIndex = newsList.findIndex(n => n.id === startId)
+    const endIndex = newsList.findIndex(n => n.id === endId)
+    
+    if (startIndex === -1 || endIndex === -1) return
+    
+    const minIndex = Math.min(startIndex, endIndex)
+    const maxIndex = Math.max(startIndex, endIndex)
+    
+    setSelectedNewsIds(prev => {
+      const newSet = new Set(prev)
+      for (let i = minIndex; i <= maxIndex; i++) {
+        newSet.add(newsList[i].id)
+      }
+      return newSet
+    })
+  }, [])
+
+  // 取消所有选择
+  const clearSelection = useCallback(() => {
+    setSelectedNewsIds(new Set())
+    setLastSelectedNewsId(null)
+  }, [])
+
+  // 批量删除
+  const handleBatchDelete = useCallback(() => {
+    if (selectedNewsIds.size === 0) {
+      return
+    }
+
+    const count = selectedNewsIds.size
+    const confirmMessage = t.news.confirmDelete.replace('{count}', count.toString())
+    
+    if (window.confirm(confirmMessage)) {
+      batchDeleteMutation.mutate(Array.from(selectedNewsIds))
+    }
+  }, [selectedNewsIds, batchDeleteMutation, t])
 
   const handleForceRefresh = () => {
     if (isRefreshing) {
@@ -432,6 +547,43 @@ export default function NewsListPage() {
     })
   }, [newsList, activeFilter, debouncedSearchQuery, getSourceName])
 
+  // 计算全选状态
+  const isAllSelected = useMemo(() => {
+    if (!filteredNews || filteredNews.length === 0) return false
+    return filteredNews.every(news => selectedNewsIds.has(news.id))
+  }, [filteredNews, selectedNewsIds])
+
+  const isPartiallySelected = useMemo(() => {
+    if (!filteredNews || filteredNews.length === 0) return false
+    const selectedCount = filteredNews.filter(news => selectedNewsIds.has(news.id)).length
+    return selectedCount > 0 && selectedCount < filteredNews.length
+  }, [filteredNews, selectedNewsIds])
+
+  // 全选/取消全选处理函数
+  const handleSelectAll = useCallback(() => {
+    if (!filteredNews) return
+    if (isAllSelected) {
+      // 取消全选：只取消当前筛选的新闻
+      setSelectedNewsIds(prev => {
+        const newSet = new Set(prev)
+        filteredNews.forEach(news => newSet.delete(news.id))
+        return newSet
+      })
+      setLastSelectedNewsId(null)
+    } else {
+      // 全选：选中所有筛选后的新闻
+      setSelectedNewsIds(prev => {
+        const newSet = new Set(prev)
+        filteredNews.forEach(news => newSet.add(news.id))
+        return newSet
+      })
+      // 设置最后选中项为筛选列表的最后一个
+      if (filteredNews.length > 0) {
+        setLastSelectedNewsId(filteredNews[filteredNews.length - 1].id)
+      }
+    }
+  }, [filteredNews, isAllSelected])
+
   // 获取卡片样式类
   const getCardStyle = (sentiment: number | null) => {
     const baseStyle = "flex flex-col transition-all duration-300 border min-w-0 h-full hover:shadow-lg hover:-translate-y-1"
@@ -469,9 +621,11 @@ export default function NewsListPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* 筛选栏：新闻源 + 情感筛选 */}
-      <Card className="border-gray-200 shadow-sm">
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* 固定顶部区域：筛选栏和批量操作栏 */}
+      <div className="flex-shrink-0 p-6 pb-4 space-y-4 bg-white border-b border-gray-200 z-10">
+        {/* 筛选栏：新闻源 + 情感筛选 */}
+        <Card className="border-gray-200 shadow-sm">
         <CardHeader className="pb-4">
           <div className="flex flex-wrap items-center gap-3">
             {/* 新闻源筛选 */}
@@ -496,6 +650,33 @@ export default function NewsListPage() {
             
             {/* 情感筛选 */}
             <div className="flex flex-wrap items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-200">
+              {/* 全选复选框 */}
+              <button
+                onClick={handleSelectAll}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded h-8 transition-colors ${
+                  isAllSelected 
+                    ? 'bg-blue-100 text-blue-700' 
+                    : isPartiallySelected
+                    ? 'bg-blue-50 text-blue-600'
+                    : 'hover:bg-gray-100 text-gray-600'
+                }`}
+                aria-label={isAllSelected ? t.news.deselectAll : t.news.selectAll}
+              >
+                <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${
+                  isAllSelected 
+                    ? 'bg-blue-500 border-blue-500' 
+                    : isPartiallySelected
+                    ? 'bg-blue-100 border-blue-500'
+                    : 'border-gray-300 bg-white'
+                }`}>
+                  {isAllSelected && <Check className="w-3 h-3 text-white" />}
+                  {isPartiallySelected && <Minus className="w-3 h-3 text-blue-600" />}
+                </div>
+                <span className="text-xs font-medium">
+                  {isAllSelected ? t.news.deselectAll : t.news.selectAll}
+                </span>
+              </button>
+              
                 <Button
                   variant={activeFilter === 'all' ? 'default' : 'ghost'}
                   size="sm"
@@ -565,34 +746,200 @@ export default function NewsListPage() {
         </CardHeader>
       </Card>
 
-      {/* 新闻列表 */}
-      <div 
-        className="grid gap-6"
-        style={{
-          gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))`
-        }}
-      >
+      {/* 批量操作栏 */}
+      {selectedNewsIds.size > 0 && (
+        <Card className="border-blue-200 bg-blue-50 shadow-sm">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <span className="text-sm font-medium text-gray-700">
+                  {t.news.selectedItems.replace('{count}', selectedNewsIds.size.toString())}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearSelection}
+                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-100"
+                >
+                  {t.news.cancelSelection}
+                </Button>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* 根据筛选条件显示不同的分析按钮 */}
+                {activeFilter === 'pending' ? (
+                  <Button
+                    onClick={handleBatchAnalyze}
+                    disabled={batchAnalyzeMutation.isPending}
+                    size="sm"
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    {batchAnalyzeMutation.isPending ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                        {t.news.analyzingSelected.replace('{count}', selectedNewsIds.size.toString())}
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        {t.news.analyzeAll}
+                      </>
+                    )}
+                  </Button>
+                ) : (activeFilter === 'positive' || activeFilter === 'negative' || activeFilter === 'neutral') ? (
+                  <Button
+                    onClick={handleBatchReanalyze}
+                    disabled={batchAnalyzeMutation.isPending}
+                    size="sm"
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    {batchAnalyzeMutation.isPending ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                        {t.news.analyzingSelected.replace('{count}', selectedNewsIds.size.toString())}
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCcw className="w-4 h-4 mr-2" />
+                        {t.news.reanalyzeAll}
+                      </>
+                    )}
+                  </Button>
+                ) : null}
+                
+                {/* 删除按钮 */}
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleBatchDelete}
+                  disabled={batchDeleteMutation.isPending}
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                >
+                  {batchDeleteMutation.isPending ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      {t.common.loading}
+                    </>
+                  ) : (
+                    t.news.deleteSelected
+                  )}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      </div>
+
+      {/* 可滚动的新闻列表区域 */}
+      <div className="flex-1 overflow-y-auto p-6 pt-4 min-h-0">
+        <div 
+          className="grid gap-6"
+          style={{
+            gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))`
+          }}
+        >
         {isLoading ? (
           <div className="col-span-full text-center py-12 text-gray-500">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             <p className="mt-4">{t.common.loading}</p>
           </div>
+        ) : isError ? (
+          <div className="col-span-full text-center py-12">
+            <div className="text-red-500 mb-4">
+              <XCircle className="w-12 h-12 mx-auto mb-2" />
+              <p className="text-lg font-semibold">加载失败</p>
+              <p className="text-sm mt-2 text-gray-600">{error?.message || '未知错误'}</p>
+            </div>
+            <Button
+              onClick={() => queryClient.invalidateQueries({ queryKey: ['news', 'latest'] })}
+              variant="outline"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              重试
+            </Button>
+          </div>
         ) : filteredNews && filteredNews.length > 0 ? (
           filteredNews.map((news) => (
             <Card 
               key={news.id} 
-              className={`${getCardStyle(news.sentiment_score)} cursor-pointer hover:shadow-lg transition-shadow`}
+              className={`${getCardStyle(news.sentiment_score)} cursor-pointer hover:shadow-lg transition-shadow relative ${
+                selectedNewsIds.has(news.id) ? 'border-blue-500 border-2' : ''
+              }`}
               onClick={(e) => {
-                // 阻止按钮点击事件冒泡
-                if ((e.target as HTMLElement).closest('button')) {
+                // 阻止按钮和选择框点击事件冒泡
+                if ((e.target as HTMLElement).closest('button') || 
+                    (e.target as HTMLElement).closest('.selection-checkbox')) {
                   return
                 }
-                setSelectedNewsId(news.id)
-                setDrawerOpen(true)
+                
+                const isCommandOrCtrl = e.metaKey || e.ctrlKey
+                const isShift = e.shiftKey
+                
+                // Command/Ctrl + 点击：多选模式
+                if (isCommandOrCtrl) {
+                  e.preventDefault()
+                  toggleNewsSelection(news.id)
+                  setLastSelectedNewsId(news.id)
+                  return
+                }
+                
+                // Shift + 点击：范围选择
+                if (isShift) {
+                  e.preventDefault()
+                  if (lastSelectedNewsId !== null) {
+                    selectRange(lastSelectedNewsId, news.id, filteredNews)
+                  } else {
+                    // 如果没有上次选中项，只选中当前项
+                    toggleNewsSelection(news.id)
+                  }
+                  setLastSelectedNewsId(news.id)
+                  return
+                }
+                
+                // 普通点击：如果已选中则切换选择，否则打开详情
+                if (selectedNewsIds.has(news.id)) {
+                  toggleNewsSelection(news.id)
+                  setLastSelectedNewsId(null)
+                } else {
+                  setSelectedNewsId(news.id)
+                  setDrawerOpen(true)
+                }
               }}
             >
-              <CardHeader className="pb-2 flex-shrink-0">
-                <CardTitle className="text-base leading-tight font-semibold text-gray-900 line-clamp-2 mb-1.5 min-h-[44px]">
+              <CardHeader className="pb-2 flex-shrink-0 relative">
+                {/* 选择框 */}
+                <button
+                  className={`selection-checkbox absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center transition-all z-10 ${
+                    selectedNewsIds.has(news.id)
+                      ? 'bg-blue-500 hover:bg-blue-600'
+                      : 'border-2 border-gray-300 hover:border-gray-400 bg-white'
+                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    const isCommandOrCtrl = e.metaKey || e.ctrlKey
+                    const isShift = e.shiftKey
+                    
+                    if (isCommandOrCtrl || isShift) {
+                      // 键盘修饰键时，使用与卡片相同的逻辑
+                      if (isShift && lastSelectedNewsId !== null) {
+                        selectRange(lastSelectedNewsId, news.id, filteredNews)
+                      } else {
+                        toggleNewsSelection(news.id)
+                      }
+                      setLastSelectedNewsId(news.id)
+                    } else {
+                      // 普通点击选择框
+                      toggleNewsSelection(news.id)
+                      setLastSelectedNewsId(news.id)
+                    }
+                  }}
+                  aria-label={selectedNewsIds.has(news.id) ? '取消选择' : '选择'}
+                >
+                  {selectedNewsIds.has(news.id) && (
+                    <Check className="w-3 h-3 text-white" />
+                  )}
+                </button>
+                <CardTitle className="text-base leading-tight font-semibold text-gray-900 line-clamp-2 mb-1.5 min-h-[44px] pr-7">
                   <HighlightText text={news.title} highlight={debouncedSearchQuery} />
                 </CardTitle>
                 <div className="flex items-center gap-2 text-xs text-gray-500">
@@ -721,6 +1068,7 @@ export default function NewsListPage() {
             )}
           </div>
         )}
+        </div>
       </div>
 
       {/* 新闻详情抽屉 */}
