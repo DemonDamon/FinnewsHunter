@@ -39,7 +39,7 @@ if __name__ == "__main__":
         print("Creating tables...")
         Base.metadata.create_all(bind=sync_engine)
         
-        print("\n✅ Database initialized successfully!")
+        print("\nDatabase initialized successfully!")
         print(f"   - News table created")
         print(f"   - Stock table created")
         print(f"   - Analysis table created")
@@ -49,7 +49,7 @@ if __name__ == "__main__":
         sys.exit(0)
         
     except Exception as e:
-        print(f"\n❌ Database initialization failed: {e}")
+        print(f"\nDatabase initialization failed: {e}")
         import traceback
         traceback.print_exc()
         print("=" * 60)
