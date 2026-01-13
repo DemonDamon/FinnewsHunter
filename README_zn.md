@@ -1229,69 +1229,69 @@ class RiskAnalystAgent(Agent):
 
 ### 使用 AgenticX 组件
 
-FinnewsHunter deeply integrates AgenticX framework core components to avoid reinventing the wheel:
+FinnewsHunter 深度集成了 AgenticX 框架的核心组件，避免重复造轮子：
 
-#### 1. Embedding Service
+#### 1. 向量化服务（Embedding）
 
-The system uses `agenticx.embeddings.BailianEmbeddingProvider` as the core embedding engine:
+系统使用 `agenticx.embeddings.BailianEmbeddingProvider` 作为核心向量化引擎：
 
 ```python
 from app.services.embedding_service import EmbeddingService
 
-# Synchronous interface (for sync contexts)
+# 同步接口（适用于同步上下文）
 embedding_service = EmbeddingService()
-vector = embedding_service.embed_text("text content")
+vector = embedding_service.embed_text("文本内容")
 
-# Asynchronous interface (recommended for async contexts)
-vector = await embedding_service.aembed_text("text content")
+# 异步接口（推荐在异步上下文中使用）
+vector = await embedding_service.aembed_text("文本内容")
 
-# Batch processing (Provider handles internal batching)
-vectors = embedding_service.embed_batch(["text1", "text2", "text3"])
+# 批量处理（Provider 内部已实现批量优化）
+vectors = embedding_service.embed_batch(["文本1", "文本2", "文本3"])
 ```
 
-**Features**:
-- Redis caching support to avoid duplicate calculations
-- Automatic text length limit handling (6000 characters)
-- Both sync and async interfaces to avoid event loop conflicts
+**特点**：
+- 支持 Redis 缓存，避免重复计算
+- 自动处理文本长度限制（6000字符）
+- 支持同步和异步两种接口，避免事件循环冲突
 
-#### 2. Vector Storage (Milvus)
+#### 2. 向量存储（Milvus）
 
-The system uses `agenticx.storage.vectordb_storages.milvus.MilvusStorage` as the vector database:
+系统使用 `agenticx.storage.vectordb_storages.milvus.MilvusStorage` 作为向量数据库：
 
 ```python
 from app.storage.vector_storage import VectorStorage
 
 vector_storage = VectorStorage()
 
-# Store single vector
+# 存储单个向量
 vector_storage.store_embedding(
     news_id=1,
-    text="news content",
+    text="新闻内容",
     embedding=[0.1, 0.2, ...]
 )
 
-# Batch storage
+# 批量存储
 vector_storage.store_embeddings_batch([
-    {"news_id": 1, "text": "content1", "embedding": [...]},
-    {"news_id": 2, "text": "content2", "embedding": [...]}
+    {"news_id": 1, "text": "内容1", "embedding": [...]},
+    {"news_id": 2, "text": "内容2", "embedding": [...]}
 ])
 
-# Similarity search
+# 相似度搜索
 results = vector_storage.search_similar(query_vector=[...], top_k=10)
 
-# Get statistics (with query count fallback mechanism)
+# 获取统计信息（带查询计数回退机制）
 stats = vector_storage.get_stats()
 ```
 
-**Features**:
-- Direct use of AgenticX MilvusStorage, no duplicate implementation
-- Compatibility interface for simplified calls
-- Query count fallback when `num_entities` is inaccurate
-- Async operation support to avoid blocking
+**特点**：
+- 直接使用 AgenticX MilvusStorage，无需重复实现
+- 提供兼容性接口，简化调用
+- 当 `num_entities` 不准确时，通过实际查询获取真实数量
+- 支持异步操作，避免阻塞
 
-#### 3. Async Embedding Best Practices
+#### 3. 异步向量化最佳实践
 
-In async contexts (e.g., FastAPI routes), use async interfaces:
+在异步上下文中（如 FastAPI 路由），推荐使用异步接口：
 
 ```python
 from app.services.embedding_service import EmbeddingService
@@ -1301,21 +1301,21 @@ async def analyze_news(news_id: int, text: str):
     embedding_service = EmbeddingService()
     vector_storage = VectorStorage()
     
-    # Use async interface to avoid event loop conflicts
+    # 使用异步接口，避免事件循环冲突
     embedding = await embedding_service.aembed_text(text)
     
-    # Store vector asynchronously in background (non-blocking)
+    # 后台异步存储向量（不阻塞分析流程）
     asyncio.create_task(
         vector_storage.store_embedding(news_id, text, embedding)
     )
     
-    # Continue with analysis logic...
+    # 继续执行分析逻辑...
 ```
 
-**Notes**:
-- In async contexts, use `aembed_text()` instead of `embed_text()`
-- Embedding operations run asynchronously in background, non-blocking
-- Milvus `flush()` operation is optimized, not executed by default (relies on auto-flush)
+**注意事项**：
+- 在异步上下文中，使用 `aembed_text()` 而不是 `embed_text()`
+- 向量化操作在后台异步执行，不阻塞主流程
+- Milvus 的 `flush()` 操作已优化，默认不执行（依赖自动刷新）
 
 ---
 
