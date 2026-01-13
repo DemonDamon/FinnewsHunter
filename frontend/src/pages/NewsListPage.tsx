@@ -565,47 +565,6 @@ export default function NewsListPage() {
         </CardHeader>
       </Card>
 
-      {/* 新闻统计 */}
-      {!isLoading && filteredNews && filteredNews.length > 0 && (
-        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
-          <CardContent className="py-4">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-6">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl font-bold text-blue-600">{filteredNews.length}</span>
-                  <span className="text-sm text-gray-600">{t.news.items}</span>
-                </div>
-                {activeSource === 'all' && filteredNews && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-600">{t.news.source}：</span>
-                    <div className="flex flex-wrap gap-1">
-                      {Array.from(new Set(filteredNews.map(n => n.source))).map(source => (
-                        <Badge key={source} variant="outline" className="text-xs">
-                          <span className="mr-0.5">{getSourceIcon(source)}</span>
-                          {getSourceName(source)}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div className="text-xs text-gray-500 flex flex-wrap gap-2">
-                {debouncedSearchQuery && (
-                  <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded">
-                    🔍 "{debouncedSearchQuery}"
-                  </span>
-                )}
-                {activeFilter !== 'all' && (
-                  <span>
-                    {activeFilter === 'pending' ? t.news.pending : activeFilter === 'positive' ? t.news.positive : activeFilter === 'negative' ? t.news.negative : t.news.neutral}
-                  </span>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* 新闻列表 */}
       <div 
         className="grid gap-6"
