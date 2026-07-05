@@ -20,6 +20,8 @@ ENV/
 
 # OS
 .DS_Store
+.runtime/
+.backups/
 node_modules/
 **/node_modules/backend/celerybeat-schedule*
 backend/.crawl_cache/

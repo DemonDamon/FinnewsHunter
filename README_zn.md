@@ -99,6 +99,42 @@ OPENAI_API_KEY=sk-your-openai-key
 DEEPSEEK_API_KEY=sk-your-deepseek-key
 ```
 
+### 4. 启动服务（推荐：3 条命令）
+
+> **完整说明见 [docs/DEV-START.md](docs/DEV-START.md)**
+
+```bash
+cd FinnewsHunter
+
+# ① 首次准备（换机 / 新 clone 执行一次）
+bash scripts/dev-prepare.sh
+
+# ② 每次开发启动（Docker 中间件 + Celery + 本地 API/前端）
+bash scripts/dev-up.sh
+
+# ③ 查看状态 / 停止
+bash scripts/dev-status.sh
+bash scripts/dev-down.sh          # 仅停本地 API/前端（Docker 数据保留）
+bash scripts/dev-down.sh --all    # 连同 Docker 容器一起停（数据卷仍保留）
+bash scripts/dev-down.sh --purge  # ⚠ 连数据卷一起删除，不可恢复（会二次确认）
+```
+
+### 数据备份与迁移
+
+```bash
+# 备份 Postgres + Neo4j（默认不含 Milvus 向量，可重新生成）
+bash scripts/dev-backup.sh
+
+# 迁移到新环境：把 .backups/<时间戳>/ 拷过去，然后
+bash scripts/dev-prepare.sh && bash scripts/dev-up.sh
+bash scripts/dev-restore.sh .backups/<时间戳>
+```
+
+> 详细的备份策略、数据分层说明见 [docs/DEV-START.md](docs/DEV-START.md#数据备份--迁移--恢复)。
+
+<details>
+<summary>旧版分步启动（不推荐，容易漏 Celery）</summary>
+
 ### 4. 启动基础服务（PostgreSQL、Redis、Milvus）
 
 ```bash
@@ -150,6 +186,8 @@ npm run dev
 - **前端界面**: http://localhost:3000
 - **后端 API**: http://localhost:8000
 - **API 文档**: http://localhost:8000/docs
+
+</details>
 
 ---
 
