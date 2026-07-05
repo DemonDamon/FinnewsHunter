@@ -182,6 +182,7 @@ export const globalI18n = {
     model: {
       loading: '加载中...',
       notConfigured: '未配置LLM',
+      backendUnreachable: '后端未连接',
       selectModel: '选择模型',
       selectTip: '选择模型 · 兼顾质量与成本',
       noApiKey: '未配置API Key',
@@ -697,6 +698,7 @@ export const globalI18n = {
     model: {
       loading: 'Loading...',
       notConfigured: 'LLM not configured',
+      backendUnreachable: 'Backend unreachable',
       selectModel: 'Select Model',
       selectTip: 'Select Model - Balance quality & cost',
       noApiKey: 'API Key not configured',

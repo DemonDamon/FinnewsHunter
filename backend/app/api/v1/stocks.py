@@ -6,6 +6,7 @@
 import logging
 from datetime import datetime, timedelta
 from typing import List, Optional
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +18,11 @@ from ...models.news import News
 from ...models.stock import Stock
 from ...models.analysis import Analysis
 from ...models.crawl_task import CrawlTask, CrawlMode, TaskStatus
-from ...services.stock_data_service import stock_data_service
+from ...services.stock_data_service import (
+    stock_data_service,
+    fetch_all_a_share_stocks,
+    FALLBACK_A_SHARE_STOCKS,
+)
 from ...tasks.crawl_tasks import targeted_stock_crawl_task
 
 logger = logging.getLogger(__name__)
@@ -160,59 +165,51 @@ async def init_stock_data(
     初始化股票数据（从 akshare 获取全部 A 股并存入数据库）
     """
     try:
-        import akshare as ak
-        from datetime import datetime
         from sqlalchemy import delete
-        
+
         logger.info("Starting stock data initialization...")
-        
-        df = ak.stock_zh_a_spot_em()
-        
-        if df is None or df.empty:
-            return StockInitResponse(success=False, message="Failed to fetch stocks from akshare", count=0)
-        
+
+        stocks_data = await asyncio.to_thread(fetch_all_a_share_stocks)
+        used_fallback = len(stocks_data) == len(FALLBACK_A_SHARE_STOCKS)
+
         await db.execute(delete(Stock))
-        
+
         count = 0
-        for _, row in df.iterrows():
-            code = str(row['代码'])
-            name = str(row['名称'])
-            
-            if not code or not name or name in ['N/A', 'nan', '']:
-                continue
-            
-            if code.startswith('6'):
-                market = "SH"
-                full_code = f"SH{code}"
-            elif code.startswith('0') or code.startswith('3'):
-                market = "SZ"
-                full_code = f"SZ{code}"
-            else:
-                market = "OTHER"
-                full_code = code
-            
+        now = datetime.utcnow()
+        for item in stocks_data:
             stock = Stock(
-                code=code,
-                name=name,
-                full_code=full_code,
-                market=market,
+                code=item["code"],
+                name=item["name"],
+                full_code=item["full_code"],
+                market=item["market"],
                 status="active",
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
+                created_at=now,
+                updated_at=now,
             )
             db.add(stock)
             count += 1
-        
+
         await db.commit()
-        
-        return StockInitResponse(success=True, message=f"Successfully initialized {count} stocks", count=count)
-        
+
+        message = f"Successfully initialized {count} stocks"
+        if used_fallback:
+            message += " (akshare unavailable, loaded fallback list — check network/proxy)"
+
+        return StockInitResponse(success=True, message=message, count=count)
+
     except ImportError:
         return StockInitResponse(success=False, message="akshare not installed", count=0)
     except Exception as e:
-        logger.error(f"Failed to init stocks: {e}")
+        logger.error(f"Failed to init stocks: {e}", exc_info=True)
         await db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        detail = str(e)
+        if "ProxyError" in detail or "proxy" in detail.lower():
+            detail = (
+                "拉取 A 股数据失败：当前 shell 代理无法访问东方财富。"
+                "请临时关闭 HTTP_PROXY/HTTPS_PROXY 后重试，或使用命令 "
+                "`python -m app.scripts.init_stocks` 初始化。"
+            )
+        raise HTTPException(status_code=500, detail=detail)
 
 
 @router.get("/count")

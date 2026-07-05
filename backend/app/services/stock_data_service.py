@@ -2,12 +2,47 @@
 股票数据服务 - 使用 akshare 获取真实股票数据
 """
 import logging
+import os
+from contextlib import contextmanager
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Iterator
 from functools import lru_cache
 import asyncio
 
 logger = logging.getLogger(__name__)
+
+PROXY_ENV_VARS = (
+    "http_proxy",
+    "https_proxy",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "all_proxy",
+    "ALL_PROXY",
+)
+
+FALLBACK_A_SHARE_STOCKS: List[Dict[str, str]] = [
+    {"code": "600519", "name": "贵州茅台", "full_code": "SH600519", "market": "SH"},
+    {"code": "000001", "name": "平安银行", "full_code": "SZ000001", "market": "SZ"},
+    {"code": "601318", "name": "中国平安", "full_code": "SH601318", "market": "SH"},
+    {"code": "000858", "name": "五粮液", "full_code": "SZ000858", "market": "SZ"},
+    {"code": "002594", "name": "比亚迪", "full_code": "SZ002594", "market": "SZ"},
+    {"code": "600036", "name": "招商银行", "full_code": "SH600036", "market": "SH"},
+    {"code": "601166", "name": "兴业银行", "full_code": "SH601166", "market": "SH"},
+    {"code": "000333", "name": "美的集团", "full_code": "SZ000333", "market": "SZ"},
+    {"code": "002415", "name": "海康威视", "full_code": "SZ002415", "market": "SZ"},
+    {"code": "600276", "name": "恒瑞医药", "full_code": "SH600276", "market": "SH"},
+    {"code": "000002", "name": "万科A", "full_code": "SZ000002", "market": "SZ"},
+    {"code": "600887", "name": "伊利股份", "full_code": "SH600887", "market": "SH"},
+    {"code": "000725", "name": "京东方A", "full_code": "SZ000725", "market": "SZ"},
+    {"code": "600000", "name": "浦发银行", "full_code": "SH600000", "market": "SH"},
+    {"code": "000063", "name": "中兴通讯", "full_code": "SZ000063", "market": "SZ"},
+    {"code": "600104", "name": "上汽集团", "full_code": "SH600104", "market": "SH"},
+    {"code": "002304", "name": "洋河股份", "full_code": "SZ002304", "market": "SZ"},
+    {"code": "600585", "name": "海螺水泥", "full_code": "SH600585", "market": "SH"},
+    {"code": "000876", "name": "新希望", "full_code": "SZ000876", "market": "SZ"},
+    {"code": "600309", "name": "万华化学", "full_code": "SH600309", "market": "SH"},
+]
+
 
 # 尝试导入 akshare
 try:
@@ -15,8 +50,74 @@ try:
     import pandas as pd
     AKSHARE_AVAILABLE = True
 except ImportError:
+    ak = None  # type: ignore[assignment]
+    pd = None  # type: ignore[assignment]
     AKSHARE_AVAILABLE = False
     logger.warning("akshare not installed, using mock data")
+
+
+@contextmanager
+def akshare_direct_connection() -> Iterator[None]:
+    """akshare 访问国内数据源时需绕过 shell 代理，否则易 ProxyError。"""
+    saved = {key: os.environ.pop(key, None) for key in PROXY_ENV_VARS}
+    try:
+        yield
+    finally:
+        for key, value in saved.items():
+            if value is not None:
+                os.environ[key] = value
+
+
+def _normalize_stock_row(code: str, name: str) -> Optional[Dict[str, str]]:
+    if not code or not name or name in {"N/A", "nan", ""}:
+        return None
+    if code.startswith("6"):
+        market, full_code = "SH", f"SH{code}"
+    elif code.startswith(("0", "3")):
+        market, full_code = "SZ", f"SZ{code}"
+    else:
+        market, full_code = "OTHER", code
+    return {"code": code, "name": name, "full_code": full_code, "market": market}
+
+
+def fetch_all_a_share_stocks(use_fallback: bool = True) -> List[Dict[str, str]]:
+    """从 akshare 拉取 A 股列表；失败时可回落到常用股票。"""
+    if not AKSHARE_AVAILABLE:
+        raise ImportError("akshare not installed")
+
+    last_error: Optional[Exception] = None
+    with akshare_direct_connection():
+        for attempt in range(3):
+            try:
+                try:
+                    df = ak.stock_zh_a_spot_em()
+                except Exception as primary_error:
+                    logger.warning("stock_zh_a_spot_em failed: %s", primary_error)
+                    df = ak.stock_info_a_code_name()
+                    if df is not None and not df.empty:
+                        df = df.rename(columns={df.columns[0]: "代码", df.columns[1]: "名称"})
+
+                if df is None or df.empty:
+                    raise RuntimeError("akshare returned empty stock list")
+
+                stocks: List[Dict[str, str]] = []
+                for _, row in df.iterrows():
+                    normalized = _normalize_stock_row(str(row["代码"]), str(row["名称"]))
+                    if normalized:
+                        stocks.append(normalized)
+                if stocks:
+                    logger.info("Fetched %s stocks from akshare", len(stocks))
+                    return stocks
+                raise RuntimeError("akshare returned no valid stock rows")
+            except Exception as exc:
+                last_error = exc
+                logger.warning("Fetch A-share stocks attempt %s/3 failed: %s", attempt + 1, exc)
+
+    if use_fallback:
+        logger.warning("Using fallback stock list (%s items)", len(FALLBACK_A_SHARE_STOCKS))
+        return list(FALLBACK_A_SHARE_STOCKS)
+
+    raise RuntimeError(str(last_error) if last_error else "Failed to fetch stocks from akshare")
 
 
 class StockDataService:

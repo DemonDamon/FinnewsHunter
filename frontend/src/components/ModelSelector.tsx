@@ -78,7 +78,7 @@ export default function ModelSelector() {
   const [config, setConfig] = useState<ModelConfig>(DEFAULT_CONFIG)
   
   // 从后端 API 动态加载可用厂商和模型
-  const { data: llmConfig, isLoading } = useQuery({
+  const { data: llmConfig, isLoading, isError } = useQuery({
     queryKey: ['llm-config'],
     queryFn: llmApi.getConfig,
     staleTime: 5 * 60 * 1000, // 缓存 5 分钟
@@ -147,7 +147,21 @@ export default function ModelSelector() {
     )
   }
 
-  // 无可用厂商
+  // 后端未启动或接口不可达（与 API Key 是否配置无关）
+  if (isError || (providers.length === 0 && !llmConfig)) {
+    return (
+      <div className="flex items-center">
+        <Button variant="outline" size="sm" disabled className="gap-2 h-10 rounded-lg px-3 border-orange-300">
+          <AlertCircle className="h-4 w-4 text-orange-500" />
+          <span className="text-sm text-orange-600">
+            {isError ? t.model.backendUnreachable : t.model.notConfigured}
+          </span>
+        </Button>
+      </div>
+    )
+  }
+
+  // 无可用厂商（后端返回空列表，通常是 .env 未配置任何模型厂商）
   if (providers.length === 0) {
     return (
       <div className="flex items-center">
