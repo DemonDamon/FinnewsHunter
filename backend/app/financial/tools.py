@@ -265,6 +265,7 @@ def setup_default_providers():
     4. eastmoney - 东方财富
     5. yicai - 第一财经
     6. 163 - 网易财经
+    7. xquik - X social signals
     """
     from .providers.sina import SinaProvider
     from .providers.tencent import TencentProvider
@@ -272,6 +273,7 @@ def setup_default_providers():
     from .providers.eastmoney import EastmoneyProvider
     from .providers.yicai import YicaiProvider
     from .providers.netease import NeteaseProvider
+    from .providers.xquik import XquikProvider
 
     registry = get_registry()
     
@@ -283,6 +285,7 @@ def setup_default_providers():
         ("eastmoney", EastmoneyProvider),
         ("yicai", YicaiProvider),
         ("163", NeteaseProvider),
+        ("xquik", XquikProvider),
     ]
 
     # 注册所有 Provider

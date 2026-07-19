@@ -9,9 +9,9 @@
 - OpenBB: openbb_core.provider.standard_models
 - 设计文档: research/codedeepresearch/OpenBB/FinnewsHunter_improvement_plan.md
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import date, datetime
-from typing import Optional, List
+from typing import Optional
 from enum import Enum
 
 
@@ -60,8 +60,8 @@ class StockQueryParams(BaseModel):
         description="返回条数"
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "symbol": "600519",
                 "interval": "1d",
@@ -69,6 +69,7 @@ class StockQueryParams(BaseModel):
                 "adjust": "qfq"
             }
         }
+    )
 
 
 class StockPriceData(BaseModel):
@@ -90,11 +91,6 @@ class StockPriceData(BaseModel):
     change_amount: Optional[float] = Field(default=None, description="涨跌额")
     amplitude: Optional[float] = Field(default=None, description="振幅 %")
     turnover_rate: Optional[float] = Field(default=None, description="换手率 %")
-
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
 
     def to_legacy_dict(self) -> dict:
         """

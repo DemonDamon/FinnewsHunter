@@ -12,7 +12,7 @@
 - OpenBB: openbb_core.provider.standard_models
 - 设计文档: research/codedeepresearch/OpenBB/FinnewsHunter_improvement_plan.md
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
 from typing import Optional, List
 from enum import Enum
@@ -64,14 +64,15 @@ class NewsQueryParams(BaseModel):
         description="数据源过滤，如 ['sina', 'tencent']"
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "stock_codes": ["600519", "000001"],
                 "limit": 20,
                 "keywords": ["茅台", "白酒"]
             }
         }
+    )
 
 
 class NewsData(BaseModel):
@@ -133,11 +134,8 @@ class NewsData(BaseModel):
         description="Provider 特有的额外字段"
     )
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "id": "a1b2c3d4e5f6",
                 "title": "贵州茅台2024年三季度业绩超预期",
@@ -150,6 +148,7 @@ class NewsData(BaseModel):
                 "sentiment_score": 0.8
             }
         }
+    )
 
     @staticmethod
     def generate_id(url: str) -> str:

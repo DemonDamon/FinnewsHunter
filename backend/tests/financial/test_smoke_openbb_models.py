@@ -58,7 +58,7 @@ class TestNewsModels:
 
     def test_news_data_basic(self):
         """测试 NewsData 基本实例化"""
-        from app.financial.models.news import NewsData, NewsSentiment
+        from app.financial.models.news import NewsData
 
         news = NewsData(
             id="test123",
@@ -133,6 +133,22 @@ class TestNewsModels:
         assert legacy["source"] == "sina"
         assert legacy["author"] == "记者"
         assert "SH600519" in legacy["stock_codes"]
+
+    @staticmethod
+    def test_news_data_serializes_datetime():
+        """Pydantic v2 serializes datetimes without deprecated model config."""
+        from app.financial.models.news import NewsData
+
+        news = NewsData(
+            id="test-json",
+            title="JSON",
+            content="content",
+            source="test",
+            source_url="https://example.com/news",
+            publish_time=datetime(2026, 1, 1, 12, 30),
+        )
+
+        assert '"publish_time":"2026-01-01T12:30:00"' in news.model_dump_json()
 
 
 class TestStockModels:
