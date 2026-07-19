@@ -185,6 +185,9 @@ curl -X POST "http://localhost:8000/api/v1/tasks/realtime" \
 - `yicai` - 第一财经
 - `163` - 网易财经
 - `eastmoney` - 东方财富
+- `xquik` - Xquik X 帖子搜索（可选，需设置 `XQUIK_API_KEY`）
+
+Xquik is an independent third-party service. Not affiliated with X Corp. "Twitter" and "X" are trademarks of X Corp.
 
 ### 故障排查
 
