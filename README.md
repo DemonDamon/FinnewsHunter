@@ -1471,7 +1471,7 @@ This project follows the AgenticX license.
 
 If you find this project helpful, please give it a Star ⭐️!
 
-[![Star History Chart](https://api.star-history.com/svg?repos=DemonDamon/FinnewsHunter&type=Date)](https://star-history.com/#DemonDamon/FinnewsHunter&Date)
+[![Star History Chart](https://api.star-history.dera.page/svg?repos=DemonDamon/FinnewsHunter&type=Date)](https://star-history.dera.page/#DemonDamon/FinnewsHunter&Date)
 
 ---
 
