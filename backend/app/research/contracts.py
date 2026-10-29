@@ -41,7 +41,10 @@ CanonicalEntityId = Annotated[
 DecimalString = Annotated[
     str,
     StringConstraints(
-        pattern=r"^-?(0|[1-9][0-9]*)(\.[0-9]+)?$", min_length=1, max_length=128, strict=True
+        pattern=r"^-?(0|[1-9][0-9]*)(\.[0-9]+)?$",
+        min_length=1,
+        max_length=128,
+        strict=True,
     ),
 ]
 SafeSlug = Annotated[
@@ -63,7 +66,11 @@ def _normalize_entity_identifier(entity_id: object) -> object:
     """Normalize the one permitted short-form entity identifier at input boundaries."""
     if not isinstance(entity_id, str):
         return entity_id
-    if len(entity_id) == 8 and entity_id[:2] in {"SH", "SZ", "BJ"} and entity_id[2:].isdigit():
+    if (
+        len(entity_id) == 8
+        and entity_id[:2] in {"SH", "SZ", "BJ"}
+        and entity_id[2:].isdigit()
+    ):
         return f"CN.{entity_id[:2]}.{entity_id[2:]}"
     return entity_id
 
@@ -90,14 +97,18 @@ class ContractError(ContractModel):
     """Describe a safe, stable error returned to a contract caller."""
 
     code: SafeSlug
-    message: Annotated[str, StringConstraints(min_length=1, max_length=512, strict=True)]
+    message: Annotated[
+        str, StringConstraints(min_length=1, max_length=512, strict=True)
+    ]
     retryable: bool
 
 
 class SourceRefV1(ContractModel):
     """Reference evidence provenance in an envelope without exposing raw content."""
 
-    source_id: Annotated[str, StringConstraints(min_length=1, max_length=128, strict=True)]
+    source_id: Annotated[
+        str, StringConstraints(min_length=1, max_length=128, strict=True)
+    ]
     evidence_id: UUID
     provider: ShortText
     version: ShortText
@@ -120,7 +131,9 @@ class MarketPayloadV1(ContractModel):
     observed_at: AwareDatetime
     available_at: AwareDatetime
     fetched_at: AwareDatetime
-    timezone: Annotated[str, StringConstraints(min_length=1, max_length=64, strict=True)]
+    timezone: Annotated[
+        str, StringConstraints(min_length=1, max_length=64, strict=True)
+    ]
     currency: Annotated[str, StringConstraints(pattern=r"^[A-Z]{3}$", strict=True)]
     adjustment: Literal["none", "forward", "backward"]
     fields: list[MarketFieldV1] = Field(min_length=1, max_length=32)
@@ -133,7 +146,8 @@ class MarketPayloadV1(ContractModel):
         """Ensure the recorded availability time is not after retrieval."""
         if self.available_at > self.fetched_at:
             raise PydanticCustomError(
-                "available_after_fetched", "available_at must be on or before fetched_at"
+                "available_after_fetched",
+                "available_at must be on or before fetched_at",
             )
         return self
 
@@ -142,13 +156,19 @@ class EvidenceV1(ContractModel):
     """Describe a versioned event or market evidence record without admission policy."""
 
     evidence_id: UUID
-    source_id: Annotated[str, StringConstraints(min_length=1, max_length=128, strict=True)]
+    source_id: Annotated[
+        str, StringConstraints(min_length=1, max_length=128, strict=True)
+    ]
     source_url: AnyUrl
-    content_hash: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$", strict=True)]
+    content_hash: Annotated[
+        str, StringConstraints(pattern=r"^[0-9a-f]{64}$", strict=True)
+    ]
     published_at: AwareDatetime
     fetched_at: AwareDatetime
     available_at: AwareDatetime
-    timezone: Annotated[str, StringConstraints(min_length=1, max_length=64, strict=True)]
+    timezone: Annotated[
+        str, StringConstraints(min_length=1, max_length=64, strict=True)
+    ]
     license_scope: Literal["redisplay", "metadata_only", "no_redisplay", "unknown"]
     entity_ids: list[CanonicalEntityId] = Field(min_length=1, max_length=1)
     excerpt: Annotated[str, StringConstraints(max_length=4000, strict=True)]
@@ -172,11 +192,13 @@ class EvidenceV1(ContractModel):
         """Apply temporal invariants and the mandatory market payload linkage."""
         if self.fetched_at < self.available_at:
             raise PydanticCustomError(
-                "fetched_before_available", "fetched_at must not be earlier than available_at"
+                "fetched_before_available",
+                "fetched_at must not be earlier than available_at",
             )
         if self.published_at > self.available_at:
             raise PydanticCustomError(
-                "published_after_available", "published_at must not be later than available_at"
+                "published_after_available",
+                "published_at must not be later than available_at",
             )
         if self.evidence_kind == "market":
             if self.market_payload is None:
@@ -185,11 +207,13 @@ class EvidenceV1(ContractModel):
                 )
             if self.market_payload.evidence_id != self.evidence_id:
                 raise PydanticCustomError(
-                    "market_evidence_mismatch", "market payload evidence_id must match evidence_id"
+                    "market_evidence_mismatch",
+                    "market payload evidence_id must match evidence_id",
                 )
         elif self.market_payload is not None:
             raise PydanticCustomError(
-                "event_market_payload_forbidden", "event evidence must not include market_payload"
+                "event_market_payload_forbidden",
+                "event evidence must not include market_payload",
             )
         return self
 
@@ -224,7 +248,9 @@ class ClaimV1(ContractModel):
     as_of: AwareDatetime
     valid_until: AwareDatetime | None
     confidence: Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)]
-    numeric_assertions: list[NumericAssertionV1] = Field(default_factory=list, max_length=20)
+    numeric_assertions: list[NumericAssertionV1] = Field(
+        default_factory=list, max_length=20
+    )
 
     @field_validator("evidence_ids")
     @classmethod
@@ -259,8 +285,12 @@ class ModelTraceEntryV1(ContractModel):
     prompt_version: ShortText
     policy_version: ShortText
     eval_version: ShortText
-    eval_digest: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$", strict=True)]
-    fallback_reason: Annotated[str, StringConstraints(max_length=512, strict=True)] | None
+    eval_digest: Annotated[
+        str, StringConstraints(pattern=r"^[0-9a-f]{64}$", strict=True)
+    ]
+    fallback_reason: (
+        Annotated[str, StringConstraints(max_length=512, strict=True)] | None
+    )
 
 
 class ResearchBriefV1(ContractModel):
@@ -270,12 +300,12 @@ class ResearchBriefV1(ContractModel):
     as_of: AwareDatetime
     claims: list[ClaimV1] = Field(max_length=64)
     counterarguments: list[ClaimV1] = Field(max_length=32)
-    unknowns: list[Annotated[str, StringConstraints(max_length=2000, strict=True)]] = Field(
-        max_length=32
+    unknowns: list[Annotated[str, StringConstraints(max_length=2000, strict=True)]] = (
+        Field(max_length=32)
     )
-    limitations: list[Annotated[str, StringConstraints(max_length=2000, strict=True)]] = Field(
-        max_length=32
-    )
+    limitations: list[
+        Annotated[str, StringConstraints(max_length=2000, strict=True)]
+    ] = Field(max_length=32)
     model_trace: list[ModelTraceEntryV1] = Field(max_length=4)
 
     @model_validator(mode="after")
@@ -284,7 +314,8 @@ class ResearchBriefV1(ContractModel):
         for claim in [*self.claims, *self.counterarguments]:
             if claim.as_of != self.as_of:
                 raise PydanticCustomError(
-                    "claim_as_of_mismatch", "all claim as_of values must match brief as_of"
+                    "claim_as_of_mismatch",
+                    "all claim as_of values must match brief as_of",
                 )
         return self
 
@@ -297,7 +328,9 @@ class ResearchRunViewV1(ContractModel):
     principal_id: UUID
     entity_ids: list[CanonicalEntityId] = Field(min_length=1, max_length=1)
     as_of: AwareDatetime
-    status: Literal["queued", "running", "completed", "failed", "needs_review", "cancelled"]
+    status: Literal[
+        "queued", "running", "completed", "failed", "needs_review", "cancelled"
+    ]
     created_at: AwareDatetime
     updated_at: AwareDatetime
     model_id: ShortText | None
@@ -312,7 +345,8 @@ class ResearchRunViewV1(ContractModel):
         """Enforce timestamp ordering and legal completed Brief availability."""
         if self.updated_at < self.created_at:
             raise PydanticCustomError(
-                "updated_before_created", "updated_at must not be earlier than created_at"
+                "updated_before_created",
+                "updated_at must not be earlier than created_at",
             )
         if self.error_code == "license_revoked":
             if self.status != "completed":
@@ -338,9 +372,14 @@ class ResearchRunViewV1(ContractModel):
                 raise PydanticCustomError(
                     "brief_as_of_mismatch", "brief as_of must match run as_of"
                 )
-        if self.status == "completed" and self.brief is None and self.error_code != "license_revoked":
+        if (
+            self.status == "completed"
+            and self.brief is None
+            and self.error_code != "license_revoked"
+        ):
             raise PydanticCustomError(
-                "completed_brief_required", "completed runs require a brief unless license is revoked"
+                "completed_brief_required",
+                "completed runs require a brief unless license is revoked",
             )
         return self
 
@@ -357,7 +396,9 @@ class StartedEventPayloadV1(ContractModel):
 class StepStartedEventPayloadV1(ContractModel):
     """Represent the bounded name of a run processing step."""
 
-    step_name: Annotated[str, StringConstraints(min_length=1, max_length=128, strict=True)]
+    step_name: Annotated[
+        str, StringConstraints(min_length=1, max_length=128, strict=True)
+    ]
 
 
 class EvidenceAddedEventPayloadV1(ContractModel):
@@ -462,10 +503,12 @@ class ResearchEnvelope(ContractModel, Generic[T]):
     as_of: AwareDatetime
     data: T | None
     source: list[SourceRefV1] = Field(max_length=20)
-    license_status: Literal["approved", "restricted", "unknown", "revoked", "not_applicable"]
-    warnings: list[Annotated[str, StringConstraints(min_length=1, max_length=512, strict=True)]] = Field(
-        max_length=20
-    )
+    license_status: Literal[
+        "approved", "restricted", "unknown", "revoked", "not_applicable"
+    ]
+    warnings: list[
+        Annotated[str, StringConstraints(min_length=1, max_length=512, strict=True)]
+    ] = Field(max_length=20)
     error: ContractError | None
 
     @model_validator(mode="after")
@@ -481,7 +524,8 @@ class ResearchEnvelope(ContractModel, Generic[T]):
             )
         if self.status == "partial" and not self.warnings:
             raise PydanticCustomError(
-                "partial_envelope_requires_warnings", "partial requires at least one warning"
+                "partial_envelope_requires_warnings",
+                "partial requires at least one warning",
             )
         return self
 
@@ -499,14 +543,20 @@ class ResearchToolInput(ContractModel):
 
     @field_validator("as_of", check_fields=False)
     @classmethod
-    def validate_as_of_not_future(cls, value: AwareDatetime, info: object) -> AwareDatetime:
+    def validate_as_of_not_future(
+        cls, value: AwareDatetime, info: object
+    ) -> AwareDatetime:
         """Reject future cutoffs against a caller-supplied test clock or UTC now."""
         context = getattr(info, "context", None) or {}
         now = context.get("now", datetime.now(UTC))
         if now.tzinfo is None or now.utcoffset() is None:
-            raise PydanticCustomError("validator_now_naive", "validation now must be timezone-aware")
+            raise PydanticCustomError(
+                "validator_now_naive", "validation now must be timezone-aware"
+            )
         if value > now:
-            raise PydanticCustomError("as_of_in_future", "as_of must not be in the future")
+            raise PydanticCustomError(
+                "as_of_in_future", "as_of must not be in the future"
+            )
         return value
 
 
@@ -542,7 +592,9 @@ class StartResearchInput(ResearchToolInput):
     entity_ids: list[CanonicalEntityId] = Field(min_length=1, max_length=1)
     as_of: AwareDatetime
     seed_evidence_id: UUID
-    question: Annotated[str, StringConstraints(max_length=2000, strict=True)] | None = None
+    question: Annotated[str, StringConstraints(max_length=2000, strict=True)] | None = (
+        None
+    )
 
 
 class GetRunInput(ResearchToolInput):

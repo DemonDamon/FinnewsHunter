@@ -49,7 +49,9 @@ def _read_json(path: Path) -> Any:
 
 def _canonical_json(payload: Any) -> str:
     """Serialize payloads using the contract's deterministic JSON form."""
-    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    return json.dumps(
+        payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    )
 
 
 def _validate_with_schema(schema_path: str, payload: Any) -> list[Any]:
@@ -62,7 +64,10 @@ def _validate_with_schema(schema_path: str, payload: Any) -> list[Any]:
 def _walk_mappings(value: Any) -> list[dict[str, Any]]:
     """Return every JSON object nested below a fixture payload."""
     if isinstance(value, dict):
-        return [value, *[item for child in value.values() for item in _walk_mappings(child)]]
+        return [
+            value,
+            *[item for child in value.values() for item in _walk_mappings(child)],
+        ]
     if isinstance(value, list):
         return [item for child in value for item in _walk_mappings(child)]
     return []
@@ -87,7 +92,9 @@ def _model_for_name(model_name: str) -> type[Any]:
         "GetMarketSnapshotInput": GetMarketSnapshotInput,
         "StartResearchInput": StartResearchInput,
         "GetRunInput": GetRunInput,
-        "ResearchEnvelope[ArticlesSearchResult]": ResearchEnvelope[ArticlesSearchResult],
+        "ResearchEnvelope[ArticlesSearchResult]": ResearchEnvelope[
+            ArticlesSearchResult
+        ],
         "ResearchEnvelope[EvidenceV1]": ResearchEnvelope[EvidenceV1],
         "ResearchEnvelope[MarketPayloadV1]": ResearchEnvelope[MarketPayloadV1],
         "ResearchEnvelope[ResearchRunViewV1]": ResearchEnvelope[ResearchRunViewV1],
@@ -145,17 +152,25 @@ def test_manifest_has_exact_tools_paths_and_integrity_hashes() -> None:
         {"method": "GET", "path": "/api/v1/research/evidence/{id}?run_id={id}"},
     ]
     assert manifest["mcp_result_policy"] == MCP_RESULT_POLICY
-    assert all("ResearchEnvelope[Any]" not in tool["output_schema"] for tool in manifest["tools"])
+    assert all(
+        "ResearchEnvelope[Any]" not in tool["output_schema"]
+        for tool in manifest["tools"]
+    )
 
     for entry in [*manifest["schema_files"], *manifest["fixture_files"]]:
         assert not Path(entry["path"]).is_absolute()
         payload = (CONTRACT_ROOT / entry["path"]).read_bytes()
         assert entry["sha256"] == __import__("hashlib").sha256(payload).hexdigest()
 
-    digest_payload = {key: value for key, value in manifest.items() if key != "contract_digest"}
-    assert manifest["contract_digest"] == __import__("hashlib").sha256(
-        _canonical_json(digest_payload).encode("utf-8")
-    ).hexdigest()
+    digest_payload = {
+        key: value for key, value in manifest.items() if key != "contract_digest"
+    }
+    assert (
+        manifest["contract_digest"]
+        == __import__("hashlib")
+        .sha256(_canonical_json(digest_payload).encode("utf-8"))
+        .hexdigest()
+    )
     assert "secret" not in _canonical_json(manifest).lower()
 
 
@@ -173,7 +188,9 @@ def test_registry_has_only_real_concrete_tool_contracts() -> None:
         schema = tool.input_model.model_json_schema()
         assert schema["additionalProperties"] is False
         assert tool.output_model is not ResearchEnvelope
-        assert "Any" not in json.dumps(tool.output_model.model_json_schema(), sort_keys=True)
+        assert "Any" not in json.dumps(
+            tool.output_model.model_json_schema(), sort_keys=True
+        )
 
 
 def test_valid_fixtures_pass_pydantic_and_json_schema() -> None:
@@ -214,7 +231,8 @@ def test_tool_text_and_structured_fixtures_are_equivalent() -> None:
 
 
 def test_market_tool_provenance_matches_its_market_payload() -> None:
-    """Require the market snapshot source reference to identify its exact payload evidence."""
+    """Require the market snapshot source reference to identify its exact \
+payload evidence."""
     comparisons = _read_json(FIXTURE_ROOT / "tool-success-envelopes.json")
     market_envelope = comparisons["finnews.get_market_snapshot"]["structured"]
     market_evidence = _read_json(FIXTURE_ROOT / "market-evidence.json")
@@ -240,7 +258,8 @@ def test_synthetic_envelopes_never_claim_approved_license() -> None:
 
 
 def test_mcp_result_policy_fixture_has_four_equivalent_transport_shapes() -> None:
-    """Freeze text, structured content, and isError semantics for all envelope statuses."""
+    """Freeze text, structured content, and isError semantics for all \
+envelope statuses."""
     fixture_index = _read_json(FIXTURE_ROOT / "index.json")
     fixture_entry = fixture_index["mcp_result_policy"]
     assert fixture_entry["mapping"] == MCP_RESULT_POLICY
@@ -260,7 +279,8 @@ def test_mcp_result_policy_fixture_has_four_equivalent_transport_shapes() -> Non
 
 
 def test_mcp_result_policy_negative_fixture_rejects_contradictory_is_error() -> None:
-    """Keep the registered negative fixture from normalizing a contradictory transport bit."""
+    """Keep the registered negative fixture from normalizing a \
+contradictory transport bit."""
     fixture_index = _read_json(FIXTURE_ROOT / "index.json")
     fixture_entry = fixture_index["mcp_result_policy"]
     negative = _read_json(CONTRACT_ROOT / fixture_entry["negative_path"])
@@ -305,11 +325,15 @@ def test_decimal_finite_and_identifier_guards_reject_unsafe_json_shapes() -> Non
 
 def test_required_nullable_and_cross_object_invariants_are_enforced() -> None:
     """Enforce explicit null fields and Brief/Run time and identifier consistency."""
-    missing_nullable = _read_json(FIXTURE_ROOT / "negative" / "missing-required-nullable.json")
+    missing_nullable = _read_json(
+        FIXTURE_ROOT / "negative" / "missing-required-nullable.json"
+    )
     with pytest.raises(ValidationError):
         _model_validate(ClaimV1, missing_nullable)
 
-    fact_without_citation = _read_json(FIXTURE_ROOT / "negative" / "fact-without-citation.json")
+    fact_without_citation = _read_json(
+        FIXTURE_ROOT / "negative" / "fact-without-citation.json"
+    )
     with pytest.raises(ValidationError, match="evidence"):
         _model_validate(ClaimV1, fact_without_citation)
 
@@ -325,14 +349,19 @@ def test_required_nullable_and_cross_object_invariants_are_enforced() -> None:
     assert validated.brief is None
 
 
-def test_license_revoked_brief_is_rejected_by_direct_and_nested_contract_schemas() -> None:
-    """Reject revoked Brief leakage through both DTO validation and generated nested schemas."""
+def test_license_revoked_brief_is_rejected_by_direct_and_nested_contract_schemas() -> (
+    None
+):
+    """Reject revoked Brief leakage through both DTO validation and \
+generated nested schemas."""
     revoked_with_brief = _read_json(
         FIXTURE_ROOT / "negative" / "license-revoked-with-brief.json"
     )
     with pytest.raises(ValidationError) as error:
         _model_validate(ResearchRunViewV1, revoked_with_brief)
-    assert "license_revoked_brief_forbidden" in {item["type"] for item in error.value.errors()}
+    assert "license_revoked_brief_forbidden" in {
+        item["type"] for item in error.value.errors()
+    }
     assert _validate_with_schema("schemas/ResearchRunViewV1.json", revoked_with_brief)
 
     comparisons = _read_json(FIXTURE_ROOT / "tool-success-envelopes.json")

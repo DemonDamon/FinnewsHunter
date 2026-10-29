@@ -57,12 +57,16 @@ HASH_C = "c" * 64
 
 def _canonical_json(payload: Any) -> bytes:
     """Encode content using the one stable JSON serialization used for hashes."""
-    return (json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    return (
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
 
 
 def _compact_json(payload: Any) -> str:
     """Encode fixture text blocks using a stable compact JSON representation."""
-    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    return json.dumps(
+        payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    )
 
 
 def _schema_file_name(name: str) -> str:
@@ -91,7 +95,10 @@ def _schema_sources() -> list[tuple[str, type[Any]]]:
         ("GetMarketSnapshotInput", GetMarketSnapshotInput),
         ("StartResearchInput", StartResearchInput),
         ("GetRunInput", GetRunInput),
-        ("ResearchEnvelope.ArticlesSearchResult", ResearchEnvelope[ArticlesSearchResult]),
+        (
+            "ResearchEnvelope.ArticlesSearchResult",
+            ResearchEnvelope[ArticlesSearchResult],
+        ),
         ("ResearchEnvelope.EvidenceV1", ResearchEnvelope[EvidenceV1]),
         ("ResearchEnvelope.MarketPayloadV1", ResearchEnvelope[MarketPayloadV1]),
         ("ResearchEnvelope.ResearchRunViewV1", ResearchEnvelope[ResearchRunViewV1]),
@@ -122,12 +129,15 @@ def _apply_event_payload_conditions(schema: dict[str, Any]) -> dict[str, Any]:
 
 def _apply_run_state_conditions(schema: dict[str, Any]) -> dict[str, Any]:
     """Apply revoked-license run visibility rules to direct and nested model schemas."""
+
     def visit(node: Any) -> None:
         if isinstance(node, dict):
             properties = node.get("properties")
-            if isinstance(properties, dict) and {"status", "error_code", "brief"}.issubset(
-                properties
-            ):
+            if isinstance(properties, dict) and {
+                "status",
+                "error_code",
+                "brief",
+            }.issubset(properties):
                 node["allOf"] = [
                     *node.get("allOf", []),
                     {
@@ -177,7 +187,8 @@ def _event_evidence() -> dict[str, Any]:
         "timezone": "Asia/Shanghai",
         "license_scope": "redisplay",
         "entity_ids": ["CN.SH.600519"],
-        "excerpt": "Synthetic fixture event only; it is not financial research evidence.",
+        "excerpt": """Synthetic fixture event only; it is not financial \
+research evidence.""",
         "quality_status": "verified_metadata",
         "evidence_kind": "event",
         "version": "fixture-v1",
@@ -243,8 +254,12 @@ def _brief(run_id: str = COMPLETED_RUN_ID) -> dict[str, Any]:
         "as_of": "2026-10-29T10:00:00+08:00",
         "claims": [_claim()],
         "counterarguments": [],
-        "unknowns": ["No live source, admission policy, or financial conclusion is represented."],
-        "limitations": ["This is a synthetic fixture intended only for offline contract tests."],
+        "unknowns": [
+            "No live source, admission policy, or financial conclusion is represented."
+        ],
+        "limitations": [
+            "This is a synthetic fixture intended only for offline contract tests."
+        ],
         "model_trace": [
             {
                 "role": "draft",
@@ -260,7 +275,9 @@ def _brief(run_id: str = COMPLETED_RUN_ID) -> dict[str, Any]:
     }
 
 
-def _run_view(run_id: str, status: str, brief: dict[str, Any] | None, error_code: str | None) -> dict[str, Any]:
+def _run_view(
+    run_id: str, status: str, brief: dict[str, Any] | None, error_code: str | None
+) -> dict[str, Any]:
     """Build a stable run view for queued, completed, or revoked fixture states."""
     return {
         "run_id": run_id,
@@ -332,8 +349,12 @@ def _tool_success_envelopes() -> dict[str, Any]:
         {"articles": [_event_evidence()], "next_cursor": None, "truncated": False},
         source=[_event_source_ref()],
     )
-    evidence_output = _envelope(REQUEST_ID, _event_evidence(), source=[_event_source_ref()])
-    market_output = _envelope(REQUEST_ID, _market_payload(), source=[_market_source_ref()])
+    evidence_output = _envelope(
+        REQUEST_ID, _event_evidence(), source=[_event_source_ref()]
+    )
+    market_output = _envelope(
+        REQUEST_ID, _market_payload(), source=[_market_source_ref()]
+    )
     start_output = _envelope(
         REQUEST_ID,
         _run_view(QUEUED_RUN_ID, "queued", None, None),
@@ -345,11 +366,26 @@ def _tool_success_envelopes() -> dict[str, Any]:
         source=[_event_source_ref()],
     )
     outputs = {
-        "finnews.search_articles": (search_output, "schemas/ResearchEnvelope.ArticlesSearchResult.json"),
-        "finnews.get_evidence": (evidence_output, "schemas/ResearchEnvelope.EvidenceV1.json"),
-        "finnews.get_market_snapshot": (market_output, "schemas/ResearchEnvelope.MarketPayloadV1.json"),
-        "finnews.start_research": (start_output, "schemas/ResearchEnvelope.ResearchRunViewV1.json"),
-        "finnews.get_run": (run_output, "schemas/ResearchEnvelope.ResearchRunViewV1.json"),
+        "finnews.search_articles": (
+            search_output,
+            "schemas/ResearchEnvelope.ArticlesSearchResult.json",
+        ),
+        "finnews.get_evidence": (
+            evidence_output,
+            "schemas/ResearchEnvelope.EvidenceV1.json",
+        ),
+        "finnews.get_market_snapshot": (
+            market_output,
+            "schemas/ResearchEnvelope.MarketPayloadV1.json",
+        ),
+        "finnews.start_research": (
+            start_output,
+            "schemas/ResearchEnvelope.ResearchRunViewV1.json",
+        ),
+        "finnews.get_run": (
+            run_output,
+            "schemas/ResearchEnvelope.ResearchRunViewV1.json",
+        ),
     }
     return {
         name: {"text": _compact_json(output), "structured": output, "schema": schema}
@@ -382,11 +418,23 @@ def _mcp_result_policy_fixtures() -> dict[str, Any]:
         REQUEST_ID,
         None,
         status="error",
-        error={"code": "execution_unavailable", "message": "Fixture executor is disabled.", "retryable": True},
+        error={
+            "code": "execution_unavailable",
+            "message": "Fixture executor is disabled.",
+            "retryable": True,
+        },
     )
     outputs = {
-        "ok": (ok, "ResearchEnvelope[EvidenceV1]", "schemas/ResearchEnvelope.EvidenceV1.json"),
-        "partial": (partial, "ResearchEnvelope[EvidenceV1]", "schemas/ResearchEnvelope.EvidenceV1.json"),
+        "ok": (
+            ok,
+            "ResearchEnvelope[EvidenceV1]",
+            "schemas/ResearchEnvelope.EvidenceV1.json",
+        ),
+        "partial": (
+            partial,
+            "ResearchEnvelope[EvidenceV1]",
+            "schemas/ResearchEnvelope.EvidenceV1.json",
+        ),
         "unavailable": (
             unavailable,
             "ResearchEnvelope[MarketPayloadV1]",
@@ -450,7 +498,11 @@ def _fixtures() -> dict[str, Any]:
         REQUEST_ID,
         None,
         status="error",
-        error={"code": "execution_unavailable", "message": "Fixture executor is disabled.", "retryable": True},
+        error={
+            "code": "execution_unavailable",
+            "message": "Fixture executor is disabled.",
+            "retryable": True,
+        },
         license_status="not_applicable",
     )
     missing_nullable = _claim()
@@ -486,8 +538,14 @@ def _fixtures() -> dict[str, Any]:
         "fixtures/market-unavailable-envelope.json": unavailable,
         "fixtures/error-envelope.json": error,
         "fixtures/tool-success-envelopes.json": _tool_success_envelopes(),
-        "fixtures/negative/future-as-of-input.json": {**search_input, "as_of": "2026-10-29T10:06:00+08:00"},
-        "fixtures/negative/naive-time-input.json": {**search_input, "as_of": "2026-10-29T10:00:00"},
+        "fixtures/negative/future-as-of-input.json": {
+            **search_input,
+            "as_of": "2026-10-29T10:06:00+08:00",
+        },
+        "fixtures/negative/naive-time-input.json": {
+            **search_input,
+            "as_of": "2026-10-29T10:00:00",
+        },
         "fixtures/negative/extra-model-input.json": extra_model,
         "fixtures/negative/bad-numeric.json": bad_numeric,
         "fixtures/negative/fact-without-citation.json": fact_without_citation,
@@ -513,27 +571,103 @@ def _fixture_index() -> dict[str, Any]:
             "mapping": MCP_RESULT_POLICY,
         },
         "valid": [
-            {"path": "fixtures/event-evidence.json", "model": "EvidenceV1", "schema": "schemas/EvidenceV1.json"},
-            {"path": "fixtures/market-evidence.json", "model": "EvidenceV1", "schema": "schemas/EvidenceV1.json"},
-            {"path": "fixtures/market-payload.json", "model": "MarketPayloadV1", "schema": "schemas/MarketPayloadV1.json"},
-            {"path": "fixtures/claim.json", "model": "ClaimV1", "schema": "schemas/ClaimV1.json"},
-            {"path": "fixtures/brief.json", "model": "ResearchBriefV1", "schema": "schemas/ResearchBriefV1.json"},
-            {"path": "fixtures/run-queued.json", "model": "ResearchRunViewV1", "schema": "schemas/ResearchRunViewV1.json"},
-            {"path": "fixtures/run-completed.json", "model": "ResearchRunViewV1", "schema": "schemas/ResearchRunViewV1.json"},
-            {"path": "fixtures/run-license-revoked.json", "model": "ResearchRunViewV1", "schema": "schemas/ResearchRunViewV1.json"},
-            {"path": "fixtures/event.json", "model": "RunEventV1", "schema": "schemas/RunEventV1.json"},
-            {"path": "fixtures/search-articles-input.json", "model": "SearchArticlesInput", "schema": "schemas/SearchArticlesInput.json"},
-            {"path": "fixtures/market-unavailable-envelope.json", "model": "ResearchEnvelope[MarketPayloadV1]", "schema": "schemas/ResearchEnvelope.MarketPayloadV1.json"},
-            {"path": "fixtures/error-envelope.json", "model": "ResearchEnvelope[ArticlesSearchResult]", "schema": "schemas/ResearchEnvelope.ArticlesSearchResult.json"},
+            {
+                "path": "fixtures/event-evidence.json",
+                "model": "EvidenceV1",
+                "schema": "schemas/EvidenceV1.json",
+            },
+            {
+                "path": "fixtures/market-evidence.json",
+                "model": "EvidenceV1",
+                "schema": "schemas/EvidenceV1.json",
+            },
+            {
+                "path": "fixtures/market-payload.json",
+                "model": "MarketPayloadV1",
+                "schema": "schemas/MarketPayloadV1.json",
+            },
+            {
+                "path": "fixtures/claim.json",
+                "model": "ClaimV1",
+                "schema": "schemas/ClaimV1.json",
+            },
+            {
+                "path": "fixtures/brief.json",
+                "model": "ResearchBriefV1",
+                "schema": "schemas/ResearchBriefV1.json",
+            },
+            {
+                "path": "fixtures/run-queued.json",
+                "model": "ResearchRunViewV1",
+                "schema": "schemas/ResearchRunViewV1.json",
+            },
+            {
+                "path": "fixtures/run-completed.json",
+                "model": "ResearchRunViewV1",
+                "schema": "schemas/ResearchRunViewV1.json",
+            },
+            {
+                "path": "fixtures/run-license-revoked.json",
+                "model": "ResearchRunViewV1",
+                "schema": "schemas/ResearchRunViewV1.json",
+            },
+            {
+                "path": "fixtures/event.json",
+                "model": "RunEventV1",
+                "schema": "schemas/RunEventV1.json",
+            },
+            {
+                "path": "fixtures/search-articles-input.json",
+                "model": "SearchArticlesInput",
+                "schema": "schemas/SearchArticlesInput.json",
+            },
+            {
+                "path": "fixtures/market-unavailable-envelope.json",
+                "model": "ResearchEnvelope[MarketPayloadV1]",
+                "schema": "schemas/ResearchEnvelope.MarketPayloadV1.json",
+            },
+            {
+                "path": "fixtures/error-envelope.json",
+                "model": "ResearchEnvelope[ArticlesSearchResult]",
+                "schema": "schemas/ResearchEnvelope.ArticlesSearchResult.json",
+            },
         ],
         "negative": [
-            {"path": "fixtures/negative/future-as-of-input.json", "model": "SearchArticlesInput", "expected_validation_code": "as_of_in_future"},
-            {"path": "fixtures/negative/naive-time-input.json", "model": "SearchArticlesInput", "expected_validation_code": "timezone_aware"},
-            {"path": "fixtures/negative/extra-model-input.json", "model": "StartResearchInput", "expected_validation_code": "extra_forbidden"},
-            {"path": "fixtures/negative/bad-numeric.json", "model": "MarketPayloadV1", "expected_validation_code": "string_type"},
-            {"path": "fixtures/negative/fact-without-citation.json", "model": "ClaimV1", "expected_validation_code": "fact_requires_evidence"},
-            {"path": "fixtures/negative/missing-required-nullable.json", "model": "ClaimV1", "expected_validation_code": "missing"},
-            {"path": "fixtures/negative/too-many-entities.json", "model": "StartResearchInput", "expected_validation_code": "too_long"},
+            {
+                "path": "fixtures/negative/future-as-of-input.json",
+                "model": "SearchArticlesInput",
+                "expected_validation_code": "as_of_in_future",
+            },
+            {
+                "path": "fixtures/negative/naive-time-input.json",
+                "model": "SearchArticlesInput",
+                "expected_validation_code": "timezone_aware",
+            },
+            {
+                "path": "fixtures/negative/extra-model-input.json",
+                "model": "StartResearchInput",
+                "expected_validation_code": "extra_forbidden",
+            },
+            {
+                "path": "fixtures/negative/bad-numeric.json",
+                "model": "MarketPayloadV1",
+                "expected_validation_code": "string_type",
+            },
+            {
+                "path": "fixtures/negative/fact-without-citation.json",
+                "model": "ClaimV1",
+                "expected_validation_code": "fact_requires_evidence",
+            },
+            {
+                "path": "fixtures/negative/missing-required-nullable.json",
+                "model": "ClaimV1",
+                "expected_validation_code": "missing",
+            },
+            {
+                "path": "fixtures/negative/too-many-entities.json",
+                "model": "StartResearchInput",
+                "expected_validation_code": "too_long",
+            },
             {
                 "path": "fixtures/negative/license-revoked-with-brief.json",
                 "model": "ResearchRunViewV1",
@@ -603,7 +737,9 @@ def _generated_files() -> dict[str, bytes]:
     }
     manifest = {
         **manifest_without_digest,
-        "contract_digest": hashlib.sha256(_compact_json(manifest_without_digest).encode("utf-8")).hexdigest(),
+        "contract_digest": hashlib.sha256(
+            _compact_json(manifest_without_digest).encode("utf-8")
+        ).hexdigest(),
     }
     files["manifest.json"] = _canonical_json(manifest)
     return files
@@ -619,7 +755,8 @@ def _write_files(files: dict[str, bytes]) -> None:
 
 
 def _check_files(files: dict[str, bytes]) -> list[str]:
-    """Return deterministic differences between expected and checked-in generated files."""
+    """Return deterministic differences between expected and checked-in \
+generated files."""
     differences: list[str] = []
     expected_paths = set(files)
     for relative_path, content in files.items():
@@ -640,7 +777,9 @@ def _check_files(files: dict[str, bytes]) -> list[str]:
 def main() -> int:
     """Generate artifacts or check that existing generated artifacts are current."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--check", action="store_true", help="Fail when generated artifacts differ.")
+    parser.add_argument(
+        "--check", action="store_true", help="Fail when generated artifacts differ."
+    )
     arguments = parser.parse_args()
     files = _generated_files()
     if arguments.check:
