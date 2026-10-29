@@ -1,0 +1,54 @@
+{
+  "additionalProperties": false,
+  "description": "Accept the finite input needed to create a research run.",
+  "properties": {
+    "as_of": {
+      "format": "date-time",
+      "title": "As Of",
+      "type": "string"
+    },
+    "entity_ids": {
+      "items": {
+        "maxLength": 12,
+        "minLength": 12,
+        "pattern": "^CN\\.(SH|SZ|BJ)\\.[0-9]{6}$",
+        "type": "string"
+      },
+      "maxItems": 1,
+      "minItems": 1,
+      "title": "Entity Ids",
+      "type": "array"
+    },
+    "question": {
+      "anyOf": [
+        {
+          "maxLength": 2000,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Question"
+    },
+    "request_id": {
+      "format": "uuid",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "seed_evidence_id": {
+      "format": "uuid",
+      "title": "Seed Evidence Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "request_id",
+    "entity_ids",
+    "as_of",
+    "seed_evidence_id"
+  ],
+  "title": "StartResearchInput",
+  "type": "object"
+}

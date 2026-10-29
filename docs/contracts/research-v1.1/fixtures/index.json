@@ -1,0 +1,124 @@
+{
+  "mcp_result_policy": {
+    "mapping": {
+      "error": true,
+      "ok": false,
+      "partial": false,
+      "unavailable": false
+    },
+    "negative_path": "fixtures/negative/mcp-is-error-conflict.json",
+    "path": "fixtures/mcp-result-policy.json"
+  },
+  "negative": [
+    {
+      "expected_validation_code": "as_of_in_future",
+      "model": "SearchArticlesInput",
+      "path": "fixtures/negative/future-as-of-input.json"
+    },
+    {
+      "expected_validation_code": "timezone_aware",
+      "model": "SearchArticlesInput",
+      "path": "fixtures/negative/naive-time-input.json"
+    },
+    {
+      "expected_validation_code": "extra_forbidden",
+      "model": "StartResearchInput",
+      "path": "fixtures/negative/extra-model-input.json"
+    },
+    {
+      "expected_validation_code": "string_type",
+      "model": "MarketPayloadV1",
+      "path": "fixtures/negative/bad-numeric.json"
+    },
+    {
+      "expected_validation_code": "fact_requires_evidence",
+      "model": "ClaimV1",
+      "path": "fixtures/negative/fact-without-citation.json"
+    },
+    {
+      "expected_validation_code": "missing",
+      "model": "ClaimV1",
+      "path": "fixtures/negative/missing-required-nullable.json"
+    },
+    {
+      "expected_validation_code": "too_long",
+      "model": "StartResearchInput",
+      "path": "fixtures/negative/too-many-entities.json"
+    },
+    {
+      "expected_validation_code": "license_revoked_brief_forbidden",
+      "model": "ResearchRunViewV1",
+      "path": "fixtures/negative/license-revoked-with-brief.json",
+      "schema": "schemas/ResearchRunViewV1.json"
+    },
+    {
+      "expected_validation_code": "license_revoked_requires_completed",
+      "model": "ResearchRunViewV1",
+      "path": "fixtures/negative/license-revoked-not-completed.json",
+      "schema": "schemas/ResearchRunViewV1.json"
+    }
+  ],
+  "schema_version": "research-v1.1",
+  "valid": [
+    {
+      "model": "EvidenceV1",
+      "path": "fixtures/event-evidence.json",
+      "schema": "schemas/EvidenceV1.json"
+    },
+    {
+      "model": "EvidenceV1",
+      "path": "fixtures/market-evidence.json",
+      "schema": "schemas/EvidenceV1.json"
+    },
+    {
+      "model": "MarketPayloadV1",
+      "path": "fixtures/market-payload.json",
+      "schema": "schemas/MarketPayloadV1.json"
+    },
+    {
+      "model": "ClaimV1",
+      "path": "fixtures/claim.json",
+      "schema": "schemas/ClaimV1.json"
+    },
+    {
+      "model": "ResearchBriefV1",
+      "path": "fixtures/brief.json",
+      "schema": "schemas/ResearchBriefV1.json"
+    },
+    {
+      "model": "ResearchRunViewV1",
+      "path": "fixtures/run-queued.json",
+      "schema": "schemas/ResearchRunViewV1.json"
+    },
+    {
+      "model": "ResearchRunViewV1",
+      "path": "fixtures/run-completed.json",
+      "schema": "schemas/ResearchRunViewV1.json"
+    },
+    {
+      "model": "ResearchRunViewV1",
+      "path": "fixtures/run-license-revoked.json",
+      "schema": "schemas/ResearchRunViewV1.json"
+    },
+    {
+      "model": "RunEventV1",
+      "path": "fixtures/event.json",
+      "schema": "schemas/RunEventV1.json"
+    },
+    {
+      "model": "SearchArticlesInput",
+      "path": "fixtures/search-articles-input.json",
+      "schema": "schemas/SearchArticlesInput.json"
+    },
+    {
+      "model": "ResearchEnvelope[MarketPayloadV1]",
+      "path": "fixtures/market-unavailable-envelope.json",
+      "schema": "schemas/ResearchEnvelope.MarketPayloadV1.json"
+    },
+    {
+      "model": "ResearchEnvelope[ArticlesSearchResult]",
+      "path": "fixtures/error-envelope.json",
+      "schema": "schemas/ResearchEnvelope.ArticlesSearchResult.json"
+    }
+  ]
+}

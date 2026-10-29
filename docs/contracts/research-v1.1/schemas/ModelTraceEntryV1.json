@@ -1,0 +1,73 @@
+{
+  "additionalProperties": false,
+  "description": "Store bounded model execution metadata without prompts or reasoning content.",
+  "properties": {
+    "eval_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Eval Digest",
+      "type": "string"
+    },
+    "eval_version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Eval Version",
+      "type": "string"
+    },
+    "fallback_reason": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Fallback Reason"
+    },
+    "model_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Model Id",
+      "type": "string"
+    },
+    "policy_version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Policy Version",
+      "type": "string"
+    },
+    "prompt_version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Prompt Version",
+      "type": "string"
+    },
+    "provider": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Provider",
+      "type": "string"
+    },
+    "role": {
+      "enum": [
+        "draft",
+        "review"
+      ],
+      "title": "Role",
+      "type": "string"
+    }
+  },
+  "required": [
+    "role",
+    "provider",
+    "model_id",
+    "prompt_version",
+    "policy_version",
+    "eval_version",
+    "eval_digest",
+    "fallback_reason"
+  ],
+  "title": "ModelTraceEntryV1",
+  "type": "object"
+}

@@ -1,0 +1,22 @@
+{
+  "additionalProperties": false,
+  "description": "Accept the evidence and run identifiers needed for an authorized read.",
+  "properties": {
+    "evidence_id": {
+      "format": "uuid",
+      "title": "Evidence Id",
+      "type": "string"
+    },
+    "run_id": {
+      "format": "uuid",
+      "title": "Run Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "evidence_id",
+    "run_id"
+  ],
+  "title": "GetEvidenceInput",
+  "type": "object"
+}

@@ -1,0 +1,18 @@
+{
+  "as_of": "2026-10-29T10:00:00+08:00",
+  "brief": null,
+  "created_at": "2026-10-29T10:00:00+08:00",
+  "entity_ids": [
+    "CN.SH.600519"
+  ],
+  "error_code": "license_revoked",
+  "model_id": "fixture-model",
+  "policy_version": "fixture-policy-v1",
+  "principal_id": "66666666-6666-6666-6666-666666666666",
+  "prompt_version": "fixture-prompt-v1",
+  "request_id": "77777777-7777-7777-7777-777777777777",
+  "result_ref": "fixture_result_ref",
+  "run_id": "55555555-5555-5555-5555-555555555555",
+  "status": "completed",
+  "updated_at": "2026-10-29T10:04:00+08:00"
+}

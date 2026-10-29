@@ -1,0 +1,16 @@
+{
+  "additionalProperties": false,
+  "description": "Accept the identifier for a bounded research-run status read.",
+  "properties": {
+    "run_id": {
+      "format": "uuid",
+      "title": "Run Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id"
+  ],
+  "title": "GetRunInput",
+  "type": "object"
+}

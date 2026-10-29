@@ -1,0 +1,43 @@
+{
+  "additionalProperties": false,
+  "description": "Reference evidence provenance in an envelope without exposing raw content.",
+  "properties": {
+    "evidence_id": {
+      "format": "uuid",
+      "title": "Evidence Id",
+      "type": "string"
+    },
+    "hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Hash",
+      "type": "string"
+    },
+    "provider": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Provider",
+      "type": "string"
+    },
+    "source_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Source Id",
+      "type": "string"
+    },
+    "version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "source_id",
+    "evidence_id",
+    "provider",
+    "version",
+    "hash"
+  ],
+  "title": "SourceRefV1",
+  "type": "object"
+}

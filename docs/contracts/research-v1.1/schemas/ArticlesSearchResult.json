@@ -1,0 +1,311 @@
+{
+  "$defs": {
+    "EvidenceV1": {
+      "additionalProperties": false,
+      "description": "Describe a versioned event or market evidence record without admission policy.",
+      "properties": {
+        "available_at": {
+          "format": "date-time",
+          "title": "Available At",
+          "type": "string"
+        },
+        "content_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "entity_ids": {
+          "items": {
+            "maxLength": 12,
+            "minLength": 12,
+            "pattern": "^CN\\.(SH|SZ|BJ)\\.[0-9]{6}$",
+            "type": "string"
+          },
+          "maxItems": 1,
+          "minItems": 1,
+          "title": "Entity Ids",
+          "type": "array"
+        },
+        "evidence_id": {
+          "format": "uuid",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "evidence_kind": {
+          "enum": [
+            "event",
+            "market"
+          ],
+          "title": "Evidence Kind",
+          "type": "string"
+        },
+        "excerpt": {
+          "maxLength": 4000,
+          "title": "Excerpt",
+          "type": "string"
+        },
+        "fetched_at": {
+          "format": "date-time",
+          "title": "Fetched At",
+          "type": "string"
+        },
+        "license_scope": {
+          "enum": [
+            "redisplay",
+            "metadata_only",
+            "no_redisplay",
+            "unknown"
+          ],
+          "title": "License Scope",
+          "type": "string"
+        },
+        "market_payload": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MarketPayloadV1"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "origin": {
+          "enum": [
+            "live",
+            "fixture"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "published_at": {
+          "format": "date-time",
+          "title": "Published At",
+          "type": "string"
+        },
+        "quality_status": {
+          "enum": [
+            "verified_metadata",
+            "incomplete",
+            "rejected"
+          ],
+          "title": "Quality Status",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_policy_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Source Policy Version",
+          "type": "string"
+        },
+        "source_url": {
+          "format": "uri",
+          "minLength": 1,
+          "title": "Source Url",
+          "type": "string"
+        },
+        "timezone": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Timezone",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "source_id",
+        "source_url",
+        "content_hash",
+        "published_at",
+        "fetched_at",
+        "available_at",
+        "timezone",
+        "license_scope",
+        "entity_ids",
+        "excerpt",
+        "quality_status",
+        "evidence_kind",
+        "version",
+        "source_policy_version",
+        "origin",
+        "market_payload"
+      ],
+      "title": "EvidenceV1",
+      "type": "object"
+    },
+    "MarketFieldV1": {
+      "additionalProperties": false,
+      "description": "Represent one bounded decimal-valued market observation field.",
+      "properties": {
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "unit": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value",
+        "unit"
+      ],
+      "title": "MarketFieldV1",
+      "type": "object"
+    },
+    "MarketPayloadV1": {
+      "additionalProperties": false,
+      "description": "Represent market observations that are linked to registered evidence.",
+      "properties": {
+        "adjustment": {
+          "enum": [
+            "none",
+            "forward",
+            "backward"
+          ],
+          "title": "Adjustment",
+          "type": "string"
+        },
+        "available_at": {
+          "format": "date-time",
+          "title": "Available At",
+          "type": "string"
+        },
+        "currency": {
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "evidence_id": {
+          "format": "uuid",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "fetched_at": {
+          "format": "date-time",
+          "title": "Fetched At",
+          "type": "string"
+        },
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/MarketFieldV1"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Fields",
+          "type": "array"
+        },
+        "is_mock": {
+          "title": "Is Mock",
+          "type": "boolean"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "provider": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        },
+        "symbol": {
+          "maxLength": 12,
+          "minLength": 12,
+          "pattern": "^CN\\.(SH|SZ|BJ)\\.[0-9]{6}$",
+          "title": "Symbol",
+          "type": "string"
+        },
+        "timezone": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Timezone",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "symbol",
+        "observed_at",
+        "available_at",
+        "fetched_at",
+        "timezone",
+        "currency",
+        "adjustment",
+        "fields",
+        "provider",
+        "version",
+        "is_mock"
+      ],
+      "title": "MarketPayloadV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Return a bounded list of authorized article evidence previews.",
+  "properties": {
+    "articles": {
+      "items": {
+        "$ref": "#/$defs/EvidenceV1"
+      },
+      "maxItems": 20,
+      "title": "Articles",
+      "type": "array"
+    },
+    "next_cursor": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_-]+={0,2}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Next Cursor"
+    },
+    "truncated": {
+      "title": "Truncated",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "articles",
+    "next_cursor",
+    "truncated"
+  ],
+  "title": "ArticlesSearchResult",
+  "type": "object"
+}

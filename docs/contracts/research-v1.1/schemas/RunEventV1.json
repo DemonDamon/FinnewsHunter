@@ -1,0 +1,396 @@
+{
+  "$defs": {
+    "CancelledEventPayloadV1": {
+      "additionalProperties": false,
+      "description": "Record a bounded human-readable cancellation reason.",
+      "properties": {
+        "reason": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "title": "CancelledEventPayloadV1",
+      "type": "object"
+    },
+    "ClaimCheckedEventPayloadV1": {
+      "additionalProperties": false,
+      "description": "Record a claim check result without stack traces or raw model output.",
+      "properties": {
+        "claim_id": {
+          "format": "uuid",
+          "title": "Claim Id",
+          "type": "string"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[a-z0-9]+(?:_[a-z0-9]+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Code"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "claim_id",
+        "passed",
+        "error_code"
+      ],
+      "title": "ClaimCheckedEventPayloadV1",
+      "type": "object"
+    },
+    "CompletedEventPayloadV1": {
+      "additionalProperties": false,
+      "description": "Reference the bounded opaque location of a published brief.",
+      "properties": {
+        "result_ref": {
+          "maxLength": 512,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_-]+={0,2}$",
+          "title": "Result Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result_ref"
+      ],
+      "title": "CompletedEventPayloadV1",
+      "type": "object"
+    },
+    "EvidenceAddedEventPayloadV1": {
+      "additionalProperties": false,
+      "description": "Reference evidence added to a run snapshot.",
+      "properties": {
+        "evidence_id": {
+          "format": "uuid",
+          "title": "Evidence Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id"
+      ],
+      "title": "EvidenceAddedEventPayloadV1",
+      "type": "object"
+    },
+    "FailedEventPayloadV1": {
+      "additionalProperties": false,
+      "description": "Record a stable safe failure code.",
+      "properties": {
+        "code": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(?:_[a-z0-9]+)*$",
+          "title": "Code",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "title": "FailedEventPayloadV1",
+      "type": "object"
+    },
+    "NeedsReviewEventPayloadV1": {
+      "additionalProperties": false,
+      "description": "Record the stable safe reason a run needs review.",
+      "properties": {
+        "code": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(?:_[a-z0-9]+)*$",
+          "title": "Code",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "title": "NeedsReviewEventPayloadV1",
+      "type": "object"
+    },
+    "StartedEventPayloadV1": {
+      "additionalProperties": false,
+      "description": "Represent an empty or bounded dispatch marker for a started event.",
+      "properties": {
+        "dispatch_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9_-]{1,128}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dispatch Id"
+        }
+      },
+      "title": "StartedEventPayloadV1",
+      "type": "object"
+    },
+    "StepStartedEventPayloadV1": {
+      "additionalProperties": false,
+      "description": "Represent the bounded name of a run processing step.",
+      "properties": {
+        "step_name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Step Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "step_name"
+      ],
+      "title": "StepStartedEventPayloadV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "started"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/StartedEventPayloadV1"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "step_started"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/StepStartedEventPayloadV1"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "evidence_added"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/EvidenceAddedEventPayloadV1"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "claim_checked"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ClaimCheckedEventPayloadV1"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "needs_review"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/NeedsReviewEventPayloadV1"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "completed"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/CompletedEventPayloadV1"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/FailedEventPayloadV1"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "cancelled"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/CancelledEventPayloadV1"
+          }
+        }
+      }
+    }
+  ],
+  "description": "Represent one strictly typed, sequential research-run event.",
+  "properties": {
+    "event_id": {
+      "format": "uuid",
+      "title": "Event Id",
+      "type": "string"
+    },
+    "occurred_at": {
+      "format": "date-time",
+      "title": "Occurred At",
+      "type": "string"
+    },
+    "payload": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StartedEventPayloadV1"
+        },
+        {
+          "$ref": "#/$defs/StepStartedEventPayloadV1"
+        },
+        {
+          "$ref": "#/$defs/EvidenceAddedEventPayloadV1"
+        },
+        {
+          "$ref": "#/$defs/ClaimCheckedEventPayloadV1"
+        },
+        {
+          "$ref": "#/$defs/NeedsReviewEventPayloadV1"
+        },
+        {
+          "$ref": "#/$defs/CompletedEventPayloadV1"
+        },
+        {
+          "$ref": "#/$defs/FailedEventPayloadV1"
+        },
+        {
+          "$ref": "#/$defs/CancelledEventPayloadV1"
+        }
+      ],
+      "title": "Payload"
+    },
+    "run_id": {
+      "format": "uuid",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "seq": {
+      "minimum": 1,
+      "title": "Seq",
+      "type": "integer"
+    },
+    "type": {
+      "enum": [
+        "started",
+        "step_started",
+        "evidence_added",
+        "claim_checked",
+        "needs_review",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "title": "Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "event_id",
+    "run_id",
+    "seq",
+    "type",
+    "occurred_at",
+    "payload"
+  ],
+  "title": "RunEventV1",
+  "type": "object"
+}

@@ -1,0 +1,95 @@
+{
+  "$defs": {
+    "OperandRefV1": {
+      "additionalProperties": false,
+      "description": "Reference a bounded evidence field operand for a numeric assertion.",
+      "properties": {
+        "evidence_id": {
+          "format": "uuid",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "field": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Field",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "field"
+      ],
+      "title": "OperandRefV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Describe a structurally constrained numerical claim assertion.",
+  "properties": {
+    "claimed_value": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+      "title": "Claimed Value",
+      "type": "string"
+    },
+    "currency": {
+      "pattern": "^[A-Z]{3}$",
+      "title": "Currency",
+      "type": "string"
+    },
+    "evidence_id": {
+      "format": "uuid",
+      "title": "Evidence Id",
+      "type": "string"
+    },
+    "field": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Field",
+      "type": "string"
+    },
+    "formula_id": {
+      "enum": [
+        "identity",
+        "percent_change",
+        "unit_scale"
+      ],
+      "title": "Formula Id",
+      "type": "string"
+    },
+    "operand_refs": {
+      "items": {
+        "$ref": "#/$defs/OperandRefV1"
+      },
+      "maxItems": 4,
+      "title": "Operand Refs",
+      "type": "array"
+    },
+    "rounding": {
+      "maximum": 8,
+      "minimum": 0,
+      "title": "Rounding",
+      "type": "integer"
+    },
+    "unit": {
+      "maxLength": 32,
+      "minLength": 1,
+      "title": "Unit",
+      "type": "string"
+    }
+  },
+  "required": [
+    "evidence_id",
+    "field",
+    "claimed_value",
+    "unit",
+    "currency",
+    "formula_id",
+    "operand_refs",
+    "rounding"
+  ],
+  "title": "NumericAssertionV1",
+  "type": "object"
+}

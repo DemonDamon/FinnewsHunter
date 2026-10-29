@@ -1,0 +1,54 @@
+{
+  "as_of": "2026-10-29T10:00:00+08:00",
+  "brief": {
+    "as_of": "2026-10-29T10:00:00+08:00",
+    "claims": [
+      {
+        "as_of": "2026-10-29T10:00:00+08:00",
+        "claim_id": "88888888-8888-8888-8888-888888888888",
+        "confidence": 0.8,
+        "evidence_ids": [
+          "11111111-1111-1111-1111-111111111111"
+        ],
+        "kind": "fact",
+        "numeric_assertions": [],
+        "text": "The fixture event was registered before the declared research cutoff.",
+        "valid_until": null
+      }
+    ],
+    "counterarguments": [],
+    "limitations": [
+      "This is a synthetic fixture intended only for offline contract tests."
+    ],
+    "model_trace": [
+      {
+        "eval_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "eval_version": "fixture-eval-v1",
+        "fallback_reason": null,
+        "model_id": "fixture-model",
+        "policy_version": "fixture-policy-v1",
+        "prompt_version": "fixture-prompt-v1",
+        "provider": "fixture-provider",
+        "role": "draft"
+      }
+    ],
+    "run_id": "33333333-3333-3333-3333-333333333333",
+    "unknowns": [
+      "No live source, admission policy, or financial conclusion is represented."
+    ]
+  },
+  "created_at": "2026-10-29T10:00:00+08:00",
+  "entity_ids": [
+    "CN.SH.600519"
+  ],
+  "error_code": null,
+  "model_id": "fixture-model",
+  "policy_version": "fixture-policy-v1",
+  "principal_id": "66666666-6666-6666-6666-666666666666",
+  "prompt_version": "fixture-prompt-v1",
+  "request_id": "77777777-7777-7777-7777-777777777777",
+  "result_ref": "fixture_result_ref",
+  "run_id": "33333333-3333-3333-3333-333333333333",
+  "status": "completed",
+  "updated_at": "2026-10-29T10:04:00+08:00"
+}

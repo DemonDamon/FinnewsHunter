@@ -1,0 +1,6 @@
+# Development-only dependencies for offline research SDK compatibility tests.
+pytest>=8.3,<9
+pytest-asyncio>=0.24,<1
+jsonschema>=4.23,<5
+ruff>=0.8,<1
+pip>=25.3,<26

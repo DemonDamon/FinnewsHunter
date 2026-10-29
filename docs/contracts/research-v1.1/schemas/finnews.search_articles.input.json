@@ -1,0 +1,58 @@
+{
+  "additionalProperties": false,
+  "description": "Accept bounded filtering and pagination parameters for registered articles.",
+  "properties": {
+    "as_of": {
+      "format": "date-time",
+      "title": "As Of",
+      "type": "string"
+    },
+    "cursor": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_-]+={0,2}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cursor"
+    },
+    "entity_ids": {
+      "items": {
+        "maxLength": 12,
+        "minLength": 12,
+        "pattern": "^CN\\.(SH|SZ|BJ)\\.[0-9]{6}$",
+        "type": "string"
+      },
+      "maxItems": 1,
+      "minItems": 1,
+      "title": "Entity Ids",
+      "type": "array"
+    },
+    "limit": {
+      "default": 10,
+      "maximum": 20,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+    },
+    "query": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Query",
+      "type": "string"
+    }
+  },
+  "required": [
+    "query",
+    "entity_ids",
+    "as_of"
+  ],
+  "title": "SearchArticlesInput",
+  "type": "object"
+}

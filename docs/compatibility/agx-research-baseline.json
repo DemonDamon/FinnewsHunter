@@ -1,0 +1,184 @@
+{
+  "schema_version": "agx-research-baseline/v1",
+  "status": "passed",
+  "author": "Damon Li",
+  "baseline_date": "2026-10-29",
+  "scope": {
+    "included": [
+      "AgenticX Flow.kickoff_async",
+      "AgenticX asynchronous ReActAgent.astream and ReActAgent.arun",
+      "BaseLLMProvider, LLMResponse, and BaseTool scripted no-network execution",
+      "official MCP CallToolResult C1 four-status text and structuredContent extraction through MCPHub",
+      "real MCPHub ToolError behavior for CallToolResult.isError=true",
+      "full backend and development dependency lock resolution"
+    ],
+    "excluded": [
+      "FinnewsHunter app.main import",
+      "FastAPI or MCP endpoint mounting",
+      "RemoteTool or production MCP transport",
+      "authentication, sessions, Origin/Host checks, and cancellation",
+      "database, Celery, broker, worker, or production library startup",
+      "real financial collection, API keys, paid providers, and external LLM calls"
+    ]
+  },
+  "candidate": {
+    "requested": "agenticx==0.6.5",
+    "selected_requirement": "agenticx[mcp]==0.6.5",
+    "source_kind": "PyPI release distribution",
+    "distribution": {
+      "name": "agenticx",
+      "version": "0.6.5",
+      "requires_python": ">=3.10",
+      "direct_url_present": false
+    },
+    "artifact": {
+      "filename": "agenticx-0.6.5-py3-none-any.whl",
+      "url": "https://mirrors.aliyun.com/pypi/packages/10/c7/3bd0de2b971df1ba48099cee2480ef2dc6593f50068834128e8e130a5074/agenticx-0.6.5-py3-none-any.whl",
+      "sha256": "45418a80b1142f2e3fdabf9f65882ce8235c649c6602c1b8ad47736d6f1145c9"
+    },
+    "lock_hashes": [
+      "18d88b04e3e04d4800db16c036f20538e54bc20dcf4189e43edb92c32a5a678f",
+      "45418a80b1142f2e3fdabf9f65882ce8235c649c6602c1b8ad47736d6f1145c9"
+    ],
+    "fallback": {
+      "used": false,
+      "reason": "The release candidate installed and passed all required compatibility checks.",
+      "unselected_release_tag_commit": "0fc089ec6bf0b45f48a7beda06907932ebc98998",
+      "unselected_reviewed_main_commit": "ebe368530fb478b8fbfc02e6316da5cbccef1a19"
+    }
+  },
+  "mcp": {
+    "declared_requirement": "mcp>=1.0.0,<2",
+    "locked_version": "1.30.0",
+    "official_types": [
+      "mcp.types.CallToolResult",
+      "mcp.types.TextContent"
+    ],
+    "tested_sdk_path": "agenticx.tools.mcp_hub.MCPHub.extract_tool_result",
+    "tool_error_type": "agenticx.tools.base.ToolError",
+    "c1_manifest_path": "docs/contracts/research-v1.1/manifest.json",
+    "c1_policy_fixture_path": "docs/contracts/research-v1.1/fixtures/mcp-result-policy.json",
+    "c1_policy_fixture_manifest_registered": true,
+    "frozen_result_policy": {
+      "ok": false,
+      "partial": false,
+      "unavailable": false,
+      "error": true
+    },
+    "observed_priority": [
+      "isError raises ToolError before normal content extraction",
+      "first text or blob content",
+      "structuredContent",
+      "original result"
+    ],
+    "error_path": {
+      "tested_with_official_call_tool_result": true,
+      "is_error_true_raises_tool_error": true,
+      "fixture_stable_error_code": "execution_unavailable",
+      "tool_error_message_contains_stable_code": true,
+      "tool_error_message_source": "non-empty text content; structuredContent is not returned after the SDK enters the isError branch",
+      "text_and_structured_envelope_equality_asserted": true,
+      "structured_content_only_also_raises_tool_error": true,
+      "structured_content_only_tool_error_message": "Unknown error"
+    },
+    "readable_status_path": {
+      "statuses": [
+        "ok",
+        "partial",
+        "unavailable"
+      ],
+      "is_error": false,
+      "text_json_equals_structured_envelope": true,
+      "structured_only_result_equals_structured_envelope": true
+    },
+    "network_endpoint_started": false
+  },
+  "environment": {
+    "verified": true,
+    "operating_system": "macOS 15.6.1 arm64",
+    "python_version": "3.12.12",
+    "uv_version": "0.9.26",
+    "python_executable": "/Users/damon/Documents/Manus/2026-10-29/tKG7Sl/.work/implementation/FinnewsHunter/.work/implementation/sdk-clean-065/venv/bin/python",
+    "platform_resolution": "aarch64-apple-darwin",
+    "unverified": [
+      "Linux",
+      "Docker image builds"
+    ]
+  },
+  "lock": {
+    "path": "backend/requirements-research.lock",
+    "resolved_package_count": 151,
+    "file_bytes": 309410,
+    "hashes_enabled": true,
+    "editable_dependencies": false,
+    "floating_main_dependencies": false,
+    "recompile_payload_match": true,
+    "recompile_payload_bytes": 309211
+  },
+  "tests": {
+    "agx_compatibility_path": "backend/tests/research/test_agx_compatibility.py",
+    "agx_compatibility_count": 14,
+    "agx_compatibility_result": "14 passed in 1.75s",
+    "contract_schema_path": "backend/tests/research/test_contract_schema.py",
+    "contract_schema_count": 17,
+    "contract_schema_result": "17 passed in 0.26s",
+    "combined_s00_path": "backend/tests/research",
+    "combined_s00_count": 31,
+    "combined_s00_result": "31 passed in 1.42s",
+    "cases": [
+      "async Flow start-to-listener execution",
+      "ReAct astream tool call, tool result, and final event",
+      "ReAct arun with an independent fresh scripted provider",
+      "unknown tool does not read fixture",
+      "invalid tool arguments do not read fixture",
+      "max_iterations produces an unsuccessful final event",
+      "C1 ok envelope: official text JSON and structuredContent extraction each equal the fixture envelope",
+      "C1 partial envelope: official text JSON and structuredContent extraction each equal the fixture envelope",
+      "C1 unavailable envelope: official text JSON and structuredContent extraction each equal the fixture envelope",
+      "C1 error envelope: official isError=true result raises ToolError with stable execution_unavailable code",
+      "C1 error envelope: structuredContent-only official isError=true result still raises ToolError and cannot bypass the SDK error path"
+    ],
+    "c1_manifest_and_policy_read_from_disk": true,
+    "real_network_calls": false,
+    "application_imports": false,
+    "domain_completion_claimed_from_final_event": false
+  },
+  "quality": {
+    "contract_generator_check": "research-v1.1 contract artifacts are current",
+    "pip_check": "No broken requirements found.",
+    "ruff": "All checks passed!",
+    "unified_environment": "sdk-clean-065/venv used for generator check, both S00 test suites, all-S00 pytest, Ruff, and pip check",
+    "executable_test_mode": "-rwxr-xr-x backend/tests/research/test_agx_compatibility.py",
+    "lock_install": "uv pip sync --require-hashes --strict completed in a second clean environment"
+  },
+  "commands": {
+    "lock_compile": "uv pip compile --python /Users/damon/.local/bin/python3.12 --python-platform aarch64-apple-darwin --generate-hashes --no-strip-extras --custom-compile-command 'uv pip compile --python /Users/damon/.local/bin/python3.12 --python-platform aarch64-apple-darwin --generate-hashes --no-strip-extras backend/requirements.txt backend/requirements-dev.txt' --output-file backend/requirements-research.lock backend/requirements.txt backend/requirements-dev.txt",
+    "clean_install": "uv pip sync --python .work/implementation/sdk-clean-065/venv/bin/python --require-hashes --strict backend/requirements-research.lock",
+    "final_generator_check": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=backend .work/implementation/sdk-clean-065/venv/bin/python backend/scripts/generate_research_contracts.py --check",
+    "final_contract_pytest": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=backend .work/implementation/sdk-clean-065/venv/bin/python -m pytest -p no:cacheprovider -q backend/tests/research/test_contract_schema.py",
+    "final_agx_pytest": "PYTHONDONTWRITEBYTECODE=1 .work/implementation/sdk-clean-065/venv/bin/python -m pytest -p no:cacheprovider -q backend/tests/research/test_agx_compatibility.py",
+    "final_all_s00_pytest": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=backend .work/implementation/sdk-clean-065/venv/bin/python -m pytest -p no:cacheprovider -q backend/tests/research",
+    "final_s00_ruff": "PYTHONDONTWRITEBYTECODE=1 .work/implementation/sdk-clean-065/venv/bin/python -m ruff check --no-cache backend/app/research backend/scripts/generate_research_contracts.py backend/tests/research",
+    "final_pip_check": ".work/implementation/sdk-clean-065/venv/bin/python -m pip check"
+  },
+  "evidence_logs": {
+    "preinstall_red_test": ".work/implementation/logs/sdk-red-preinstall-import.log",
+    "suite_before_dev_dependencies_red_test": ".work/implementation/logs/sdk-red-compatibility-before-dev-dependencies.log",
+    "release_install_and_metadata": ".work/implementation/logs/sdk-pypi-065-install.log",
+    "clean_sync": ".work/implementation/logs/sdk-clean-065-sync.log",
+    "pip_check": ".work/implementation/logs/sdk-clean-065-pip-check.log",
+    "previous_final_pytest": ".work/implementation/logs/sdk-clean-065-pytest.log",
+    "previous_ruff": ".work/implementation/logs/sdk-clean-065-ruff.log",
+    "lock_recompile": ".work/implementation/logs/sdk-lock-recompile-check.log",
+    "artifact_hash": ".work/implementation/logs/sdk-pypi-065-artifact-download.log",
+    "f4_repair_and_unified_verification": ".work/implementation/logs/s00-fix-sdk.log"
+  },
+  "known_limits_and_next_gates": [
+    "S01 must validate Linux and Docker dependency and image behavior.",
+    "S03 must implement and verify the C1 mcp_result_policy in the actual adapter: error remains isError=true with safe code-bearing text JSON, while partial and unavailable remain isError=false and readable.",
+    "S03 must validate same-process FastAPI MCP mount, RemoteTool or production transport, authentication, session lifecycle, Origin/Host behavior, and cancellation.",
+    "This baseline validates no-network official types and MCPHub extraction only; it does not start an MCP server or validate a production transport.",
+    "uv 0.9.26 lacks uv pip download and uv pip index; uv handled installation, compile, and sync, while isolated pip download recorded the wheel hash only."
+  ],
+  "blockers": []
+}

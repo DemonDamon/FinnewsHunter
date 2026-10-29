@@ -1,0 +1,288 @@
+{
+  "contract_digest": "591d9cdbfc3dbc639cc0859639e11e910ff86a73fdb34c9697ba63af1534a59e",
+  "fixture_files": [
+    {
+      "path": "fixtures/brief.json",
+      "sha256": "e8253f4e36a98a0c7db5d6359d6a14daaf7915eda26d64f4382daae80017d179"
+    },
+    {
+      "path": "fixtures/claim.json",
+      "sha256": "d7547fdf8bc7ba4232ed51377de8038b3d51e60630c210a66ee3f08e58496e58"
+    },
+    {
+      "path": "fixtures/error-envelope.json",
+      "sha256": "624bc8980f8194c39f77267670b65a77fcb31809aa32683b1cf3e0dee8e183a8"
+    },
+    {
+      "path": "fixtures/event-evidence.json",
+      "sha256": "af82a318c714884d7d7d46ea6c6223e685985ef4077bdd6c3fe5c7c82f4435c0"
+    },
+    {
+      "path": "fixtures/event.json",
+      "sha256": "997711cb7e777c2e9958ece76d459e18cfdcf8999cca3837bafbd67ebf144a31"
+    },
+    {
+      "path": "fixtures/index.json",
+      "sha256": "07ffc31b27bb9b9bbbac6406fab4cab9b519a3b44eaa039d6f93625659c6dd21"
+    },
+    {
+      "path": "fixtures/market-evidence.json",
+      "sha256": "9a645eaab389e14b7ce58e11fe75e34a5142cf02ce3f228a4fa9a7037193ab43"
+    },
+    {
+      "path": "fixtures/market-payload.json",
+      "sha256": "7dfd51d8f5779fa9b1e87e280e033dae05ff4e621c0995c894599a6d04a2c891"
+    },
+    {
+      "path": "fixtures/market-unavailable-envelope.json",
+      "sha256": "2736267d1360562ff4726c2ac45e6b29526a9b75ab590b5c4587b444f1e60b54"
+    },
+    {
+      "path": "fixtures/mcp-result-policy.json",
+      "sha256": "ca4a10a02cd52a7c74870f69333ab7b3b874ba741da7a947418dc9f65a733a78"
+    },
+    {
+      "path": "fixtures/negative/bad-numeric.json",
+      "sha256": "37a0ab0fc29e05cdb8f7cea8afd93737e95bc23174fe288ec28f7bff86da38d6"
+    },
+    {
+      "path": "fixtures/negative/extra-model-input.json",
+      "sha256": "e2bb509496c600778b3198d5bcd614100f2b0cc70bb57166fd14163339442870"
+    },
+    {
+      "path": "fixtures/negative/fact-without-citation.json",
+      "sha256": "9e40c075962c4a62578d182b57859ba8bddd0fa1880d8909f6e4d756d0c321c2"
+    },
+    {
+      "path": "fixtures/negative/future-as-of-input.json",
+      "sha256": "6b56dc707982279a20b55455bcf39167be564854ab0869ad9f531374674bbd81"
+    },
+    {
+      "path": "fixtures/negative/license-revoked-not-completed.json",
+      "sha256": "2b860042b0adfce1b22237a2316aebf21376efc28e818410b10b74d1439b1b8a"
+    },
+    {
+      "path": "fixtures/negative/license-revoked-with-brief.json",
+      "sha256": "7222119bd6254e9a9aaa84880d2cdde7872220280f985b582e8113567a8e0796"
+    },
+    {
+      "path": "fixtures/negative/mcp-is-error-conflict.json",
+      "sha256": "1afd098cb991ceee81aa008fceead95f0d61d219ee3fb86a195ccc36c46b004b"
+    },
+    {
+      "path": "fixtures/negative/missing-required-nullable.json",
+      "sha256": "cdcc97a93c99563800a516cf921572a8667882c93a085273cf433f497872e7e0"
+    },
+    {
+      "path": "fixtures/negative/naive-time-input.json",
+      "sha256": "5dfeb012444bc0da1941fcf2b5279c2c0a07c6fc66b59fb9fc84a4fcf2d38598"
+    },
+    {
+      "path": "fixtures/negative/too-many-entities.json",
+      "sha256": "e3906d38ef77a34f26f1bf983f68e9c63eb2fc85bcd25c27b3ffade3a7360672"
+    },
+    {
+      "path": "fixtures/run-completed.json",
+      "sha256": "1426ff755f085a1f6997c9064ec8a3d2ea5f8964aba2b17dc796a3576b5e142e"
+    },
+    {
+      "path": "fixtures/run-license-revoked.json",
+      "sha256": "7d8d485abc4c7b2dee3bc85170debbd999a0e5357f5a78d0d80c1aa9495d9231"
+    },
+    {
+      "path": "fixtures/run-queued.json",
+      "sha256": "1c46d9c203ba6e9be841c42b5cb776088988c2ddf6a403d2fc252043c96fd07b"
+    },
+    {
+      "path": "fixtures/search-articles-input.json",
+      "sha256": "dbb1d09752233e8bd0fe8940f4ca35dd0ac6b3ee071731f241b54d95ed164b6c"
+    },
+    {
+      "path": "fixtures/tool-success-envelopes.json",
+      "sha256": "ccb2797a10504d8eb9e1ab9e7323ff818eca19f7e66dcb4ad7a73eab4af756af"
+    }
+  ],
+  "http_paths": [
+    {
+      "method": "POST",
+      "path": "/api/v1/research/runs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/research/runs/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/research/runs/{id}/events"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/research/evidence/{id}?run_id={id}"
+    }
+  ],
+  "mcp_endpoint": "/api/v1/mcp",
+  "mcp_result_policy": {
+    "error": true,
+    "ok": false,
+    "partial": false,
+    "unavailable": false
+  },
+  "schema_files": [
+    {
+      "path": "schemas/ArticlesSearchResult.json",
+      "sha256": "6e65555d8345c728e212209c6056545dc47c5406e215feda3c14b712cafa1acb"
+    },
+    {
+      "path": "schemas/ClaimV1.json",
+      "sha256": "c822a6f4681028249886d54e53f564bb6d939ec961d50b67bfea64fa32afb1a3"
+    },
+    {
+      "path": "schemas/ContractError.json",
+      "sha256": "4b569fa897b342e3a84829b18c925967ce6c50ab229c14423ce8ef72a00eea17"
+    },
+    {
+      "path": "schemas/EvidenceV1.json",
+      "sha256": "e6d3e74bf9e03276581b9108aa2667ac7370e16e074dc2fa8a0fc7e73811b9da"
+    },
+    {
+      "path": "schemas/GetEvidenceInput.json",
+      "sha256": "f4f566bb9d18735b90c473a64b75e50458fa0ab2ceb28321bc8e6a6bed472bb9"
+    },
+    {
+      "path": "schemas/GetMarketSnapshotInput.json",
+      "sha256": "1c74e5bbbdf99113d6c24a68f66485ac96dae1c1be70762af644b40d516220a4"
+    },
+    {
+      "path": "schemas/GetRunInput.json",
+      "sha256": "ddca8c0a3466d6cba9d53d3fded45865acfac500612c901205e0a6fc95adc906"
+    },
+    {
+      "path": "schemas/MarketFieldV1.json",
+      "sha256": "f5d7b4e2b6e1874ff1a78de82d4258af815f93b84ebff9e21f58b78e1e3ad119"
+    },
+    {
+      "path": "schemas/MarketPayloadV1.json",
+      "sha256": "bb759dcd60825c4adc6adb87846c58c1dd971d5ea8ec3964eea99bf98bb6fa47"
+    },
+    {
+      "path": "schemas/ModelTraceEntryV1.json",
+      "sha256": "ff0ea43a0ad84a9a17f732cb602f927c6500c021e92d523f4059b42b234343c0"
+    },
+    {
+      "path": "schemas/NumericAssertionV1.json",
+      "sha256": "835096008d9dcbc76e01fb7adbb17cc4154ff5c7bfb19bda265505fc36a91a03"
+    },
+    {
+      "path": "schemas/OperandRefV1.json",
+      "sha256": "c62a83e496320188fc43afa177f57238895734e9ed5bf5b9d44a200fa69bb6aa"
+    },
+    {
+      "path": "schemas/ResearchBriefV1.json",
+      "sha256": "23dad28c279639d80841b471c89e41a48d557e6a113c381e7c02eb288c69e250"
+    },
+    {
+      "path": "schemas/ResearchEnvelope.ArticlesSearchResult.json",
+      "sha256": "6dcffa24de3145501d074e2f76b3ab6e895b21e2b152b6ebf1ce4a5bd1964fc4"
+    },
+    {
+      "path": "schemas/ResearchEnvelope.EvidenceV1.json",
+      "sha256": "c4eb04010e4660d340e05592cc4f2f9585d1f1fb9f0eef51e52cf63fafeb5d5d"
+    },
+    {
+      "path": "schemas/ResearchEnvelope.MarketPayloadV1.json",
+      "sha256": "1a53d1c72db30ee64df2625f7a1f6daf77ef2ea4e47161096700fcf4fb257f33"
+    },
+    {
+      "path": "schemas/ResearchEnvelope.ResearchRunViewV1.json",
+      "sha256": "9bff34dfe56558f13068e3a46f1045ce9c69cf84a3bfe0173918fc515f965a01"
+    },
+    {
+      "path": "schemas/ResearchRunViewV1.json",
+      "sha256": "97c7b2c24d41c7a9e09ffe151f262df57fc89937f6e8b83656d068d5e159c641"
+    },
+    {
+      "path": "schemas/RunEventV1.json",
+      "sha256": "1619a5288a786a24c1bda89247820f764805560f16f3490ec27c9afe423aa38c"
+    },
+    {
+      "path": "schemas/SearchArticlesInput.json",
+      "sha256": "ffc6db70455bec40b10d5cdf96f15f13af12d4b814db6e1baa24ad2bc7ce0a37"
+    },
+    {
+      "path": "schemas/SourceRefV1.json",
+      "sha256": "0c0578ed4ebd0ea12da631fc5128977ff818325ee1c0e498041470b45d209f1d"
+    },
+    {
+      "path": "schemas/StartResearchInput.json",
+      "sha256": "441b22a8a4b4f78055a80a5c8d44842f0c2ce7c737329be8adcefe35f85974e9"
+    },
+    {
+      "path": "schemas/finnews.get_evidence.input.json",
+      "sha256": "f4f566bb9d18735b90c473a64b75e50458fa0ab2ceb28321bc8e6a6bed472bb9"
+    },
+    {
+      "path": "schemas/finnews.get_evidence.output.json",
+      "sha256": "c4eb04010e4660d340e05592cc4f2f9585d1f1fb9f0eef51e52cf63fafeb5d5d"
+    },
+    {
+      "path": "schemas/finnews.get_market_snapshot.input.json",
+      "sha256": "1c74e5bbbdf99113d6c24a68f66485ac96dae1c1be70762af644b40d516220a4"
+    },
+    {
+      "path": "schemas/finnews.get_market_snapshot.output.json",
+      "sha256": "1a53d1c72db30ee64df2625f7a1f6daf77ef2ea4e47161096700fcf4fb257f33"
+    },
+    {
+      "path": "schemas/finnews.get_run.input.json",
+      "sha256": "ddca8c0a3466d6cba9d53d3fded45865acfac500612c901205e0a6fc95adc906"
+    },
+    {
+      "path": "schemas/finnews.get_run.output.json",
+      "sha256": "9bff34dfe56558f13068e3a46f1045ce9c69cf84a3bfe0173918fc515f965a01"
+    },
+    {
+      "path": "schemas/finnews.search_articles.input.json",
+      "sha256": "ffc6db70455bec40b10d5cdf96f15f13af12d4b814db6e1baa24ad2bc7ce0a37"
+    },
+    {
+      "path": "schemas/finnews.search_articles.output.json",
+      "sha256": "6dcffa24de3145501d074e2f76b3ab6e895b21e2b152b6ebf1ce4a5bd1964fc4"
+    },
+    {
+      "path": "schemas/finnews.start_research.input.json",
+      "sha256": "441b22a8a4b4f78055a80a5c8d44842f0c2ce7c737329be8adcefe35f85974e9"
+    },
+    {
+      "path": "schemas/finnews.start_research.output.json",
+      "sha256": "9bff34dfe56558f13068e3a46f1045ce9c69cf84a3bfe0173918fc515f965a01"
+    }
+  ],
+  "schema_version": "research-v1.1",
+  "tools": [
+    {
+      "input_schema": "schemas/finnews.search_articles.input.json",
+      "name": "finnews.search_articles",
+      "output_schema": "schemas/finnews.search_articles.output.json"
+    },
+    {
+      "input_schema": "schemas/finnews.get_evidence.input.json",
+      "name": "finnews.get_evidence",
+      "output_schema": "schemas/finnews.get_evidence.output.json"
+    },
+    {
+      "input_schema": "schemas/finnews.get_market_snapshot.input.json",
+      "name": "finnews.get_market_snapshot",
+      "output_schema": "schemas/finnews.get_market_snapshot.output.json"
+    },
+    {
+      "input_schema": "schemas/finnews.start_research.input.json",
+      "name": "finnews.start_research",
+      "output_schema": "schemas/finnews.start_research.output.json"
+    },
+    {
+      "input_schema": "schemas/finnews.get_run.input.json",
+      "name": "finnews.get_run",
+      "output_schema": "schemas/finnews.get_run.output.json"
+    }
+  ]
+}
