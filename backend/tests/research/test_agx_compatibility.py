@@ -36,6 +36,7 @@ class SnapshotTool(BaseTool):
     """Return a local, deterministic fixture and record actual invocations."""
 
     def __init__(self) -> None:
+        """Register the bounded snapshot schema and initialize the call log."""
         super().__init__(
             name="read_snapshot",
             description="Read one fixture snapshot without network access.",
@@ -44,6 +45,7 @@ class SnapshotTool(BaseTool):
         self.calls: list[str] = []
 
     def _run(self, *, snapshot_id: str) -> dict[str, str]:
+        """Record a validated fixture read and return its bounded metadata."""
         self.calls.append(snapshot_id)
         return {"snapshot_id": snapshot_id, "origin": "fixture"}
 
@@ -55,6 +57,7 @@ class ScriptedProvider(BaseLLMProvider):
     prompts: list[list[dict[str, Any]]] = Field(default_factory=list)
 
     def _next_response(self, prompt: str | list[dict[str, Any]]) -> LLMResponse:
+        """Record the prompt and consume exactly one scripted response."""
         if isinstance(prompt, str):
             self.prompts.append([{"role": "user", "content": prompt}])
         else:
@@ -64,24 +67,28 @@ class ScriptedProvider(BaseLLMProvider):
         return self.responses.pop(0)
 
     def invoke(self, prompt: str | list[dict[str, Any]], **kwargs: Any) -> LLMResponse:
+        """Return the next recorded response without a provider request."""
         _ = kwargs
         return self._next_response(prompt)
 
     async def ainvoke(
         self, prompt: str | list[dict[str, Any]], **kwargs: Any
     ) -> LLMResponse:
+        """Return a recorded response through the asynchronous provider API."""
         _ = kwargs
         return self._next_response(prompt)
 
     def stream(
         self, prompt: str | list[dict[str, Any]], **kwargs: Any
     ) -> Generator[str | dict[str, Any], None, None]:
+        """Expose the deliberately empty synchronous stream interface."""
         _ = prompt, kwargs
         yield from ()
 
     async def astream(
         self, prompt: str | list[dict[str, Any]], **kwargs: Any
     ) -> AsyncGenerator[str | dict[str, Any], None]:
+        """Expose the same empty stream through the asynchronous API."""
         for chunk in self.stream(prompt, **kwargs):
             yield chunk
 
@@ -120,11 +127,13 @@ class FixtureFlow(Flow[dict[str, int]]):
 
     @start()
     async def begin(self) -> str:
+        """Initialize deterministic flow state for the listener test."""
         self.state["steps"] = 1
         return "prepared"
 
     @listen("begin")
     async def increment(self) -> str:
+        """Advance the recorded flow state through a real listener."""
         self.state["steps"] += 1
         return "complete"
 

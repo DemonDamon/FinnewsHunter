@@ -131,6 +131,7 @@ def _apply_run_state_conditions(schema: dict[str, Any]) -> dict[str, Any]:
     """Apply revoked-license run visibility rules to direct and nested model schemas."""
 
     def visit(node: Any) -> None:
+        """Collect referenced schema nodes recursively without changing them."""
         if isinstance(node, dict):
             properties = node.get("properties")
             if isinstance(properties, dict) and {
