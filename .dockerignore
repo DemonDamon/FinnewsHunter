@@ -1,0 +1,18 @@
+# Author: Damon Li
+# Exclude local credentials and disposable task artifacts from Docker build contexts.
+
+.git
+.env
+.env.*
+**/.env
+**/.env.*
+.work
+**/.work
+node_modules
+**/node_modules
+__pycache__
+**/__pycache__
+.pytest_cache
+**/.pytest_cache
+*.py[cod]
+*.log

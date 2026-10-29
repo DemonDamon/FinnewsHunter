@@ -1,18 +1,30 @@
-"""
-FinnewsHunter 主应用入口
+"""FinnewsHunter application entry point.
+
+Author: Damon Li
 """
 import logging
-from contextlib import asynccontextmanager
+import uuid
+from contextlib import AsyncExitStack, asynccontextmanager
+
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
 from fastapi.exceptions import RequestValidationError
-from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html, get_swagger_ui_oauth2_redirect_html
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import (
+    get_redoc_html,
+    get_swagger_ui_html,
+    get_swagger_ui_oauth2_redirect_html,
+)
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from .core.config import settings
-from .core.database import init_database
-from .api.v1 import api_router
+from app.api.v1 import api_router
+from app.core.config import settings
+from app.research.composition import (
+    RESEARCH_READINESS_NAMES,
+    ResearchComponents,
+    ResearchReadinessCheck,
+    build_research_components,
+)
 
 # 配置日志
 logging.basicConfig(
@@ -21,11 +33,79 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+_SAFE_RESEARCH_REASONS = frozenset(
+    {
+        "component_not_ready",
+        "executor_not_installed",
+        "identity_not_installed",
+        "ledger_not_installed",
+        "mcp_not_installed",
+        "readiness_unavailable",
+    }
+)
+
+
+async def _research_readiness_payload(application: FastAPI) -> dict[str, dict[str, object]]:
+    """Return fixed-name research checks without exposing component exceptions."""
+    components: ResearchComponents | None = getattr(
+        application.state, "research_components", None
+    )
+    if components is None:
+        return {
+            name: {"ready": False, "reason": "component_not_ready"}
+            for name in RESEARCH_READINESS_NAMES
+        }
+
+    try:
+        reported = await components.readiness()
+    except Exception:  # noqa: BLE001
+        # Extension failures must not leak through a public readiness response.
+        return {
+            name: {"ready": False, "reason": "readiness_unavailable"}
+            for name in RESEARCH_READINESS_NAMES
+        }
+
+    checks: dict[str, dict[str, object]] = {}
+    for name in RESEARCH_READINESS_NAMES:
+        check = reported.get(name)
+        if not isinstance(check, ResearchReadinessCheck):
+            checks[name] = {"ready": False, "reason": "component_not_ready"}
+            continue
+
+        reason = (
+            check.reason
+            if check.reason in _SAFE_RESEARCH_REASONS
+            else "component_not_ready"
+        )
+        checks[name] = {"ready": bool(check.ready), "reason": reason}
+    return checks
+
+
+def _research_is_ready(checks: dict[str, dict[str, object]]) -> bool:
+    """Require every fixed readiness check before reporting research as ready."""
+    return all(check["ready"] is True for check in checks.values())
+
+
+def _research_internal_error_response() -> JSONResponse:
+    """Create a correlation-only research failure response without exception data."""
+    request_id = uuid.uuid4().hex
+    logger.error("Research request failed request_id=%s", request_id)
+    return JSONResponse(
+        status_code=500,
+        content={"error": "internal_error", "request_id": request_id},
+    )
+
 
 class DocsCSPMiddleware(BaseHTTPMiddleware):
     """为文档页面设置 CSP 头，允许 unsafe-eval（Swagger UI 需要）"""
     async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception:
+            if settings.APP_MODE == "research":
+                return _research_internal_error_response()
+            raise
+
         # 只为文档页面设置 CSP
         if request.url.path in ["/docs", "/redoc", "/openapi.json"]:
             # 开发环境：完全禁用 CSP 限制（仅用于文档页面）
@@ -68,6 +148,18 @@ class DocsCSPMiddleware(BaseHTTPMiddleware):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
+    if settings.APP_MODE == "research":
+        logger.info("=== FinnewsHunter Research Mode Starting ===")
+        components: ResearchComponents = app.state.research_components
+        try:
+            async with AsyncExitStack() as exit_stack:
+                if components.lifespan is not None:
+                    await exit_stack.enter_async_context(components.lifespan(app))
+                yield
+        finally:
+            logger.info("=== FinnewsHunter Research Mode Shutting Down ===")
+        return
+
     # 启动时执行
     logger.info("=== FinnewsHunter Starting ===")
     logger.info(f"Environment: {'Development' if settings.DEBUG else 'Production'}")
@@ -75,8 +167,8 @@ async def lifespan(app: FastAPI):
     
     # 初始化 Neo4j 知识图谱（仅创建约束和索引，不构建具体图谱）
     try:
-        from .core.neo4j_client import get_neo4j_client
-        from .knowledge.graph_service import get_graph_service
+        from app.core.neo4j_client import get_neo4j_client
+        from app.knowledge.graph_service import get_graph_service
         
         logger.info("🔍 初始化 Neo4j 知识图谱...")
         neo4j_client = get_neo4j_client()
@@ -99,7 +191,7 @@ async def lifespan(app: FastAPI):
     
     # 关闭 Neo4j 连接
     try:
-        from .core.neo4j_client import close_neo4j_client
+        from app.core.neo4j_client import close_neo4j_client
         close_neo4j_client()
         logger.info("✅ Neo4j 连接已关闭")
     except:
@@ -117,6 +209,11 @@ app = FastAPI(
     docs_url=None,  # 禁用默认文档，使用自定义路由
     redoc_url=None,  # 禁用默认 ReDoc，使用自定义路由
 )
+
+research_components: ResearchComponents | None = None
+if settings.APP_MODE == "research":
+    research_components = build_research_components(settings)
+app.state.research_components = research_components
 
 # 添加文档页面的 CSP 中间件（必须在 CORS 之前）
 app.add_middleware(DocsCSPMiddleware)
@@ -146,6 +243,14 @@ else:
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """处理请求验证错误（422）"""
+    if settings.APP_MODE == "research":
+        request_id = uuid.uuid4().hex
+        logger.warning("Research request rejected request_id=%s", request_id)
+        return JSONResponse(
+            status_code=422,
+            content={"error": "invalid_request", "request_id": request_id},
+        )
+
     # 尝试读取请求体
     body_str = ""
     try:
@@ -170,6 +275,9 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 # 全局异常处理
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
+    if settings.APP_MODE == "research":
+        return _research_internal_error_response()
+
     logger.error(f"Global exception: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
@@ -199,11 +307,39 @@ async def root():
 @app.get("/health")
 async def health_check():
     """健康检查端点"""
-    return {
+    response = {
         "status": "healthy",
         "app": settings.APP_NAME,
         "version": settings.APP_VERSION,
     }
+    if settings.APP_MODE == "research":
+        checks = await _research_readiness_payload(app)
+        response["mode"] = "research"
+        response["research"] = {
+            "enabled": settings.RESEARCH_ENABLED,
+            "execution_enabled": settings.RESEARCH_EXECUTION_ENABLED,
+            "ready": _research_is_ready(checks),
+            "checks": checks,
+        }
+    return response
+
+
+@app.get("/readyz")
+async def readiness_check():
+    """Report application readiness without promoting unavailable research hooks."""
+    if settings.APP_MODE != "research":
+        return {"status": "ready", "mode": "legacy"}
+
+    checks = await _research_readiness_payload(app)
+    ready = _research_is_ready(checks)
+    return JSONResponse(
+        status_code=200 if ready else 503,
+        content={
+            "status": "ready" if ready else "not_ready",
+            "mode": "research",
+            "checks": checks,
+        },
+    )
 
 
 # 自定义 Swagger UI（使用 unpkg.com CDN，因为 jsdelivr.net 无法访问）
@@ -250,6 +386,12 @@ async def chrome_devtools_config():
 
 # 注册 API 路由
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+
+if settings.APP_MODE == "research" and settings.RESEARCH_ENABLED:
+    if research_components is not None and research_components.router is not None:
+        app.include_router(research_components.router, prefix=settings.API_V1_PREFIX)
+    if research_components is not None and research_components.mcp_app is not None:
+        app.mount(f"{settings.API_V1_PREFIX}/mcp", research_components.mcp_app)
 
 
 if __name__ == "__main__":

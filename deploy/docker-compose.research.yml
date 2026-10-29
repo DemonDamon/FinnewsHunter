@@ -1,0 +1,67 @@
+# Author: Damon Li
+# Research overlay for Docker Compose v2.24.4+; verified with v2.39.2.
+# It reuses the existing services and makes every non-core dependency opt-in.
+
+services:
+  milvus-etcd:
+    profiles: ["research-vector"]
+
+  milvus-minio:
+    profiles: ["research-vector"]
+
+  milvus-standalone:
+    profiles: ["research-vector"]
+
+  neo4j:
+    profiles: ["research-graph"]
+
+  celery-worker:
+    profiles: ["research-worker"]
+    build:
+      args:
+        PYTHON_BASE: python:3.12
+        FINNEWS_MODE: research
+    command: ["celery", "-A", "app.core.celery_app", "worker", "--loglevel=info", "--queues=research"]
+    env_file: !reset []
+    environment: !override
+      POSTGRES_USER: finnews
+      POSTGRES_PASSWORD: finnews_dev_password
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: finnews_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      APP_MODE: research
+      RESEARCH_ENABLED: ${RESEARCH_ENABLED:-false}
+      RESEARCH_EXECUTION_ENABLED: ${RESEARCH_EXECUTION_ENABLED:-false}
+    depends_on: !override
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-beat:
+    profiles: ["research-beat"]
+    build:
+      args:
+        PYTHON_BASE: python:3.12
+        FINNEWS_MODE: research
+    env_file: !reset []
+    environment: !override
+      POSTGRES_USER: finnews
+      POSTGRES_PASSWORD: finnews_dev_password
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: finnews_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      APP_MODE: research
+      RESEARCH_ENABLED: ${RESEARCH_ENABLED:-false}
+      RESEARCH_EXECUTION_ENABLED: ${RESEARCH_EXECUTION_ENABLED:-false}
+    depends_on: !override
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
