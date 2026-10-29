@@ -4,7 +4,11 @@ Author: Damon Li
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.core.config import get_settings, settings
+    from app.core.database import get_db, init_database
 
 __all__ = ["settings", "get_settings", "get_db", "init_database"]
 

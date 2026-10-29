@@ -5,6 +5,9 @@ Author: Damon Li
 
 from __future__ import annotations
 
+import ast
+import asyncio
+import inspect
 import os
 import subprocess
 import sys
@@ -43,6 +46,19 @@ def run_research_script(script: str, *, research_enabled: bool = False) -> str:
 
 def test_research_app_runs_real_lifespan_and_stays_not_ready() -> None:
     """Research mode must serve liveness without pretending dependencies are ready."""
+    from app.research.composition import (
+        RESEARCH_READINESS_NAMES,
+        build_research_components,
+    )
+
+    source = inspect.getsource(build_research_components)
+    assert not any(isinstance(node, ast.Delete) for node in ast.walk(ast.parse(source)))
+
+    components = build_research_components(settings=object())
+    checks = asyncio.run(components.readiness())
+    assert tuple(checks) == RESEARCH_READINESS_NAMES
+    assert all(check.ready is False for check in checks.values())
+
     output = run_research_script(
         """
         import io

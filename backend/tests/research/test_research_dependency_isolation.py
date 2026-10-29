@@ -56,6 +56,17 @@ def test_research_main_import_does_not_load_legacy_dependency_tree() -> None:
 
         socket.create_connection = refuse_network
 
+        import app.core as core
+
+        assert core.__all__ == [
+            "settings",
+            "get_settings",
+            "get_db",
+            "init_database",
+        ]
+        assert "app.core.config" not in sys.modules
+        assert "app.core.database" not in sys.modules
+
         import app.main
 
         forbidden_exact = {

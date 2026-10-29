@@ -45,7 +45,9 @@ _SAFE_RESEARCH_REASONS = frozenset(
 )
 
 
-async def _research_readiness_payload(application: FastAPI) -> dict[str, dict[str, object]]:
+async def _research_readiness_payload(
+    application: FastAPI,
+) -> dict[str, dict[str, object]]:
     """Return fixed-name research checks without exposing component exceptions."""
     components: ResearchComponents | None = getattr(
         application.state, "research_components", None

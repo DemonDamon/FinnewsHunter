@@ -5,6 +5,7 @@ Author: Damon Li
 
 from __future__ import annotations
 
+import ast
 import os
 import subprocess
 import sys
@@ -16,6 +17,7 @@ from app.core.config import Settings
 from pydantic import ValidationError
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
+CORE_INIT = BACKEND_ROOT / "app" / "core" / "__init__.py"
 
 
 @pytest.mark.parametrize(
@@ -152,6 +154,24 @@ def test_legacy_router_factory_preserves_original_order_prefixes_and_tags() -> N
 
 def test_core_public_exports_are_lazy_original_exports_not_database_stubs() -> None:
     """Settings exports stay import-safe and database exports remain their real module."""
+    module = ast.parse(CORE_INIT.read_text(encoding="utf-8"))
+    type_checking_imports = {
+        alias.name
+        for node in module.body
+        if isinstance(node, ast.If)
+        and isinstance(node.test, ast.Name)
+        and node.test.id == "TYPE_CHECKING"
+        for statement in node.body
+        if isinstance(statement, ast.ImportFrom)
+        for alias in statement.names
+    }
+    assert type_checking_imports == {
+        "settings",
+        "get_settings",
+        "get_db",
+        "init_database",
+    }
+
     environment = os.environ.copy()
     environment.update(
         {

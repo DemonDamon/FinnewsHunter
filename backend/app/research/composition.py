@@ -58,7 +58,7 @@ async def _uninstalled_readiness() -> dict[str, ResearchReadinessCheck]:
 
 def build_research_components(settings: Settings) -> ResearchComponents:
     """Build S01's disabled components without dynamic imports or side effects."""
-    del settings
+    _ = settings  # Preserve the compatibility keyword; S01 has no settings branches.
     return ResearchComponents(
         router=None,
         mcp_app=None,
