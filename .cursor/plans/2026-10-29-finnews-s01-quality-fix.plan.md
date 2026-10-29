@@ -4,7 +4,7 @@ Planned-with: Manus 2.0
 Suggested-Impl-Model: 代码专精中档，导入/生命周期独立Reviewer
 Parent-Plan: .cursor/plans/pending/2026-10-29-finnewshunter-agent-first-master.plan.md
 Plan-Id: 2026-10-29-finnews-s01-quality-fix
-Status: Ready / 用户授权排查、修复并在门禁通过后合并
+Status: Verified / 已完成本机、Linux、独立复审和远端门禁；随S01合流
 Base-Commit: d99acfd379f9b024d77661bb2ffdcc9775973d1e
 Author: Damon Li
 

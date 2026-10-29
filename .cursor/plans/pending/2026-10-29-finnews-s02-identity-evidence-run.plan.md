@@ -4,7 +4,7 @@ Planned-with: Manus 2.0
 Suggested-Impl-Model: 代码专精中档；鉴权/SQL并发/许可由独立强推理Reviewer审查
 Parent-Plan: .cursor/plans/pending/2026-10-29-finnewshunter-agent-first-master.plan.md
 Plan-Id: 2026-10-29-finnews-s02-identity-evidence-run
-Status: Blocked before implementation / 等待S01 Linux子门及上游合流；当前不派代码执行
+Status: Pending / S01 Linux门已通过，等待上游main最终合流后登记新base；尚未实施
 Repo: FinnewsHunter
 Base-FNH: 89c50de283d87de07c358b39e8d9e1e1b59eeb55；实施前更新为已审阅上游head
 Input-C1: research-v1.1；digest=591d9cdbfc3dbc639cc0859639e11e910ff86a73fdb34c9697ba63af1534a59e
@@ -13,7 +13,7 @@ Author: Damon Li
 
 ## 1. 启动条件与完成定义
 
-S00已通过本地独立复审。S01代码29项、两批合流60项测试通过，但Linux镜像尚被基础镜像网络阻塞。本计划先落pending，不标Ready，不绕过门禁或把宿主单测当Linux证据。S01整体通过并取得上游可消费基线后，重新登记base/head与artifact hash，才可移动到plans根目录执行。
+S00已通过独立审查并合main。S01本机61项与Linux容器内非Compose56项通过，真实SDK14项、依赖与应用隔离门通过；两平台使用不同hash锁，SDK/C1不变。本计划保持pending且未实施，待S01合main后重新登记base/head与artifact hash，再移至plans根目录执行；不能仅凭文档变化冒称本节点已完成。
 
 本节点交付领域内部能力：受验证的金融Principal、Evidence准入/只读投影、独立PostgreSQL研究表、run幂等事务、快照冻结、事件/审计/outbox原子写入和fenced发布Port。不暴露HTTP/MCP，不创建dispatcher/worker或研究Flow，不接真实源/模型，不变更AGX/旧业务/前端。
 

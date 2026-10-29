@@ -4,7 +4,7 @@ Planned-with: Manus 2.0
 Suggested-Impl-Model: 代码专精中档，Linux运行独立验收
 Parent-Plan: .cursor/plans/pending/2026-10-29-finnewshunter-agent-first-master.plan.md
 Plan-Id: 2026-10-29-finnews-linux-image-lock
-Status: Ready / 等待上游Linux锁冻结
+Status: Verified / 已完成本机、Linux、独立复审和远端门禁；随S01合流
 Author: Damon Li
 
 根因：deploy/Dockerfile.celery原research分支安装macOS解析的requirements-research.lock，在Linux实际安装时缺失akshare的py-mini-racer传递依赖，hash策略正确阻断。上游新增requirements-research-linux.lock保留旧版本和mac锁，必须让镜像实际消费新Linux锁，不能只在文档宣布Linux通过。
