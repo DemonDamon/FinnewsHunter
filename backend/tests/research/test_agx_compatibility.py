@@ -63,31 +63,27 @@ class ScriptedProvider(BaseLLMProvider):
             raise AssertionError("The scripted provider received an unexpected call.")
         return self.responses.pop(0)
 
-    def invoke(
-        self, prompt: str | list[dict[str, Any]], **kwargs: Any
-    ) -> LLMResponse:
-        del kwargs
+    def invoke(self, prompt: str | list[dict[str, Any]], **kwargs: Any) -> LLMResponse:
+        _ = kwargs
         return self._next_response(prompt)
 
     async def ainvoke(
         self, prompt: str | list[dict[str, Any]], **kwargs: Any
     ) -> LLMResponse:
-        del kwargs
+        _ = kwargs
         return self._next_response(prompt)
 
     def stream(
         self, prompt: str | list[dict[str, Any]], **kwargs: Any
     ) -> Generator[str | dict[str, Any], None, None]:
-        del prompt, kwargs
-        if False:
-            yield "unreachable"
+        _ = prompt, kwargs
+        yield from ()
 
     async def astream(
         self, prompt: str | list[dict[str, Any]], **kwargs: Any
     ) -> AsyncGenerator[str | dict[str, Any], None]:
-        del prompt, kwargs
-        if False:
-            yield "unreachable"
+        for chunk in self.stream(prompt, **kwargs):
+            yield chunk
 
 
 def _response(
@@ -143,9 +139,9 @@ def _load_c1_mcp_result_policy() -> dict[str, dict[str, Any]]:
     policy = json.loads(policy_path.read_text())
 
     assert manifest["schema_version"] == "research-v1.1"
-    assert {
-        entry["path"] for entry in manifest["fixture_files"]
-    } >= {"fixtures/mcp-result-policy.json"}
+    assert {entry["path"] for entry in manifest["fixture_files"]} >= {
+        "fixtures/mcp-result-policy.json"
+    }
     assert manifest["mcp_result_policy"] == {
         status: entry["isError"] for status, entry in policy.items()
     }
