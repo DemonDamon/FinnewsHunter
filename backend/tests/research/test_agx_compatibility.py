@@ -36,6 +36,7 @@ class SnapshotTool(BaseTool):
     """Return a local, deterministic fixture and record actual invocations."""
 
     def __init__(self) -> None:
+        """Register the bounded snapshot schema and initialize the call log."""
         super().__init__(
             name="read_snapshot",
             description="Read one fixture snapshot without network access.",
@@ -44,6 +45,7 @@ class SnapshotTool(BaseTool):
         self.calls: list[str] = []
 
     def _run(self, *, snapshot_id: str) -> dict[str, str]:
+        """Record a validated fixture read and return its bounded metadata."""
         self.calls.append(snapshot_id)
         return {"snapshot_id": snapshot_id, "origin": "fixture"}
 
@@ -55,6 +57,7 @@ class ScriptedProvider(BaseLLMProvider):
     prompts: list[list[dict[str, Any]]] = Field(default_factory=list)
 
     def _next_response(self, prompt: str | list[dict[str, Any]]) -> LLMResponse:
+        """Record the prompt and consume exactly one scripted response."""
         if isinstance(prompt, str):
             self.prompts.append([{"role": "user", "content": prompt}])
         else:
@@ -64,24 +67,29 @@ class ScriptedProvider(BaseLLMProvider):
         return self.responses.pop(0)
 
     def invoke(self, prompt: str | list[dict[str, Any]], **kwargs: Any) -> LLMResponse:
+        """Return the next recorded response without a provider request."""
         _ = kwargs
         return self._next_response(prompt)
 
     async def ainvoke(
         self, prompt: str | list[dict[str, Any]], **kwargs: Any
     ) -> LLMResponse:
+        """Return a recorded response through the asynchronous provider API."""
         _ = kwargs
         return self._next_response(prompt)
 
+    @staticmethod
     def stream(
-        self, prompt: str | list[dict[str, Any]], **kwargs: Any
+        prompt: str | list[dict[str, Any]], **kwargs: Any
     ) -> Generator[str | dict[str, Any], None, None]:
+        """Expose the deliberately empty synchronous stream interface."""
         _ = prompt, kwargs
         yield from ()
 
     async def astream(
         self, prompt: str | list[dict[str, Any]], **kwargs: Any
     ) -> AsyncGenerator[str | dict[str, Any], None]:
+        """Expose the same empty stream through the asynchronous API."""
         for chunk in self.stream(prompt, **kwargs):
             yield chunk
 
@@ -93,7 +101,6 @@ def _response(
     sequence: int = 0,
 ) -> LLMResponse:
     """Create a valid SDK LLM response for the scripted provider."""
-
     return LLMResponse(
         id=f"fixture-response-{sequence}",
         model_name="fixture-scripted-model",
@@ -107,7 +114,6 @@ def _response(
 
 def _tool_call(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     """Build the OpenAI-style function-call payload accepted by ReActAgent."""
-
     return {
         "id": "fixture-call-1",
         "type": "function",
@@ -120,18 +126,19 @@ class FixtureFlow(Flow[dict[str, int]]):
 
     @start()
     async def begin(self) -> str:
+        """Initialize deterministic flow state for the listener test."""
         self.state["steps"] = 1
         return "prepared"
 
     @listen("begin")
     async def increment(self) -> str:
+        """Advance the recorded flow state through a real listener."""
         self.state["steps"] += 1
         return "complete"
 
 
 def _load_c1_mcp_result_policy() -> dict[str, dict[str, Any]]:
     """Load the generated C1 policy and verify its manifest registration."""
-
     repository_root = Path(__file__).resolve().parents[3]
     contract_root = repository_root / "docs" / "contracts" / "research-v1.1"
     manifest = json.loads((contract_root / "manifest.json").read_text())
@@ -152,7 +159,6 @@ def _load_c1_mcp_result_policy() -> dict[str, dict[str, Any]]:
 @pytest.mark.asyncio
 async def test_flow_kickoff_async_runs_start_and_listener() -> None:
     """Flow.kickoff_async awaits both the start method and its listener."""
-
     flow = FixtureFlow(state={"steps": 0})
 
     result = await flow.kickoff_async()
@@ -167,7 +173,6 @@ async def test_flow_kickoff_async_runs_start_and_listener() -> None:
 @pytest.mark.asyncio
 async def test_react_astream_calls_real_tool_then_emits_final_event() -> None:
     """ReAct emits typed events around a real BaseTool invocation."""
-
     provider = ScriptedProvider(
         model="fixture-scripted-model",
         responses=[
@@ -183,9 +188,18 @@ async def test_react_astream_calls_real_tool_then_emits_final_event() -> None:
 
     events = [event async for event in agent.astream("Read the fixture snapshot.")]
 
-    tool_call = next(event for event in events if isinstance(event, ToolCallEvent))
-    tool_result = next(event for event in events if isinstance(event, ToolResultEvent))
-    final = next(event for event in events if isinstance(event, FinalEvent))
+    tool_call = next(
+        (event for event in events if isinstance(event, ToolCallEvent)), None
+    )
+    assert tool_call is not None, "Expected ToolCallEvent was not emitted"
+    tool_result = next(
+        (event for event in events if isinstance(event, ToolResultEvent)), None
+    )
+    assert tool_result is not None, "Expected ToolResultEvent was not emitted"
+    final = next(
+        (event for event in events if isinstance(event, FinalEvent)), None
+    )
+    assert final is not None, "Expected FinalEvent was not emitted"
     assert tool_call.tool_name == "read_snapshot"
     assert tool_call.arguments == {"snapshot_id": "fixture-id"}
     assert tool_result.tool_name == "read_snapshot"
@@ -203,7 +217,6 @@ async def test_react_astream_calls_real_tool_then_emits_final_event() -> None:
 @pytest.mark.asyncio
 async def test_react_arun_uses_a_separate_fresh_scripted_provider() -> None:
     """ReAct.arun aggregates an independent scripted provider without reuse."""
-
     provider = ScriptedProvider(
         model="fixture-scripted-model",
         responses=[
@@ -240,7 +253,6 @@ async def test_react_rejects_unknown_or_invalid_calls_without_reading(
     tool_name: str, arguments: dict[str, Any]
 ) -> None:
     """Unknown names and invalid arguments must not execute the local tool."""
-
     provider = ScriptedProvider(
         model="fixture-scripted-model",
         responses=[
@@ -253,8 +265,14 @@ async def test_react_rejects_unknown_or_invalid_calls_without_reading(
 
     events = [event async for event in agent.astream("Try an invalid tool call.")]
 
-    tool_result = next(event for event in events if isinstance(event, ToolResultEvent))
-    final = next(event for event in events if isinstance(event, FinalEvent))
+    tool_result = next(
+        (event for event in events if isinstance(event, ToolResultEvent)), None
+    )
+    assert tool_result is not None, "Expected ToolResultEvent was not emitted"
+    final = next(
+        (event for event in events if isinstance(event, FinalEvent)), None
+    )
+    assert final is not None, "Expected FinalEvent was not emitted"
     assert tool_result.success is False
     assert tool_result.content.startswith("ERROR:")
     assert tool.calls == []
@@ -265,7 +283,6 @@ async def test_react_rejects_unknown_or_invalid_calls_without_reading(
 @pytest.mark.asyncio
 async def test_react_stops_at_max_iterations() -> None:
     """The ReAct loop returns an unsuccessful final event at its iteration cap."""
-
     provider = ScriptedProvider(
         model="fixture-scripted-model",
         responses=[
@@ -280,7 +297,10 @@ async def test_react_stops_at_max_iterations() -> None:
 
     events = [event async for event in agent.astream("Stop after one iteration.")]
 
-    final = next(event for event in events if isinstance(event, FinalEvent))
+    final = next(
+        (event for event in events if isinstance(event, FinalEvent)), None
+    )
+    assert final is not None, "Expected FinalEvent was not emitted"
     assert final.success is False
     assert final.output == "max iterations reached"
     assert final.iterations == 1
@@ -294,7 +314,6 @@ def test_mcp_hub_reads_c1_non_error_envelopes_from_each_representation(
     status: str, representation: str
 ) -> None:
     """Read each non-error C1 envelope through the real SDK priority paths."""
-
     policy = _load_c1_mcp_result_policy()
     fixture = policy[status]
     envelope = fixture["structured"]
@@ -321,7 +340,6 @@ def test_mcp_hub_reads_c1_non_error_envelopes_from_each_representation(
 
 def test_mcp_hub_raises_tool_error_for_c1_error_envelope() -> None:
     """An error envelope takes AGX's real ToolError path, not a fake return path."""
-
     fixture = _load_c1_mcp_result_policy()["error"]
     envelope = fixture["structured"]
     assert fixture["isError"] is True
@@ -341,7 +359,6 @@ def test_mcp_hub_raises_tool_error_for_c1_error_envelope() -> None:
 
 def test_mcp_hub_error_structured_content_cannot_bypass_tool_error() -> None:
     """The real SDK raises before it can return error structuredContent."""
-
     fixture = _load_c1_mcp_result_policy()["error"]
     result = CallToolResult(
         content=[],
