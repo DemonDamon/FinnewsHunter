@@ -17,6 +17,7 @@ START_SCRIPT = PROJECT_ROOT / "backend" / "start.sh"
 
 
 def _write_executable(path: Path, content: str) -> None:
+    """Write one isolated command fake with executable permissions."""
     path.write_text(content, encoding="utf-8")
     path.chmod(0o755)
 
