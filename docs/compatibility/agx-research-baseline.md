@@ -143,6 +143,38 @@ uv pip compile \
   backend/requirements.txt backend/requirements-dev.txt
 ```
 
+## Linux arm64 哈希锁（S00 Linux dependency lock）
+
+`backend/requirements-research-linux.lock` 是面向 `aarch64-unknown-linux-gnu` / CPython 3.12 的独立、完整哈希锁。消费 Linux/Docker 镜像时必须使用该文件，而不是 macOS 锁：
+
+```bash
+python -m pip install --require-hashes -r backend/requirements-research-linux.lock
+```
+
+它由 `uv 0.9.26` 以相同的 `backend/requirements.txt` 和 `backend/requirements-dev.txt` 编译，并以 `backend/requirements-research.lock` 作 constraint；输入 requirements 与原 macOS 锁均未修改。Linux 锁共 152 项；与 macOS 锁交集的 150 项版本逐项一致，包含 `agenticx==0.6.5` 与 `mcp==1.30.0`，不存在交集版本升级。其 SHA-256 为 `0ef9efd4cafa08ec46c20e79d16c4100d5381c380c27b126382df3db0b0c7203`。
+
+平台差异来自锁定的 `akshare==1.20.2` 发布 metadata：
+
+- 非 Linux：`mini-racer>=0.12.4 ; sys_platform != 'linux'`；macOS 锁因此为 `mini-racer==0.14.1`。
+- Linux：`py-mini-racer>=0.6.0 ; sys_platform == 'linux'` 与 `akracer>=0.0.13 ; sys_platform == 'linux'`；Linux 锁新增 `py-mini-racer==0.6.0`、`akracer==0.0.14`，并不包含 macOS 的 `mini-racer==0.14.1`。
+
+Linux 锁作为单一目标锁没有输出 PEP 508 marker；目标由文件名和编译命令中的 `--python-platform aarch64-unknown-linux-gnu` 决定。`py-mini-racer==0.6.0` 的锁包含 3 个已发布的预编译 wheel 与 1 个 sdist 的 hash，但发布 metadata 中没有 Linux aarch64 wheel；因此 aarch64 Linux 的实际安装需要走 sdist 构建路径。该锁已完成两次完全一致的解析与静态 hash 覆盖检查，**尚未**在 Linux/Docker 中实际安装、执行 `pip check` 或运行 SDK/应用；这些仍由 S01 gate 验证，不能据此宣称 Linux 运行通过。
+
+可在仓库根目录按下列命令重新生成；两次输出应按字节一致：
+
+```bash
+uv pip compile \
+  --python /Users/damon/.local/bin/python3.12 \
+  --python-platform aarch64-unknown-linux-gnu \
+  --generate-hashes \
+  --no-strip-extras \
+  --constraint backend/requirements-research.lock \
+  --custom-compile-command 'uv pip compile --python /Users/damon/.local/bin/python3.12 --python-platform aarch64-unknown-linux-gnu --generate-hashes --no-strip-extras --constraint backend/requirements-research.lock --output-file backend/requirements-research-linux.lock backend/requirements.txt backend/requirements-dev.txt' \
+  --output-file backend/requirements-research-linux.lock \
+  backend/requirements.txt backend/requirements-dev.txt
+sha256sum backend/requirements-research-linux.lock
+```
+
 ## 边界、已知限制与后续 gate
 
 - 已验证平台为 macOS 15.6.1 arm64 / CPython 3.12.12 / uv 0.9.26；没有验证 Linux、Docker 或镜像构建。
