@@ -115,14 +115,23 @@ def test_research_worker_reuses_services_without_user_env_or_neo4j_dependency() 
 
 def test_research_dockerfile_installs_only_the_hashed_lock_and_entrypoint_never_reinstalls() -> None:
     """Research images must use Python 3.12 and the reviewed hash lock at build time."""
+    linux_lock = PROJECT_ROOT / "backend" / "requirements-research-linux.lock"
+    assert linux_lock.is_file(), "Linux image lock must exist in the build context"
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
     entrypoint = ENTRYPOINT.read_text(encoding="utf-8")
 
     assert "ARG PYTHON_BASE=python:3.11" in dockerfile
     assert "FROM ${PYTHON_BASE}" in dockerfile
     assert "ARG FINNEWS_MODE=legacy" in dockerfile
-    assert "COPY backend/requirements-research.lock /opt/finnews-deps/requirements-research.lock" in dockerfile
-    assert "--require-hashes -r /opt/finnews-deps/requirements-research.lock" in dockerfile
+    assert (
+        "COPY backend/requirements-research-linux.lock "
+        "/opt/finnews-deps/requirements-research-linux.lock" in dockerfile
+    )
+    assert (
+        "--require-hashes -r "
+        "/opt/finnews-deps/requirements-research-linux.lock" in dockerfile
+    )
+    assert "-r /opt/finnews-deps/requirements-research.lock" not in dockerfile
     assert 'if [ "$FINNEWS_MODE" = "research" ]; then' in dockerfile
     assert "pip check" in entrypoint
     assert 'if [ "${APP_MODE:-legacy}" = "research" ]; then' in entrypoint

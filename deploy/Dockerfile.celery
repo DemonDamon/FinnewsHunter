@@ -9,11 +9,11 @@ WORKDIR /app
 
 COPY backend/requirements.txt /app/requirements.txt
 COPY backend/requirements.txt /opt/finnews-deps/requirements.txt
-COPY backend/requirements-research.lock /opt/finnews-deps/requirements-research.lock
+COPY backend/requirements-research-linux.lock /opt/finnews-deps/requirements-research-linux.lock
 COPY deploy/celery-entrypoint.sh /usr/local/bin/celery-entrypoint.sh
 
 RUN if [ "$FINNEWS_MODE" = "research" ]; then \
-        python -m pip install --no-cache-dir --require-hashes -r /opt/finnews-deps/requirements-research.lock; \
+        python -m pip install --no-cache-dir --require-hashes -r /opt/finnews-deps/requirements-research-linux.lock; \
     else \
         python -m pip install --no-cache-dir -r /opt/finnews-deps/requirements.txt; \
     fi \
