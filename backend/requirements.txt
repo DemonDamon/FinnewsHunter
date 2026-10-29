@@ -45,7 +45,8 @@ httpx>=0.25.0
 tenacity>=8.2.0  # 重试机制
 
 # ===== AgenticX 框架 =====
-agenticx==0.1.9  # Docker 容器中使用 PyPI 版本
-# 本地开发可以用：pip install -e ../../../../agenticx
+agenticx[mcp]==0.6.5
+# Keep the MCP runtime explicit for the embedded research transport boundary.
+mcp>=1.0.0,<2
 
 akshare

@@ -1,0 +1,673 @@
+{
+  "$defs": {
+    "ClaimV1": {
+      "additionalProperties": false,
+      "description": "Describe an evidence-linked fact, inference, or hypothesis in a brief.",
+      "properties": {
+        "as_of": {
+          "format": "date-time",
+          "title": "As Of",
+          "type": "string"
+        },
+        "claim_id": {
+          "format": "uuid",
+          "title": "Claim Id",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "evidence_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 0,
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "kind": {
+          "enum": [
+            "fact",
+            "inference",
+            "hypothesis"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "numeric_assertions": {
+          "items": {
+            "$ref": "#/$defs/NumericAssertionV1"
+          },
+          "maxItems": 20,
+          "title": "Numeric Assertions",
+          "type": "array"
+        },
+        "text": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "valid_until": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Valid Until"
+        }
+      },
+      "required": [
+        "claim_id",
+        "kind",
+        "text",
+        "evidence_ids",
+        "as_of",
+        "valid_until",
+        "confidence"
+      ],
+      "title": "ClaimV1",
+      "type": "object"
+    },
+    "ContractError": {
+      "additionalProperties": false,
+      "description": "Describe a safe, stable error returned to a contract caller.",
+      "properties": {
+        "code": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(?:_[a-z0-9]+)*$",
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "retryable": {
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ],
+      "title": "ContractError",
+      "type": "object"
+    },
+    "ModelTraceEntryV1": {
+      "additionalProperties": false,
+      "description": "Store bounded model execution metadata without prompts or reasoning content.",
+      "properties": {
+        "eval_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Eval Digest",
+          "type": "string"
+        },
+        "eval_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Eval Version",
+          "type": "string"
+        },
+        "fallback_reason": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Fallback Reason"
+        },
+        "model_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Model Id",
+          "type": "string"
+        },
+        "policy_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "prompt_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Prompt Version",
+          "type": "string"
+        },
+        "provider": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "draft",
+            "review"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "provider",
+        "model_id",
+        "prompt_version",
+        "policy_version",
+        "eval_version",
+        "eval_digest",
+        "fallback_reason"
+      ],
+      "title": "ModelTraceEntryV1",
+      "type": "object"
+    },
+    "NumericAssertionV1": {
+      "additionalProperties": false,
+      "description": "Describe a structurally constrained numerical claim assertion.",
+      "properties": {
+        "claimed_value": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+          "title": "Claimed Value",
+          "type": "string"
+        },
+        "currency": {
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "evidence_id": {
+          "format": "uuid",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "field": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Field",
+          "type": "string"
+        },
+        "formula_id": {
+          "enum": [
+            "identity",
+            "percent_change",
+            "unit_scale"
+          ],
+          "title": "Formula Id",
+          "type": "string"
+        },
+        "operand_refs": {
+          "items": {
+            "$ref": "#/$defs/OperandRefV1"
+          },
+          "maxItems": 4,
+          "title": "Operand Refs",
+          "type": "array"
+        },
+        "rounding": {
+          "maximum": 8,
+          "minimum": 0,
+          "title": "Rounding",
+          "type": "integer"
+        },
+        "unit": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "field",
+        "claimed_value",
+        "unit",
+        "currency",
+        "formula_id",
+        "operand_refs",
+        "rounding"
+      ],
+      "title": "NumericAssertionV1",
+      "type": "object"
+    },
+    "OperandRefV1": {
+      "additionalProperties": false,
+      "description": "Reference a bounded evidence field operand for a numeric assertion.",
+      "properties": {
+        "evidence_id": {
+          "format": "uuid",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "field": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Field",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "field"
+      ],
+      "title": "OperandRefV1",
+      "type": "object"
+    },
+    "ResearchBriefV1": {
+      "additionalProperties": false,
+      "description": "Represent the locally published, bounded research result for a run.",
+      "properties": {
+        "as_of": {
+          "format": "date-time",
+          "title": "As Of",
+          "type": "string"
+        },
+        "claims": {
+          "items": {
+            "$ref": "#/$defs/ClaimV1"
+          },
+          "maxItems": 64,
+          "title": "Claims",
+          "type": "array"
+        },
+        "counterarguments": {
+          "items": {
+            "$ref": "#/$defs/ClaimV1"
+          },
+          "maxItems": 32,
+          "title": "Counterarguments",
+          "type": "array"
+        },
+        "limitations": {
+          "items": {
+            "maxLength": 2000,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Limitations",
+          "type": "array"
+        },
+        "model_trace": {
+          "items": {
+            "$ref": "#/$defs/ModelTraceEntryV1"
+          },
+          "maxItems": 4,
+          "title": "Model Trace",
+          "type": "array"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "unknowns": {
+          "items": {
+            "maxLength": 2000,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Unknowns",
+          "type": "array"
+        }
+      },
+      "required": [
+        "run_id",
+        "as_of",
+        "claims",
+        "counterarguments",
+        "unknowns",
+        "limitations",
+        "model_trace"
+      ],
+      "title": "ResearchBriefV1",
+      "type": "object"
+    },
+    "ResearchRunViewV1": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "completed"
+                }
+              },
+              "required": [
+                "status"
+              ]
+            },
+            "then": {
+              "properties": {
+                "brief": {
+                  "not": {
+                    "type": "null"
+                  }
+                }
+              },
+              "required": [
+                "brief"
+              ]
+            }
+          },
+          "if": {
+            "properties": {
+              "error_code": {
+                "const": "license_revoked"
+              }
+            },
+            "required": [
+              "error_code"
+            ]
+          },
+          "then": {
+            "properties": {
+              "brief": {
+                "type": "null"
+              },
+              "status": {
+                "const": "completed"
+              }
+            },
+            "required": [
+              "status",
+              "brief"
+            ]
+          }
+        }
+      ],
+      "description": "Expose the bounded read view for one research run and its published brief.",
+      "properties": {
+        "as_of": {
+          "format": "date-time",
+          "title": "As Of",
+          "type": "string"
+        },
+        "brief": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResearchBriefV1"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "entity_ids": {
+          "items": {
+            "maxLength": 12,
+            "minLength": 12,
+            "pattern": "^CN\\.(SH|SZ|BJ)\\.[0-9]{6}$",
+            "type": "string"
+          },
+          "maxItems": 1,
+          "minItems": 1,
+          "title": "Entity Ids",
+          "type": "array"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[a-z0-9]+(?:_[a-z0-9]+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Code"
+        },
+        "model_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Id"
+        },
+        "policy_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "principal_id": {
+          "format": "uuid",
+          "title": "Principal Id",
+          "type": "string"
+        },
+        "prompt_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Prompt Version",
+          "type": "string"
+        },
+        "request_id": {
+          "format": "uuid",
+          "title": "Request Id",
+          "type": "string"
+        },
+        "result_ref": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+={0,2}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Result Ref"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "completed",
+            "failed",
+            "needs_review",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "request_id",
+        "principal_id",
+        "entity_ids",
+        "as_of",
+        "status",
+        "created_at",
+        "updated_at",
+        "model_id",
+        "prompt_version",
+        "policy_version",
+        "result_ref",
+        "error_code",
+        "brief"
+      ],
+      "title": "ResearchRunViewV1",
+      "type": "object"
+    },
+    "SourceRefV1": {
+      "additionalProperties": false,
+      "description": "Reference evidence provenance in an envelope without exposing raw content.",
+      "properties": {
+        "evidence_id": {
+          "format": "uuid",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Hash",
+          "type": "string"
+        },
+        "provider": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "evidence_id",
+        "provider",
+        "version",
+        "hash"
+      ],
+      "title": "SourceRefV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "as_of": {
+      "format": "date-time",
+      "title": "As Of",
+      "type": "string"
+    },
+    "data": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ResearchRunViewV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ContractError"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "license_status": {
+      "enum": [
+        "approved",
+        "restricted",
+        "unknown",
+        "revoked",
+        "not_applicable"
+      ],
+      "title": "License Status",
+      "type": "string"
+    },
+    "request_id": {
+      "format": "uuid",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "research-v1.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source": {
+      "items": {
+        "$ref": "#/$defs/SourceRefV1"
+      },
+      "maxItems": 20,
+      "title": "Source",
+      "type": "array"
+    },
+    "status": {
+      "enum": [
+        "ok",
+        "partial",
+        "unavailable",
+        "error"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "warnings": {
+      "items": {
+        "maxLength": 512,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "request_id",
+    "status",
+    "as_of",
+    "data",
+    "source",
+    "license_status",
+    "warnings",
+    "error"
+  ],
+  "title": "ResearchEnvelope[ResearchRunViewV1]",
+  "type": "object"
+}

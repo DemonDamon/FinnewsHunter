@@ -1,0 +1,18 @@
+{
+  "as_of": "2026-10-29T10:00:00+08:00",
+  "brief": null,
+  "created_at": "2026-10-29T10:00:00+08:00",
+  "entity_ids": [
+    "CN.SH.600519"
+  ],
+  "error_code": null,
+  "model_id": null,
+  "policy_version": "fixture-policy-v1",
+  "principal_id": "66666666-6666-6666-6666-666666666666",
+  "prompt_version": "fixture-prompt-v1",
+  "request_id": "77777777-7777-7777-7777-777777777777",
+  "result_ref": null,
+  "run_id": "44444444-4444-4444-4444-444444444444",
+  "status": "queued",
+  "updated_at": "2026-10-29T10:04:00+08:00"
+}

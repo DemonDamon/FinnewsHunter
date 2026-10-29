@@ -1,0 +1,30 @@
+{
+  "additionalProperties": false,
+  "description": "Describe a safe, stable error returned to a contract caller.",
+  "properties": {
+    "code": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[a-z0-9]+(?:_[a-z0-9]+)*$",
+      "title": "Code",
+      "type": "string"
+    },
+    "message": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Message",
+      "type": "string"
+    },
+    "retryable": {
+      "title": "Retryable",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "code",
+    "message",
+    "retryable"
+  ],
+  "title": "ContractError",
+  "type": "object"
+}

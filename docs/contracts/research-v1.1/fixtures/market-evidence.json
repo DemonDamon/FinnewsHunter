@@ -1,0 +1,40 @@
+{
+  "available_at": "2026-10-29T09:31:00+08:00",
+  "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "entity_ids": [
+    "CN.SH.600519"
+  ],
+  "evidence_id": "22222222-2222-2222-2222-222222222222",
+  "evidence_kind": "market",
+  "excerpt": "Synthetic fixture market payload only; it is not market data.",
+  "fetched_at": "2026-10-29T09:32:00+08:00",
+  "license_scope": "redisplay",
+  "market_payload": {
+    "adjustment": "none",
+    "available_at": "2026-10-29T09:31:00+08:00",
+    "currency": "CNY",
+    "evidence_id": "22222222-2222-2222-2222-222222222222",
+    "fetched_at": "2026-10-29T09:32:00+08:00",
+    "fields": [
+      {
+        "name": "close",
+        "unit": "CNY",
+        "value": "1450.25"
+      }
+    ],
+    "is_mock": true,
+    "observed_at": "2026-10-29T09:30:00+08:00",
+    "provider": "fixture-provider",
+    "symbol": "CN.SH.600519",
+    "timezone": "Asia/Shanghai",
+    "version": "fixture-v1"
+  },
+  "origin": "fixture",
+  "published_at": "2026-10-29T09:30:00+08:00",
+  "quality_status": "verified_metadata",
+  "source_id": "fixture-market-source",
+  "source_policy_version": "fixture-policy-v1",
+  "source_url": "https://example.invalid/market/fixture-snapshot",
+  "timezone": "Asia/Shanghai",
+  "version": "fixture-v1"
+}

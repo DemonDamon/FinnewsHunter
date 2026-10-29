@@ -1,0 +1,21 @@
+{
+  "available_at": "2026-10-29T09:30:00+08:00",
+  "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "entity_ids": [
+    "CN.SH.600519"
+  ],
+  "evidence_id": "11111111-1111-1111-1111-111111111111",
+  "evidence_kind": "event",
+  "excerpt": "Synthetic fixture event only; it is not financial research evidence.",
+  "fetched_at": "2026-10-29T09:31:00+08:00",
+  "license_scope": "redisplay",
+  "market_payload": null,
+  "origin": "fixture",
+  "published_at": "2026-10-29T09:00:00+08:00",
+  "quality_status": "verified_metadata",
+  "source_id": "fixture-event-source",
+  "source_policy_version": "fixture-policy-v1",
+  "source_url": "https://example.invalid/events/fixture-event",
+  "timezone": "Asia/Shanghai",
+  "version": "fixture-v1"
+}

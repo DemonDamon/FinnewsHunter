@@ -1,0 +1,128 @@
+{
+  "$defs": {
+    "MarketFieldV1": {
+      "additionalProperties": false,
+      "description": "Represent one bounded decimal-valued market observation field.",
+      "properties": {
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "unit": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value",
+        "unit"
+      ],
+      "title": "MarketFieldV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Represent market observations that are linked to registered evidence.",
+  "properties": {
+    "adjustment": {
+      "enum": [
+        "none",
+        "forward",
+        "backward"
+      ],
+      "title": "Adjustment",
+      "type": "string"
+    },
+    "available_at": {
+      "format": "date-time",
+      "title": "Available At",
+      "type": "string"
+    },
+    "currency": {
+      "pattern": "^[A-Z]{3}$",
+      "title": "Currency",
+      "type": "string"
+    },
+    "evidence_id": {
+      "format": "uuid",
+      "title": "Evidence Id",
+      "type": "string"
+    },
+    "fetched_at": {
+      "format": "date-time",
+      "title": "Fetched At",
+      "type": "string"
+    },
+    "fields": {
+      "items": {
+        "$ref": "#/$defs/MarketFieldV1"
+      },
+      "maxItems": 32,
+      "minItems": 1,
+      "title": "Fields",
+      "type": "array"
+    },
+    "is_mock": {
+      "title": "Is Mock",
+      "type": "boolean"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "provider": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Provider",
+      "type": "string"
+    },
+    "symbol": {
+      "maxLength": 12,
+      "minLength": 12,
+      "pattern": "^CN\\.(SH|SZ|BJ)\\.[0-9]{6}$",
+      "title": "Symbol",
+      "type": "string"
+    },
+    "timezone": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Timezone",
+      "type": "string"
+    },
+    "version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "evidence_id",
+    "symbol",
+    "observed_at",
+    "available_at",
+    "fetched_at",
+    "timezone",
+    "currency",
+    "adjustment",
+    "fields",
+    "provider",
+    "version",
+    "is_mock"
+  ],
+  "title": "MarketPayloadV1",
+  "type": "object"
+}

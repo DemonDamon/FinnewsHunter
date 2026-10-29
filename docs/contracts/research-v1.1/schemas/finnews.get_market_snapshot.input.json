@@ -1,0 +1,42 @@
+{
+  "additionalProperties": false,
+  "description": "Accept a bounded single-entity market snapshot request.",
+  "properties": {
+    "as_of": {
+      "format": "date-time",
+      "title": "As Of",
+      "type": "string"
+    },
+    "entity_ids": {
+      "items": {
+        "maxLength": 12,
+        "minLength": 12,
+        "pattern": "^CN\\.(SH|SZ|BJ)\\.[0-9]{6}$",
+        "type": "string"
+      },
+      "maxItems": 1,
+      "minItems": 1,
+      "title": "Entity Ids",
+      "type": "array"
+    },
+    "run_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Run Id"
+    }
+  },
+  "required": [
+    "entity_ids",
+    "as_of"
+  ],
+  "title": "GetMarketSnapshotInput",
+  "type": "object"
+}

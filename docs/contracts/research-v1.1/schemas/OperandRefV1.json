@@ -1,0 +1,23 @@
+{
+  "additionalProperties": false,
+  "description": "Reference a bounded evidence field operand for a numeric assertion.",
+  "properties": {
+    "evidence_id": {
+      "format": "uuid",
+      "title": "Evidence Id",
+      "type": "string"
+    },
+    "field": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Field",
+      "type": "string"
+    }
+  },
+  "required": [
+    "evidence_id",
+    "field"
+  ],
+  "title": "OperandRefV1",
+  "type": "object"
+}

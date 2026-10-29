@@ -1,0 +1,17 @@
+{
+  "as_of": "2026-10-29T10:00:00+08:00",
+  "data": null,
+  "error": {
+    "code": "market_data_unverifiable",
+    "message": "No approved market payload is available for this cutoff.",
+    "retryable": false
+  },
+  "license_status": "not_applicable",
+  "request_id": "77777777-7777-7777-7777-777777777777",
+  "schema_version": "research-v1.1",
+  "source": [],
+  "status": "unavailable",
+  "warnings": [
+    "No live refresh or mock fallback was performed."
+  ]
+}

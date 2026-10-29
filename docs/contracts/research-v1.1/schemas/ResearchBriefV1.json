@@ -1,0 +1,315 @@
+{
+  "$defs": {
+    "ClaimV1": {
+      "additionalProperties": false,
+      "description": "Describe an evidence-linked fact, inference, or hypothesis in a brief.",
+      "properties": {
+        "as_of": {
+          "format": "date-time",
+          "title": "As Of",
+          "type": "string"
+        },
+        "claim_id": {
+          "format": "uuid",
+          "title": "Claim Id",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "evidence_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 0,
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "kind": {
+          "enum": [
+            "fact",
+            "inference",
+            "hypothesis"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "numeric_assertions": {
+          "items": {
+            "$ref": "#/$defs/NumericAssertionV1"
+          },
+          "maxItems": 20,
+          "title": "Numeric Assertions",
+          "type": "array"
+        },
+        "text": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "valid_until": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Valid Until"
+        }
+      },
+      "required": [
+        "claim_id",
+        "kind",
+        "text",
+        "evidence_ids",
+        "as_of",
+        "valid_until",
+        "confidence"
+      ],
+      "title": "ClaimV1",
+      "type": "object"
+    },
+    "ModelTraceEntryV1": {
+      "additionalProperties": false,
+      "description": "Store bounded model execution metadata without prompts or reasoning content.",
+      "properties": {
+        "eval_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Eval Digest",
+          "type": "string"
+        },
+        "eval_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Eval Version",
+          "type": "string"
+        },
+        "fallback_reason": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Fallback Reason"
+        },
+        "model_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Model Id",
+          "type": "string"
+        },
+        "policy_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "prompt_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Prompt Version",
+          "type": "string"
+        },
+        "provider": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "draft",
+            "review"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "provider",
+        "model_id",
+        "prompt_version",
+        "policy_version",
+        "eval_version",
+        "eval_digest",
+        "fallback_reason"
+      ],
+      "title": "ModelTraceEntryV1",
+      "type": "object"
+    },
+    "NumericAssertionV1": {
+      "additionalProperties": false,
+      "description": "Describe a structurally constrained numerical claim assertion.",
+      "properties": {
+        "claimed_value": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+          "title": "Claimed Value",
+          "type": "string"
+        },
+        "currency": {
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "evidence_id": {
+          "format": "uuid",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "field": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Field",
+          "type": "string"
+        },
+        "formula_id": {
+          "enum": [
+            "identity",
+            "percent_change",
+            "unit_scale"
+          ],
+          "title": "Formula Id",
+          "type": "string"
+        },
+        "operand_refs": {
+          "items": {
+            "$ref": "#/$defs/OperandRefV1"
+          },
+          "maxItems": 4,
+          "title": "Operand Refs",
+          "type": "array"
+        },
+        "rounding": {
+          "maximum": 8,
+          "minimum": 0,
+          "title": "Rounding",
+          "type": "integer"
+        },
+        "unit": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "field",
+        "claimed_value",
+        "unit",
+        "currency",
+        "formula_id",
+        "operand_refs",
+        "rounding"
+      ],
+      "title": "NumericAssertionV1",
+      "type": "object"
+    },
+    "OperandRefV1": {
+      "additionalProperties": false,
+      "description": "Reference a bounded evidence field operand for a numeric assertion.",
+      "properties": {
+        "evidence_id": {
+          "format": "uuid",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "field": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Field",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "field"
+      ],
+      "title": "OperandRefV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Represent the locally published, bounded research result for a run.",
+  "properties": {
+    "as_of": {
+      "format": "date-time",
+      "title": "As Of",
+      "type": "string"
+    },
+    "claims": {
+      "items": {
+        "$ref": "#/$defs/ClaimV1"
+      },
+      "maxItems": 64,
+      "title": "Claims",
+      "type": "array"
+    },
+    "counterarguments": {
+      "items": {
+        "$ref": "#/$defs/ClaimV1"
+      },
+      "maxItems": 32,
+      "title": "Counterarguments",
+      "type": "array"
+    },
+    "limitations": {
+      "items": {
+        "maxLength": 2000,
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Limitations",
+      "type": "array"
+    },
+    "model_trace": {
+      "items": {
+        "$ref": "#/$defs/ModelTraceEntryV1"
+      },
+      "maxItems": 4,
+      "title": "Model Trace",
+      "type": "array"
+    },
+    "run_id": {
+      "format": "uuid",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "unknowns": {
+      "items": {
+        "maxLength": 2000,
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Unknowns",
+      "type": "array"
+    }
+  },
+  "required": [
+    "run_id",
+    "as_of",
+    "claims",
+    "counterarguments",
+    "unknowns",
+    "limitations",
+    "model_trace"
+  ],
+  "title": "ResearchBriefV1",
+  "type": "object"
+}

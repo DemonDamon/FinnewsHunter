@@ -1,0 +1,10 @@
+{
+  "as_of": "2026-10-29T10:00:00+08:00",
+  "claim_id": "88888888-8888-8888-8888-888888888888",
+  "confidence": 0.8,
+  "evidence_ids": [],
+  "kind": "fact",
+  "numeric_assertions": [],
+  "text": "The fixture event was registered before the declared research cutoff.",
+  "valid_until": null
+}
