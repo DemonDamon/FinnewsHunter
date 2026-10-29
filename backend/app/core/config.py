@@ -1,9 +1,11 @@
+"""Core FinnewsHunter settings managed through Pydantic.
+
+Author: Damon Li
 """
-FinnewsHunter 核心配置模块
-使用 Pydantic Settings 管理环境变量和配置
-"""
-from typing import Optional, List
-from pydantic import Field
+import re
+from typing import List, Literal, Optional
+
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,6 +17,12 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
     API_V1_PREFIX: str = "/api/v1"
     DEBUG: bool = Field(default=True)
+
+    # Research-mode configuration remains disabled unless explicitly selected.
+    APP_MODE: Literal["legacy", "research"] = "legacy"
+    RESEARCH_ENABLED: bool = False
+    RESEARCH_EXECUTION_ENABLED: bool = False
+    RESEARCH_SOURCE_ALLOWLIST: list[str] = Field(default_factory=list)
     
     # 服务器配置
     HOST: str = Field(default="0.0.0.0")
@@ -169,7 +177,37 @@ class Settings(BaseSettings):
     # 业务配置
     MAX_NEWS_PER_REQUEST: int = Field(default=50)
     NEWS_CACHE_TTL: int = Field(default=3600)  # 1 hour
-    
+
+    @field_validator("RESEARCH_SOURCE_ALLOWLIST")
+    @classmethod
+    def validate_research_source_allowlist(cls, sources: list[str]) -> list[str]:
+        """Accept at most sixteen non-empty, safe source slugs."""
+        if len(sources) > 16:
+            raise ValueError("RESEARCH_SOURCE_ALLOWLIST accepts at most 16 sources")
+
+        for source in sources:
+            if not re.fullmatch(r"[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?", source):
+                raise ValueError(
+                    "RESEARCH_SOURCE_ALLOWLIST entries must be non-empty safe slugs"
+                )
+        return sources
+
+    @model_validator(mode="after")
+    def validate_research_mode(self) -> "Settings":
+        """Reject research flags that could otherwise activate legacy mode."""
+        if self.RESEARCH_EXECUTION_ENABLED:
+            if self.APP_MODE != "research":
+                raise ValueError(
+                    "RESEARCH_EXECUTION_ENABLED requires APP_MODE='research'"
+                )
+            if not self.RESEARCH_ENABLED:
+                raise ValueError(
+                    "RESEARCH_EXECUTION_ENABLED requires RESEARCH_ENABLED=true"
+                )
+        elif self.RESEARCH_ENABLED and self.APP_MODE != "research":
+            raise ValueError("RESEARCH_ENABLED requires APP_MODE='research'")
+        return self
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

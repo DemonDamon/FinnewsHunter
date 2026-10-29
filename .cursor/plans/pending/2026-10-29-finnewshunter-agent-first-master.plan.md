@@ -5,7 +5,7 @@ Suggested-Impl-Model: 后续子计划按第 13 节选择成本最低且能力足
 Plan-Id: 2026-10-29-finnewshunter-agent-first-master
 Plan-Type: Master / 仅规划，不直接实施
 Status: Accepted direction / 2026-10-29 用户授权逐批实施；具体节点按验收门禁推进
-Version: 1.2
+Version: 1.3
 Owner: FinnewsHunter；AgenticX 侧只维护引用本文件的执行索引和通用能力子计划
 Author: Damon Li
 Baseline-Date: 2026-10-29
@@ -567,7 +567,7 @@ FNH_ROOT 为当前 FinnewsHunter checkout；AGX_ROOT 为 AgenticX checkout。每
 
 S00拥有依赖与锁文件；S01拥有main/config/路由聚合/compose装配；S02拥有contract/auth/ORM/迁移/ledger/ports；S03拥有读服务/来源/MCP；S04拥有dispatch/worker；S05拥有Flow/validation/eval；S06拥有Bundle/SOP；S07只有经过owner评审的合流。新owner需要改共享文件必须先登记，禁止“顺手修一下”。
 
-上游未合并时只可消费冻结fixture，不复制未提交目录当依赖。每个PR附Parent Plan、实际base/head SHA、通过命令及日志摘要、已知限制、契约版本、依赖PR和回滚步骤。对外PR/commit遵守两仓署名和中性产品文案规范；2026-10-29用户确认Plan-Model/Impl-Model均为Manus 2.0，当前按独立PR送审，不自动合main或部署。
+上游未合并时只可消费冻结fixture，不复制未提交目录当依赖。每个PR附Parent Plan、实际base/head SHA、通过命令及日志摘要、已知限制、契约版本、依赖PR和回滚步骤。对外PR/commit遵守两仓署名和中性产品文案规范；2026-10-29用户确认Plan-Model/Impl-Model均为Manus 2.0，当前用户授权在门禁通过后按顺序合main，仍不执行生产部署。
 
 ### 13.3 可直接用于后续分派的任务封套
 
@@ -597,9 +597,9 @@ subagent完成后由父agent复核其负责的交付证据与合流门禁，不�
 
 粗估按小团队、依赖输入已齐全且部分并行计算为3–6周工程量；不是承诺。身份、许可、版本发布或真实模型评审可能延长。S00与最小启动宜先做1–3天的技术确认，若现有SDK/SDK依赖差异过大再重估；不要为了赶时间跳过安全gate。
 
-**2026-10-29 执行进度：** S00已独立复审通过，锁定PyPI `agenticx[mcp]==0.6.5`、MCP1.30.0和C1 digest `591d9cdbfc3dbc639cc0859639e11e910ff86a73fdb34c9697ba63af1534a59e`。S01最小装配已实现并通过本地29项测试；两批补丁在新干净worktree合流60项通过，生成检查与新增研究代码Ruff通过。Linux/arm64镜像在pip层前因registry mirror EOF阻塞，官方地址探测超时，所以S01整体为partial/blocked，不能宣称可运行真实金融研究。
+**2026-10-29 执行进度：** S00已通过独立审查与远端静态分析，PR #17已合入main（merge cf46c0c4b66d97dd7b4cae633dcb8d6f0ed19607）。固定SDK `agenticx[mcp]==0.6.5`、MCP1.30.0，C1 digest仍为`591d9cdbfc3dbc639cc0859639e11e910ff86a73fdb34c9697ba63af1534a59e`。补齐Linux平台专属hash锁，原150个共同包版本不变；显式同步数据库driver避免默认方言回归。S01合流本机61项通过，Linux/arm64 Python3.12.16严格hash安装成功、pip check通过、真实SDK切片14项和容器内非Compose回归56项通过。TestClient health200、ready503、debug404与旧模块隔离通过；镜像ID及证据命令见docs/operations/research-bootstrap.md。唯一P1（缺失Linux锁/假绿测试）经受控提交、存在性反例和窄复审关闭。
 
-**当前下一步：解除S01 Linux镜像子门，再执行S02。** S00/S01/S02独立subplan已落盘；S02保持pending，不派实施。本轮提交以独立PR送审，未授权自动合main，保留原用户修改。S02稳定后才给S03/S04并行任务，不能各自发明Port、绕过同一app入口或改变依赖锁。真实身份、数据许可与模型批准仍按后续门禁提供。
+**当前下一步：合并已验收S01后，从更新main拆派S02。** PR #18已转向main；用户已授权在门禁通过后合并，不包括生产部署。S02仍pending且未实施，上游技术阻塞已解除；实施前重新登记base/head与两平台锁SHA。S02稳定后再给S03/S04并行任务，禁止各自发明Port、绕过同一app入口或改依赖基线。当前仍没有生产身份、证据账本、研究HTTP/MCP、真实worker/Flow或合法来源和批准模型闭环；readyz维持503是正确行为，不得为展示成功改成healthy。
 
 ## 15. 停止条件、回滚和仍待输入事项
 
