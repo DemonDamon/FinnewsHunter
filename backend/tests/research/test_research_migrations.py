@@ -21,6 +21,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from alembic import command
+from alembic.script import ScriptDirectory
 from app.research.contracts import EvidenceV1
 from app.research.db import RESEARCH_ALEMBIC_HEAD, create_research_database
 from app.research.errors import DomainError
@@ -173,7 +174,7 @@ async def _seed_policy_evidence_run(context: IsolatedPostgres) -> dict[str, UUID
                     prompt_version, created_at, updated_at
                 ) VALUES (
                     :run_id, :request_id, :principal_id, 'CN.SH.600519', :evidence_id,
-                    :request_hash, :now, 'queued', 'none', 'v1', 'prompt-v1', :now, :now
+                    :request_hash, :now, 'queued', 'materialized', 'v1', 'prompt-v1', :now, :now
                 )
                 """
             ),
@@ -304,7 +305,27 @@ def test_upgrade_empty_isolated_postgresql(postgres_context: IsolatedPostgres) -
     asyncio.run(database.dispose())
     assert readiness.ready is True
     assert readiness.reason == "ledger_ready"
-    assert RESEARCH_ALEMBIC_HEAD == "20261030_research_v11"
+    actual_head = ScriptDirectory.from_config(
+        alembic_config(postgres_context)
+    ).get_current_head()
+    assert RESEARCH_ALEMBIC_HEAD == actual_head == "20261031_snapshot_immutability"
+
+
+def test_old_migration_revision_is_not_ready(
+    postgres_context: IsolatedPostgres,
+) -> None:
+    """A database missing the membership guards cannot accept research traffic."""
+    command.upgrade(alembic_config(postgres_context), "20261030_research_v11")
+    database = create_research_database(
+        postgres_context.url,
+        connect_args={"server_settings": {"search_path": postgres_context.schema}},
+    )
+    try:
+        readiness = asyncio.run(database.check_ready(now=NOW))
+        assert readiness.ready is False
+        assert readiness.reason == "ledger_migration_unavailable"
+    finally:
+        asyncio.run(database.dispose())
 
 
 def test_upgrade_preserves_legacy_sentinel(postgres_context: IsolatedPostgres) -> None:

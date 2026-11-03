@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -27,7 +28,8 @@ def _research_compose_config(*profiles: str) -> dict[str, object]:
             "RESEARCH_EXECUTION_ENABLED": "false",
         }
     )
-    command = ["docker", "compose"]
+    compose_binary = shutil.which("docker-compose")
+    command = [compose_binary] if compose_binary else ["docker", "compose"]
     for profile in profiles:
         command.extend(["--profile", profile])
     command.extend(
@@ -67,7 +69,9 @@ def test_research_override_exists_and_uses_supported_reset_and_override_tags() -
     assert "FINNEWS_MODE: research" in content
 
 
-def test_research_compose_config_has_only_postgres_and_redis_enabled_by_default() -> None:
+def test_research_compose_config_has_only_postgres_and_redis_enabled_by_default() -> (
+    None
+):
     """A real Compose config parse must show all non-core services as opt-in profiles."""
     config = _research_compose_config()
     services = config["services"]
@@ -113,7 +117,9 @@ def test_research_worker_reuses_services_without_user_env_or_neo4j_dependency() 
     assert worker["environment"]["RESEARCH_EXECUTION_ENABLED"] == "false"
 
 
-def test_research_dockerfile_installs_only_the_hashed_lock_and_entrypoint_never_reinstalls() -> None:
+def test_research_dockerfile_installs_only_the_hashed_lock_and_entrypoint_never_reinstalls() -> (
+    None
+):
     """Research images must use Python 3.12 and the reviewed hash lock at build time."""
     linux_lock = PROJECT_ROOT / "backend" / "requirements-research-linux.lock"
     assert linux_lock.is_file(), "Linux image lock must exist in the build context"
@@ -135,11 +141,15 @@ def test_research_dockerfile_installs_only_the_hashed_lock_and_entrypoint_never_
     assert 'if [ "$FINNEWS_MODE" = "research" ]; then' in dockerfile
     assert "pip check" in entrypoint
     assert 'if [ "${APP_MODE:-legacy}" = "research" ]; then' in entrypoint
-    research_branch = entrypoint.split('if [ "${APP_MODE:-legacy}" = "research" ]; then', 1)[1].split("fi", 1)[0]
+    research_branch = entrypoint.split(
+        'if [ "${APP_MODE:-legacy}" = "research" ]; then', 1
+    )[1].split("fi", 1)[0]
     assert "pip install" not in research_branch
 
 
-def test_dockerignore_excludes_sensitive_and_intermediate_context_without_excluding_lock() -> None:
+def test_dockerignore_excludes_sensitive_and_intermediate_context_without_excluding_lock() -> (
+    None
+):
     """The verification build context must not include local credentials or task artifacts."""
     content = DOCKERIGNORE.read_text(encoding="utf-8")
 

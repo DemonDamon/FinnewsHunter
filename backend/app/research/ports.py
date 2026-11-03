@@ -31,9 +31,7 @@ from app.research.contracts import (
 ResearchAsyncSessionFactory: TypeAlias = async_sessionmaker[AsyncSession]
 ResearchScope: TypeAlias = Literal["research:create", "research:read"]
 TerminalRunStatus: TypeAlias = Literal["failed", "needs_review", "cancelled"]
-StepEventType: TypeAlias = Literal[
-    "step_started", "evidence_added", "claim_checked"
-]
+StepEventType: TypeAlias = Literal["step_started", "evidence_added", "claim_checked"]
 
 
 def _require_aware(value: datetime, field_name: str) -> None:

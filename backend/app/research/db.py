@@ -29,7 +29,7 @@ from app.research.ports import (
     ResearchDatabasePort,
 )
 
-RESEARCH_ALEMBIC_HEAD = "20261030_research_v11"
+RESEARCH_ALEMBIC_HEAD = "20261031_snapshot_immutability"
 _RESEARCH_VERSION_TABLE = "research_alembic_version"
 
 

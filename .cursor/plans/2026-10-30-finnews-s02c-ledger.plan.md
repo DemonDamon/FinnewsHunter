@@ -5,13 +5,18 @@ Implemented-with: Manus 2.0
 Suggested-Impl-Model: 代码专精中档；幂等、并发、事务、lease/fence 与发布原子性须由强推理 Reviewer 复核
 Author: Damon Li
 Plan-Id: 2026-10-30-finnews-s02c-ledger
-Status: Blocked pending reviewed merge of S02-A and S02-B; do not start implementation early
+Status: Local verified 2026-11-03; 112/112 full research suite, Ruff/format/compile/contracts PASS, final closure review High=0/Medium=0. S03/worker/AGX Near business E2E remains pending.
 Parent-Plan: .cursor/plans/pending/2026-10-29-finnewshunter-agent-first-master.plan.md
 Parent-S02-Plan: .cursor/plans/2026-10-29-finnews-s02-identity-evidence-run.plan.md
 Repo: FinnewsHunter
 Input-C1: research-v1.1; digest=591d9cdbfc3dbc639cc0859639e11e910ff86a73fdb34c9697ba63af1534a59e
 Input-Port-Freeze: backend/app/research/ports.py, backend/app/research/errors.py, docs/contracts/research-v1.1/ports.md
 Required-Merged-Inputs: reviewed S02-A PostgreSQL migration/head and repository adapters; reviewed S02-B `Principal`, authorization, evidence admission/registration behavior; explicit integration base SHA recorded before work begins.
+Integration-Base: f609412278def39d9b9f40f14f18b6282585d657
+Integrated-S02-A-Commit: 721aaaf7d49bf4f55354fd334cf2ec5b6d040c74
+S02-B-Source-Commit: c635cd29bf654c8a05e7188be92fcd2f1e4187f8
+S02-B-Integration-Commit: f609412278def39d9b9f40f14f18b6282585d657
+S02-A-Migration-Head: 20261030_research_v11
 
 ## 1. Goal, dependencies, and non-negotiable boundaries
 
@@ -130,3 +135,12 @@ Then run Ruff with explicit `--line-length 88` on the C-owned Python files. Hand
 Any authorization, policy, token, lease, dispatch, snapshot, quota, executor-readiness or database ambiguity rejects/rolls back safely. Do not requeue or silently extend an old run, weaken current-license checks, return a Brief after revocation, or use a transient worker process as authority. Operational rollback disables new execution via the parent-owned feature switch and safely reaps/retains ledger history; it never drops research tables or deletes audit/evidence.
 
 Complete only when the frozen Port is implemented over A's actual PostgreSQL schema with B identity/evidence integration, all real PostgreSQL ACs are documented, and S03/S04/S05 can consume the ledger without direct ORM access. It does not complete public routes, outbox broker delivery, a worker loop, model approval, source integration, or Near end-to-end operation.
+
+## C1 medium-severity follow-up (2026-11-02)
+
+Scoped changes in `backend/app/research/ledger.py`:
+- Added `_safe_run_view` to centralize `research:read` reauthorization and exact-policy revocation redaction. Normal same-request retries, `get_run`, and the `IntegrityError` winner fallback now use this same projection. A deterministic PostgreSQL barrier test now forces both callers past the initial miss: identical hashes reach and verify fallback reauthorization; a different hash returns `request_conflict`; a read-denial at fallback returns no run view.
+- `get_market_snapshot` now invokes the existing snapshot member validator on the paired evidence/payload before projecting it. That validator rejects mock data and verifies provider/source, version, symbol/entity, observed/published, available, fetched, timezone, and payload shape. No Flow/worker is started. v11 has deferred pair triggers requiring a market evidence row and payload to exist together at commit; payload projection mismatch itself remains read-time validation.
+- `publish_brief` now joins each snapshot evidence row to the exact `(source_id, source_policy_version)` policy and rejects storage/model/redisplay disallowance, future approval, and expiry before any publication writes.
+
+Validation: fixed project interpreter py_compile passed; Ruff format check (`--line-length 88`) passed; Ruff check passed; contract generator `--check` passed (`research-v1.1 contract artifacts are current`); `git diff --check` passed. The requested combined stage runner was invoked for `test_ledger_idempotency.py`, `test_run_transactions.py`, `test_snapshot_freeze.py`, and `test_snapshot_schema_immutability.py`: **8 passed, 8 failed**. Failures were PostgreSQL `DiskFullError` (“No space left on device”) during isolated schema/table creation; this is not a successful DB gate and leaves relevant new real-PostgreSQL cases unverified. No requested C1 regression tests were added in this pass, so explicit coverage for forced/checked race projection, mock + mismatch + good market rows, and exact policy-version publication outcomes remains a gap. No migration, contracts, config, snapshot implementation, or C2/C3 work was changed.
