@@ -125,7 +125,7 @@ class ResearchLedger:
         run: ResearchRun,
         brief: ResearchBrief | None = None,
         error: str | None = None,
-    ) -> ResearchRunViewV1:
+    ) -> ResearchRunViewV1:  # skipcq: PYL-R0201
         """Project a run row into the public run view contract."""
         return ResearchRunViewV1(
             run_id=run.run_id,
@@ -157,7 +157,7 @@ class ResearchLedger:
         evidence_id: UUID | None = None,
         safe_code: str | None = None,
         details: dict[str, Any] | None = None,
-    ) -> None:
+    ) -> None:  # skipcq: PYL-R0201
         """Append an audit row for a ledger-side action."""
         session.add(
             ResearchAudit(
@@ -179,7 +179,7 @@ class ResearchLedger:
         event_type: str,
         payload: dict[str, Any],
         now: datetime,
-    ) -> ResearchRunEvent:
+    ) -> ResearchRunEvent:  # skipcq: PYL-R0201
         """Append the next sequenced run event inside the current transaction."""
         # The locked run row serializes sequence allocation in PostgreSQL.
         count = await session.scalar(
@@ -227,7 +227,7 @@ class ResearchLedger:
 
     async def _brief_policy_revoked(
         self, session: AsyncSession, run_id: UUID, now: datetime
-    ) -> bool:
+    ) -> bool:  # skipcq: PYL-R0201
         """Return whether brief-linked source policies are no longer redisplayable."""
         policies = (
             (
@@ -516,7 +516,7 @@ class ResearchLedger:
             )
 
     @staticmethod
-    def _evidence_dto(row: ResearchEvidence, allowed_excerpt_length: int):
+    def _evidence_dto(row: ResearchEvidence, allowed_excerpt_length: int):  # skipcq: PYL-R0201
         """Map a stored evidence row into the public evidence contract."""
         from app.research.contracts import EvidenceV1
 
@@ -684,7 +684,7 @@ class ResearchLedger:
         now: datetime,
         *,
         lock: bool = True,
-    ) -> ResearchRun:
+    ) -> ResearchRun:  # skipcq: PYL-R0201
         """Load a run and verify the worker lease fingerprint when required."""
         q = select(ResearchRun).where(ResearchRun.run_id == run_id)
         if lock:

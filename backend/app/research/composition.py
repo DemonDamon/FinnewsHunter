@@ -77,6 +77,11 @@ class _NoExecutor:
         return await _NoExecutor.get_readiness(now=now)
 
 
+def _research_clock() -> datetime:
+    """Return the current UTC instant for research composition wiring."""
+    return datetime.now(UTC)
+
+
 def build_research_components(settings: Settings) -> ResearchComponents:
     """Build research dependencies without connecting or discovering services."""
     if getattr(settings, "APP_MODE", None) != "research" or not getattr(
@@ -91,10 +96,7 @@ def build_research_components(settings: Settings) -> ResearchComponents:
     from app.research.service import ResearchApplicationService
     from app.research.snapshot import ResearchSnapshotService
 
-    def _utc_clock() -> datetime:
-        return datetime.now(UTC)
-
-    now: Callable[[], datetime] = _utc_clock
+    now: Callable[[], datetime] = _research_clock
     dsn = settings.RESEARCH_DATABASE_URL
     database = create_research_database(dsn)
     ledger = ResearchLedger(
@@ -152,7 +154,7 @@ def build_research_components(settings: Settings) -> ResearchComponents:
             allowed_origins=origins,
         )
 
-    async def readiness():
+    async def readiness():  # skipcq: PYL-R0201 -- closure captures composition locals
         """Aggregate ledger, identity, MCP, and executor readiness probes."""
         result = await database.check_ready(now=now())
         db_reason = (
@@ -180,7 +182,7 @@ def build_research_components(settings: Settings) -> ResearchComponents:
         }
 
     @asynccontextmanager
-    async def lifespan(_application: FastAPI):
+    async def lifespan(_application: FastAPI):  # skipcq: PYL-R0201 -- ASGI lifespan hook
         """Enter MCP manager lifecycle and dispose database resources on exit."""
         try:
             async with AsyncExitStack() as stack:

@@ -132,7 +132,7 @@ class DeterministicEvidenceAdmission(EvidenceAdmissionPort):
             raise _evidence_ineligible() from None
 
     @staticmethod
-    def _evidence_is_admissible(
+    def _evidence_is_admissible(  # skipcq: PYL-R0201
         evidence: EvidenceV1, approved_source_hosts: Mapping[str, frozenset[str]]
     ) -> bool:
         """Require verified HTTPS evidence with complete trusted chronology."""
@@ -195,7 +195,7 @@ class DeterministicEvidenceAdmission(EvidenceAdmissionPort):
         )
 
     @staticmethod
-    def _market_is_admissible(
+    def _market_is_admissible(  # skipcq: PYL-R0201
         evidence: EvidenceV1,
         market: MarketPayloadV1 | None,
     ) -> bool:
