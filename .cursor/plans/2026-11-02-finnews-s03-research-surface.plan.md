@@ -5,7 +5,7 @@ Suggested-Impl-Model: 简单路由接线用代码专精快档；身份桥、MCP 
 Author: Damon Li
 Plan-Id: 2026-11-02-finnews-s03-research-surface
 Parent-Plan: .cursor/plans/pending/2026-10-29-finnewshunter-agent-first-master.plan.md
-Status: Pending; implementation must wait for S02-C final independent review and a clean committed baseline.
+Status: Active; reviewed S02 baseline 2a8654d71615f30497810c61f5e9a9d58257cd20; 112 research tests and independent closure PASS.
 
 ## 1. 目的和范围
 
