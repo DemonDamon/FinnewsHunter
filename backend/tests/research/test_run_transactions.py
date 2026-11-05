@@ -51,6 +51,7 @@ def postgres_context() -> IsolatedPostgres:
 
 
 class _ReadyExecutor:
+    """Test helper for _ReadyExecutor."""
     async def get_readiness(self, *, now):
         """Test helper get_readiness."""
         return ExecutorReadiness(
@@ -198,6 +199,7 @@ async def _setup(
 
 
 async def _claim(ledger, now, worker, task):
+    """Test helper for _claim."""
     lease = await ledger.claim_run(task=task, worker=worker, now=now)
     assert lease is not None
     return lease

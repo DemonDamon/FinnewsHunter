@@ -27,4 +27,4 @@ node_modules/
 backend/.crawl_cache/
 backend/celerybeat-schedule
 backend/reproduce_sina.py
-backend/checkpoints/
+backend/checkpoints/backend/.venv/

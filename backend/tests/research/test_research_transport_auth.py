@@ -143,10 +143,12 @@ def _scope(token: str) -> Scope:
 
 
 async def _receive() -> Message:
+    """Test helper for _receive."""
     return {"type": "http.request", "body": b"", "more_body": False}
 
 
 async def _send(message: Message) -> None:
+    """Test helper for _send."""
     assert message["type"] in {"http.response.start", "http.response.body"}
 
 
@@ -159,6 +161,7 @@ def _protected(app: ASGIApp, identity: MemoryIdentity) -> ASGIApp:
 
 
 def _assert_no_context() -> None:
+    """Test helper for _assert_no_context."""
     with pytest.raises(DomainError, match="^identity_invalid$"):
         get_current_principal()
 

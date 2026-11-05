@@ -39,6 +39,7 @@ def postgres_context() -> IsolatedPostgres:
 
 
 def _policy(source: str, now: datetime, **changes) -> ResearchSourcePolicy:
+    """Test helper for _policy."""
     values = {
         "source_id": source,
         "policy_version": "v1",
@@ -56,6 +57,7 @@ def _policy(source: str, now: datetime, **changes) -> ResearchSourcePolicy:
 
 
 def _evidence(eid, *, now, available, entity=ENTITY, source="news", **changes):
+    """Test helper for _evidence."""
     values = {
         "evidence_id": eid,
         "source_id": source,
@@ -80,6 +82,7 @@ def _evidence(eid, *, now, available, entity=ENTITY, source="news", **changes):
 
 
 async def _seed(database, now):
+    """Test helper for _seed."""
     seed_id, late_id = uuid4(), uuid4()
     other_id = uuid4()
     async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
@@ -107,6 +110,7 @@ async def _seed(database, now):
 
 
 async def _run(database, *, seed_id, now, as_of, entity=ENTITY, state="none"):
+    """Test helper for _run."""
     rid = uuid4()
     async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
         session.add(

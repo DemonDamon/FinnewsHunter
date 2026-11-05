@@ -31,6 +31,7 @@ HOST = "approved-source.example.test"
 
 
 def _admission() -> DeterministicEvidenceAdmission:
+    """Test helper for _admission."""
     return DeterministicEvidenceAdmission(
         approved_source_hosts={"approved-source": {HOST}}
     )

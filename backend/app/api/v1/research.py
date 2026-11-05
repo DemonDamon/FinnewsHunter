@@ -74,6 +74,7 @@ def get_identity_verifier() -> IdentityVerifierPort:
 
 
 def _now() -> datetime:
+    """Return the current UTC instant for identity verification."""
     return datetime.now(UTC)
 
 
@@ -93,6 +94,7 @@ async def get_principal(
 
 
 def _error(code: str, status: int | None = None) -> JSONResponse:
+    """Map a safe error code to the fixed public JSON envelope."""
     safe_code = code if code in _ERROR_STATUS else "persistence_failed"
     return JSONResponse(
         status_code=status or _ERROR_STATUS[safe_code],
@@ -105,6 +107,7 @@ def _error(code: str, status: int | None = None) -> JSONResponse:
 
 
 def _domain_response(error: DomainError) -> JSONResponse:
+    """Project a domain error into the HTTP error envelope."""
     return _error(error.code)
 
 
@@ -122,6 +125,7 @@ async def _strict_body(request: Request, model: type[Any]) -> Any:
 
 
 def _uuid(value: str) -> UUID:
+    """Parse a canonical lowercase UUID path segment."""
     try:
         parsed = UUID(value)
         if str(parsed) != value.lower():

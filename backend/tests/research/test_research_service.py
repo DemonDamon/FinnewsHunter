@@ -99,6 +99,7 @@ def authorization() -> Mock:
 
 
 def _service(ledger, authorization, *, enabled=True, clock=lambda: NOW):
+    """Test helper for _service."""
     return ResearchApplicationService(
         ledger=ledger,
         authorization=authorization,

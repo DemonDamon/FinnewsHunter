@@ -62,7 +62,8 @@ async def _uninstalled_readiness() -> dict[str, ResearchReadinessCheck]:
 class _NoExecutor:
     """S04 is not installed: every run creation must fail closed."""
 
-    async def get_readiness(self, *, now: datetime) -> Any:
+    @staticmethod
+    async def get_readiness(*, now: datetime) -> Any:
         """Report executor readiness as permanently unavailable until S04."""
         from app.research.ports import ExecutorReadiness
 
@@ -70,9 +71,10 @@ class _NoExecutor:
             False, "executor_not_installed", now, now + timedelta(seconds=1)
         )
 
-    async def record_heartbeat(self, *, worker: Any, now: datetime) -> Any:
+    @staticmethod
+    async def record_heartbeat(*, worker: Any, now: datetime) -> Any:
         """Ignore worker heartbeats while the executor registry is not installed."""
-        return await self.get_readiness(now=now)
+        return await _NoExecutor.get_readiness(now=now)
 
 
 def build_research_components(settings: Settings) -> ResearchComponents:

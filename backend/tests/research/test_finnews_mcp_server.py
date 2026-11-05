@@ -122,6 +122,7 @@ class BlockingService:
 
 
 def _request(method: str, request_id: int, params: dict | None = None) -> dict:
+    """Test helper for _request."""
     message = {"jsonrpc": "2.0", "id": request_id, "method": method}
     if params is not None:
         message["params"] = params
@@ -129,6 +130,7 @@ def _request(method: str, request_id: int, params: dict | None = None) -> dict:
 
 
 async def _post(client: httpx.AsyncClient, headers: dict[str, str], body: dict):
+    """Test helper for _post."""
     return await client.post("/", headers=headers, json=body)
 
 

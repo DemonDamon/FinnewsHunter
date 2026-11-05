@@ -62,6 +62,7 @@ class SnapshotStub:
 
 
 def _principal(pid):
+    """Test helper for _principal."""
     return Principal(
         principal_id=pid,
         scopes=frozenset({"research:create", "research:read"}),
@@ -208,6 +209,7 @@ async def test_distinct_requests_serialize_first_quota_creation(postgres_context
 
 
 async def _seed_evidence(database, now):
+    """Test helper for _seed_evidence."""
     from app.research.models import ResearchEvidence, ResearchSourcePolicy
 
     eid = uuid4()

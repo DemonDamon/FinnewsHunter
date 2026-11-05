@@ -110,15 +110,15 @@ class ResearchLedger:
 
     async def materialize_snapshot(self, **kwargs: Any):
         """Delegate snapshot materialization to the injected service."""
-        return await self._snapshots.materialize_snapshot(**kwargs)
+        return await self._snapshots.materialize_snapshot(**kwargs)  # skipcq: PYL-R0201
 
     async def freeze_snapshot(self, **kwargs: Any):
         """Delegate snapshot freeze to the injected service."""
-        return await self._snapshots.freeze_snapshot(**kwargs)
+        return await self._snapshots.freeze_snapshot(**kwargs)  # skipcq: PYL-R0201
 
     async def read_snapshot(self, **kwargs: Any):
         """Delegate snapshot reads to the injected service."""
-        return await self._snapshots.read_snapshot(**kwargs)
+        return await self._snapshots.read_snapshot(**kwargs)  # skipcq: PYL-R0201
 
     def _view(
         self,

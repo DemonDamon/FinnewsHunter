@@ -1,19 +1,5 @@
 version = 1
 
-test_patterns = [
-  "backend/tests/**",
-  "**/test_*.py",
-]
-
-exclude_patterns = [
-  "backend/alembic/**",
-  "backend/tests/**",
-  ".cursor/**",
-  ".work/**",
-  "legacy_v1/**",
-  "thirdparty/**",
-]
-
 [[analyzers]]
 name = "python"
 

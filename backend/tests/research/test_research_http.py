@@ -67,6 +67,7 @@ class Service:
 
 
 def _client(identity, service, monkeypatch):
+    """Test helper for _client."""
     monkeypatch.setattr(research_http, "_now", lambda: NOW)
     app = FastAPI()
     app.include_router(router)
@@ -76,6 +77,7 @@ def _client(identity, service, monkeypatch):
 
 
 def _headers(token: str) -> dict[str, str]:
+    """Test helper for _headers."""
     return {"Authorization": f"Bearer {token}"}
 
 

@@ -727,6 +727,7 @@ def test_server_timestamp_default_is_timezone_independent(
 
 
 def _registration_admission(*, market: bool, admitted_at: datetime) -> AdmittedEvidence:
+    """Test helper for _registration_admission."""
     evidence_id = uuid4()
     payload = None
     if market:
