@@ -84,7 +84,7 @@ def create_postgres_context() -> IsolatedPostgres:
 
 @pytest.fixture
 def postgres_context() -> IsolatedPostgres:
-    """Expose the controlled schema allocator for consumers using this fixture module."""
+    """Expose the controlled schema allocator for consumers using this fix..."""
     return create_postgres_context()
 
 

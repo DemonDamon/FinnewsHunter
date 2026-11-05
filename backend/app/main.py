@@ -105,8 +105,9 @@ def _research_internal_error_response() -> JSONResponse:
 class DocsCSPMiddleware(BaseHTTPMiddleware):
     """为文档页面设置 CSP 头，允许 unsafe-eval（Swagger UI 需要）"""
 
-    async def dispatch(self, request: Request, call_next):  # skipcq: PYL-R0201 -- BaseHTTPMiddleware hook
-        """Apply CSP headers to documentation routes and map research failures safely."""
+    # skipcq: PYL-R0201 -- BaseHTTPMiddleware hook
+    async def dispatch(self, request: Request, call_next):
+        """Apply CSP on docs routes and map research failures safely."""
         try:
             response = await call_next(request)
         except Exception:

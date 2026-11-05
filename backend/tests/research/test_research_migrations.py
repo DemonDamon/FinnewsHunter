@@ -230,7 +230,7 @@ async def _seed_policy_evidence_run(context: IsolatedPostgres) -> dict[str, UUID
 
 
 def test_module_import_does_not_connect(postgres_context: IsolatedPostgres) -> None:
-    """AC-A1: importing persistence modules cannot construct an engine or load legacy DB."""
+    """AC-A1: importing persistence modules cannot construct an engine or..."""
     _ = postgres_context
     backend_root = Path(__file__).resolve().parents[2]
     script = """
@@ -375,7 +375,7 @@ def test_bad_revision_fails_without_application_start(
     postgres_context: IsolatedPostgres,
     tmp_path: Path,
 ) -> None:
-    """AC-A4: a migration error stays non-ready and cannot start application composition."""
+    """AC-A4: a migration error stays non-ready and cannot start applicati..."""
     migration_root = tmp_path / "research_bad_migrations"
     versions = migration_root / "versions"
     versions.mkdir(parents=True)
@@ -544,7 +544,7 @@ def test_constraints_are_enforced_by_postgresql(
 def test_registration_rolls_back_policy_and_evidence(
     postgres_context: IsolatedPostgres,
 ) -> None:
-    """AC-A6: a forced second write leaves policy/evidence/market and sentinel unchanged."""
+    """AC-A6: a forced second write leaves policy/evidence/market and sent..."""
     upgrade_head(postgres_context)
     sentinel = b"registration-sentinel"
 
@@ -787,7 +787,7 @@ def _registration_admission(*, market: bool, admitted_at: datetime) -> AdmittedE
 def test_registration_retry_ignores_later_admitted_at(
     postgres_context: IsolatedPostgres,
 ) -> None:
-    """An exact retry returns the existing evidence and preserves first admission time."""
+    """An exact retry returns the existing evidence and preserves first ad..."""
     upgrade_head(postgres_context)
     first_time = NOW
     second_time = datetime(2026, 10, 30, 3, 0, tzinfo=UTC)
@@ -832,7 +832,7 @@ def test_registration_retry_ignores_later_admitted_at(
 def test_deferred_market_evidence_pair_constraint_and_registration(
     postgres_context: IsolatedPostgres,
 ) -> None:
-    """Both illegal pair directions fail at commit; registry writes valid market atomically."""
+    """Both illegal pair directions fail at commit; registry writes valid..."""
     upgrade_head(postgres_context)
 
     async def seed_policy(connection: AsyncConnection) -> None:

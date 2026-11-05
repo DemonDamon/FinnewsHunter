@@ -1,5 +1,15 @@
 version = 1
 
+test_patterns = [
+  "backend/tests/**",
+  "**/test_*.py",
+]
+
+exclude_patterns = [
+  "backend/alembic/**",
+  "backend/tests/**",
+]
+
 [[analyzers]]
 name = "python"
 

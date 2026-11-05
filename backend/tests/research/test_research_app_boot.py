@@ -160,7 +160,7 @@ def test_research_app_runs_real_lifespan_and_stays_not_ready() -> None:
 
 
 def test_injected_components_compose_router_and_cleanup() -> None:
-    """A test-only component fixture must compose and clean up in deterministic order."""
+    """A test-only component fixture must compose and clean up in determin..."""
     output = run_research_script(
         """
         from contextlib import asynccontextmanager
@@ -325,7 +325,7 @@ def test_legacy_default_exposes_news_and_hides_research_surfaces() -> None:
 
 
 def test_enabled_research_readiness_tracks_each_explicit_configuration_gap() -> None:
-    """Each missing research credential or transport policy must map to a safe readiness reason."""
+    """Each missing research credential or transport policy must map to a..."""
     valid_jwks = '{"keys":[{"kid":"memory","kty":"RSA","n":"abc","e":"AQAB","alg":"RS256","use":"sig"}]}'
     scenarios = {
         "missing_database": (

@@ -539,7 +539,7 @@ def test_context_middleware_fails_closed_for_untrusted_or_malformed_scope(
     identity: MemoryIdentity,
     mutation: str,
 ) -> None:
-    """Test helper test_context_middleware_fails_closed_for_untrusted_or_malformed_scope."""
+    """Test helper test_context_middleware_fails_closed_for_untrusted_or_m..."""
     async def scenario():
         """Test helper scenario."""
         raw = identity.token()
@@ -637,7 +637,7 @@ def test_copied_background_context_cannot_retain_identity_after_request(
     identity: MemoryIdentity,
     outcome: str,
 ) -> None:
-    """Test helper test_copied_background_context_cannot_retain_identity_after_request."""
+    """Test helper test_copied_background_context_cannot_retain_identity_a..."""
     async def scenario():
         """Test helper scenario."""
         resume = asyncio.Event()
@@ -678,7 +678,7 @@ def test_message_scope_binding_restores_outer_context_and_revokes_copies(
     identity: MemoryIdentity,
     outcome: str,
 ) -> None:
-    """Test helper test_message_scope_binding_restores_outer_context_and_revokes_copies."""
+    """Test helper test_message_scope_binding_restores_outer_context_and_r..."""
     from app.research.identity_context import bind_mcp_principal_context
 
     async def scenario():

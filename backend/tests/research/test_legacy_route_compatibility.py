@@ -79,7 +79,7 @@ def test_research_settings_keep_safe_legacy_defaults() -> None:
 
 
 def test_legacy_router_factory_preserves_original_order_prefixes_and_tags() -> None:
-    """Stub routers prove only assembly compatibility, not legacy business E2E behavior."""
+    """Stub routers prove only assembly compatibility, not legacy business..."""
     environment = os.environ.copy()
     environment.update(
         {
@@ -153,7 +153,7 @@ def test_legacy_router_factory_preserves_original_order_prefixes_and_tags() -> N
 
 
 def test_core_public_exports_are_lazy_original_exports_not_database_stubs() -> None:
-    """Settings exports stay import-safe and database exports remain their real module."""
+    """Settings exports stay import-safe and database exports remain their..."""
     module = ast.parse(CORE_INIT.read_text(encoding="utf-8"))
     type_checking_imports = {
         alias.name

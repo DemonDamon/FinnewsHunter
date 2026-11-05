@@ -9,7 +9,7 @@ from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from fastapi import APIRouter, FastAPI
 from starlette.types import ASGIApp
@@ -78,7 +78,7 @@ class _NoExecutor:
 
 
 def build_research_components(settings: Settings) -> ResearchComponents:
-    """Build enabled research dependencies without connecting or discovering services."""
+    """Build research dependencies without connecting or discovering services."""
     if getattr(settings, "APP_MODE", None) != "research" or not getattr(
         settings, "RESEARCH_ENABLED", False
     ):
@@ -91,7 +91,10 @@ def build_research_components(settings: Settings) -> ResearchComponents:
     from app.research.service import ResearchApplicationService
     from app.research.snapshot import ResearchSnapshotService
 
-    now = lambda: datetime.now(UTC)
+    def _utc_clock() -> datetime:
+        return datetime.now(UTC)
+
+    now: Callable[[], datetime] = _utc_clock
     dsn = settings.RESEARCH_DATABASE_URL
     database = create_research_database(dsn)
     ledger = ResearchLedger(
@@ -177,7 +180,7 @@ def build_research_components(settings: Settings) -> ResearchComponents:
         }
 
     @asynccontextmanager
-    async def lifespan(application: FastAPI):
+    async def lifespan(_application: FastAPI):
         """Enter MCP manager lifecycle and dispose database resources on exit."""
         try:
             async with AsyncExitStack() as stack:

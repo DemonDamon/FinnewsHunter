@@ -72,7 +72,7 @@ def test_research_override_exists_and_uses_supported_reset_and_override_tags() -
 def test_research_compose_config_has_only_postgres_and_redis_enabled_by_default() -> (
     None
 ):
-    """A real Compose config parse must show all non-core services as opt-in profiles."""
+    """A real Compose config parse must show all non-core services as opt-..."""
     config = _research_compose_config()
     services = config["services"]
     assert isinstance(services, dict)
@@ -150,7 +150,7 @@ def test_research_dockerfile_installs_only_the_hashed_lock_and_entrypoint_never_
 def test_dockerignore_excludes_sensitive_and_intermediate_context_without_excluding_lock() -> (
     None
 ):
-    """The verification build context must not include local credentials or task artifacts."""
+    """The verification build context must not include local credentials o..."""
     content = DOCKERIGNORE.read_text(encoding="utf-8")
 
     for required in (".git", ".env", ".work", "node_modules"):

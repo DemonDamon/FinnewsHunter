@@ -199,7 +199,7 @@ def test_envelopes_get_fresh_server_request_ids_and_single_clock_samples(
     authorization,
     principal,
 ) -> None:
-    """Test helper test_envelopes_get_fresh_server_request_ids_and_single_clock_samples."""
+    """Test helper test_envelopes_get_fresh_server_request_ids_and_single_..."""
     ledger.get_run.return_value = _result("get_run", ResearchRunViewV1)
     clock = Mock(side_effect=[NOW, NOW + timedelta(seconds=1)])
     service = _service(ledger, authorization, clock=clock)
@@ -314,7 +314,7 @@ def test_all_domain_error_codes_have_safe_consistent_dto_or_envelope_outcomes(
     envelope,
     caplog,
 ) -> None:
-    """Test helper test_all_domain_error_codes_have_safe_consistent_dto_or_envelope_outcomes."""
+    """Test helper test_all_domain_error_codes_have_safe_consistent_dto_or..."""
     retryable = code in {
         "identity_material_unavailable",
         "execution_unavailable",
@@ -418,7 +418,7 @@ def test_retryable_business_error_does_not_masquerade_as_infrastructure(
     authorization,
     principal,
 ) -> None:
-    """Test helper test_retryable_business_error_does_not_masquerade_as_infrastructure."""
+    """Test helper test_retryable_business_error_does_not_masquerade_as_in..."""
     ledger.get_run.side_effect = DomainError(
         code="quota_exceeded",
         safe_message=UNSAFE,
@@ -468,7 +468,7 @@ def test_run_revoked_projection_is_preserved_without_brief_reconstruction(
     authorization,
     principal,
 ) -> None:
-    """Test helper test_run_revoked_projection_is_preserved_without_brief_reconstruction."""
+    """Test helper test_run_revoked_projection_is_preserved_without_brief_..."""
     base = _result("get_run", ResearchRunViewV1).model_dump()
     base.update(status="completed", brief=None, error_code="license_revoked")
     revoked = ResearchRunViewV1.model_validate(base)
@@ -594,7 +594,7 @@ def test_unexpected_errors_and_cancellation_are_not_fabricated_as_success(
     principal,
     error,
 ) -> None:
-    """Test helper test_unexpected_errors_and_cancellation_are_not_fabricated_as_success."""
+    """Test helper test_unexpected_errors_and_cancellation_are_not_fabrica..."""
     ledger.get_run.side_effect = error
     with pytest.raises(type(error)):
         asyncio.run(

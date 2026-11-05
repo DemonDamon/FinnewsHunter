@@ -189,7 +189,7 @@ def test_research_no_services_is_a_pure_app_diagnostic(tmp_path: Path) -> None:
 def test_research_enabled_no_services_is_rejected_before_application_start(
     tmp_path: Path,
 ) -> None:
-    """Enabled research must not bypass migration safety through a diagnostic command."""
+    """Enabled research must not bypass migration safety through a diagnos..."""
     result, calls = _run_start(
         tmp_path,
         ["--mode", "research", "--no-services"],

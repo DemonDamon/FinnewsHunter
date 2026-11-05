@@ -112,7 +112,7 @@ def test_missing_and_invalid_bearer_are_rejected_without_reflection(
 def test_identity_failures_use_fixed_error_dto_and_hide_verifier_exception(
     monkeypatch,
 ) -> None:
-    """Test helper test_identity_failures_use_fixed_error_dto_and_hide_verifier_exception."""
+    """Test helper test_identity_failures_use_fixed_error_dto_and_hide_ver..."""
     identity, service = make_memory_identity(), Service()
 
     class BrokenVerifier:

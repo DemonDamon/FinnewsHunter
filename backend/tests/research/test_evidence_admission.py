@@ -244,7 +244,7 @@ def test_ineligible_evidence_never_calls_registry() -> None:
 
 
 def test_same_version_never_moves_available_at_or_leaks_excerpt() -> None:
-    """AC-B6: the injected registry preserves first version provenance and diagnostics."""
+    """AC-B6: the injected registry preserves first version provenance and..."""
     recorder = ProtocolRecorder()
     service = EvidenceRegistrationService(
         admission=_admission(),

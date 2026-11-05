@@ -135,7 +135,7 @@ class DeterministicEvidenceAdmission(EvidenceAdmissionPort):
     def _evidence_is_admissible(
         evidence: EvidenceV1, approved_source_hosts: Mapping[str, frozenset[str]]
     ) -> bool:
-        """Require live verified HTTPS evidence with complete trusted chronology."""
+        """Require verified HTTPS evidence with complete trusted chronology."""
         source_url = evidence.source_url
         entity_ids = evidence.entity_ids
         try:

@@ -546,7 +546,7 @@ async def test_terminal_publish_and_reap_race_is_atomic(postgres_context):
 async def test_expired_exact_policy_redacts_completed_brief_on_read_and_retry(
     postgres_context,
 ):
-    """Test helper test_expired_exact_policy_redacts_completed_brief_on_read_and_retry."""
+    """Test helper test_expired_exact_policy_redacts_completed_brief_on_re..."""
     from hashlib import sha256
 
     from app.research.contracts import (

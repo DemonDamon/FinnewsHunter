@@ -67,7 +67,10 @@ class ResearchDatabase(ResearchDatabasePort):
             async with self._engine.connect() as connection:
                 version = (
                     await connection.execute(
-                        text(f"SELECT version_num FROM {_RESEARCH_VERSION_TABLE}")
+                        text(
+                            "SELECT version_num FROM "
+                            + _RESEARCH_VERSION_TABLE
+                        )
                     )
                 ).scalar_one_or_none()
         except SQLAlchemyError:

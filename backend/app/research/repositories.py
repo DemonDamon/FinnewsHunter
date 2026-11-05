@@ -102,7 +102,7 @@ class EvidenceRegistrationRepository(EvidenceRegistrationPort):
         session: AsyncSession,
         admission: AdmittedEvidence,
     ) -> ResearchEvidence | None:
-        """Look up the immutable source/version business key after policy persistence."""
+        """Look up the immutable source/version key after policy persistence."""
         return await session.scalar(
             select(ResearchEvidence).where(
                 ResearchEvidence.source_id == admission.evidence.source_id,

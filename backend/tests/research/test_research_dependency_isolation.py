@@ -43,7 +43,7 @@ def run_mode_script(mode: str, script: str) -> str:
 
 
 def test_research_main_import_does_not_load_legacy_dependency_tree() -> None:
-    """Research app import must be offline and absent all legacy application dependencies."""
+    """Research app import must be offline and absent all legacy applicati..."""
     output = run_mode_script(
         "research",
         """

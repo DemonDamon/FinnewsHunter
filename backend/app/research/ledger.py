@@ -228,7 +228,7 @@ class ResearchLedger:
     async def _brief_policy_revoked(
         self, session: AsyncSession, run_id: UUID, now: datetime
     ) -> bool:
-        """Return whether any brief-linked source policy is no longer redisplayable."""
+        """Return whether brief-linked source policies are no longer redisplayable."""
         policies = (
             (
                 await session.execute(
