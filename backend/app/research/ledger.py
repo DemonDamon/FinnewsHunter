@@ -766,7 +766,8 @@ class ResearchLedger:
                 run.deadline_at = deadline
                 await s.flush()
                 frozen: FrozenSnapshot = (
-                    await self._snapshots._freeze_snapshot_in_transaction(  # skipcq: PYL-W0212
+                    # skipcq: PYL-W0212
+                    await self._snapshots._freeze_snapshot_in_transaction(
                         s, run, now=now
                     )
                 )
