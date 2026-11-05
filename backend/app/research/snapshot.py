@@ -27,6 +27,7 @@ from app.research.ports import (
 
 
 def _error(code: str) -> DomainError:
+    """Build a snapshot-specific domain error."""
     return DomainError(
         code=code, safe_message="snapshot operation was rejected", retryable=False
     )  # type: ignore[arg-type]
@@ -163,6 +164,7 @@ class ResearchSnapshotService:
             )
 
     async def _locked_run(self, session, run_id, lease, now):
+        """Lock the run row and verify the worker lease fingerprint."""
         if lease.run_id != run_id:
             raise _error("execution_fenced")
         run = await session.scalar(
@@ -177,6 +179,7 @@ class ResearchSnapshotService:
 
     @staticmethod
     def _check_deadline(run: ResearchRun, now: datetime) -> None:
+        """Reject runs whose lease or deadline has expired."""
         if (
             run.status != "running"
             or run.lease_expires_at is None
@@ -187,6 +190,7 @@ class ResearchSnapshotService:
             raise _error("lease_expired")
 
     async def _eligible(self, session: AsyncSession, run: ResearchRun, now):
+        """Select evidence rows eligible for snapshot membership."""
         query = (
             select(ResearchEvidence)
             .join(
@@ -218,6 +222,7 @@ class ResearchSnapshotService:
         return rows
 
     async def _stored_members(self, session: AsyncSession, run: ResearchRun):
+        """Load persisted snapshot members joined to their evidence rows."""
         query = (
             select(ResearchSnapshotMember, ResearchEvidence)
             .outerjoin(
@@ -247,10 +252,12 @@ class ResearchSnapshotService:
 
     @staticmethod
     def _identity(rows):
+        """Return a stable identity tuple for a snapshot member selection."""
         return tuple((row.evidence_id, row.version, row.content_hash) for row in rows)
 
     @staticmethod
     def _new_member(run, row, now):
+        """Create a snapshot membership row for one eligible evidence item."""
         return ResearchSnapshotMember(
             snapshot_member_id=uuid4(),
             run_id=run.run_id,
@@ -268,6 +275,7 @@ class ResearchSnapshotService:
         now: datetime,
         policy=None,
     ) -> SnapshotMember:
+        """Project one evidence row into the snapshot member contract."""
         policy = policy or await session.get(
             ResearchSourcePolicy, (row.source_id, row.source_policy_version)
         )

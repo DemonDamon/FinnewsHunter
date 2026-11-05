@@ -61,12 +61,14 @@ from app.research.ports import (
 
 
 def _err(code: str, message: str | None = None, retryable: bool = False) -> DomainError:
+    """Build a domain error with a safe public message."""
     return DomainError(
         code=code, safe_message=message or code.replace("_", " "), retryable=retryable
     )  # type: ignore[arg-type]
 
 
 def _json(model: Any) -> dict[str, Any]:
+    """Serialize a Pydantic model to JSON-compatible data."""
     return model.model_dump(mode="json")
 
 
@@ -124,6 +126,7 @@ class ResearchLedger:
         brief: ResearchBrief | None = None,
         error: str | None = None,
     ) -> ResearchRunViewV1:
+        """Project a run row into the public run view contract."""
         return ResearchRunViewV1(
             run_id=run.run_id,
             request_id=run.request_id,
@@ -155,6 +158,7 @@ class ResearchLedger:
         safe_code: str | None = None,
         details: dict[str, Any] | None = None,
     ) -> None:
+        """Append an audit row for a ledger-side action."""
         session.add(
             ResearchAudit(
                 audit_id=uuid4(),
@@ -176,6 +180,7 @@ class ResearchLedger:
         payload: dict[str, Any],
         now: datetime,
     ) -> ResearchRunEvent:
+        """Append the next sequenced run event inside the current transaction."""
         # The locked run row serializes sequence allocation in PostgreSQL.
         count = await session.scalar(
             select(func.coalesce(func.max(ResearchRunEvent.seq), 0)).where(
@@ -203,6 +208,7 @@ class ResearchLedger:
         *,
         brief: ResearchBrief | None = None,
     ) -> ResearchRunViewV1:
+        """Return a read-authorized run view with optional brief redaction."""
         self._authorizer.authorize_resource(
             principal=principal,
             owner_id=run.principal_id,
@@ -222,6 +228,7 @@ class ResearchLedger:
     async def _brief_policy_revoked(
         self, session: AsyncSession, run_id: UUID, now: datetime
     ) -> bool:
+        """Return whether any brief-linked source policy is no longer redisplayable."""
         policies = (
             (
                 await session.execute(
@@ -441,6 +448,7 @@ class ResearchLedger:
         now: datetime,
         scope: str = "research:read",
     ) -> ResearchRun:
+        """Load a run after read authorization for the requested scope."""
         run = await session.get(ResearchRun, run_id)
         if run is None:
             raise _err(
@@ -509,6 +517,7 @@ class ResearchLedger:
 
     @staticmethod
     def _evidence_dto(row: ResearchEvidence, allowed_excerpt_length: int):
+        """Map a stored evidence row into the public evidence contract."""
         from app.research.contracts import EvidenceV1
 
         # The stored projection is immutable; market details are separately joined by market reads.
@@ -676,6 +685,7 @@ class ResearchLedger:
         *,
         lock: bool = True,
     ) -> ResearchRun:
+        """Load a run and verify the worker lease fingerprint when required."""
         q = select(ResearchRun).where(ResearchRun.run_id == run_id)
         if lock:
             q = q.with_for_update()
