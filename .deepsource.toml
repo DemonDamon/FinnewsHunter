@@ -20,4 +20,4 @@ name = "python"
   [analyzers.meta]
   runtime_version = "3.x.x"
   max_line_length = 88
-  skip_doc_coverage = ["module", "magic", "init", "nonpublic", "test"]
+  skip_doc_coverage = ["module", "magic", "init", "nonpublic"]
