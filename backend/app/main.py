@@ -2,6 +2,7 @@
 
 Author: Damon Li
 """
+
 import logging
 import uuid
 from contextlib import AsyncExitStack, asynccontextmanager
@@ -29,7 +30,7 @@ from app.research.composition import (
 # 配置日志
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,9 @@ _SAFE_RESEARCH_REASONS = frozenset(
         "executor_not_installed",
         "identity_not_installed",
         "ledger_not_installed",
+        "ledger_not_configured",
+        "ledger_dsn_missing_or_invalid",
+        "ledger_migration_unavailable",
         "mcp_not_installed",
         "readiness_unavailable",
     }
@@ -100,6 +104,7 @@ def _research_internal_error_response() -> JSONResponse:
 
 class DocsCSPMiddleware(BaseHTTPMiddleware):
     """为文档页面设置 CSP 头，允许 unsafe-eval（Swagger UI 需要）"""
+
     async def dispatch(self, request: Request, call_next):
         try:
             response = await call_next(request)
@@ -166,15 +171,15 @@ async def lifespan(app: FastAPI):
     logger.info("=== FinnewsHunter Starting ===")
     logger.info(f"Environment: {'Development' if settings.DEBUG else 'Production'}")
     logger.info(f"LLM Provider: {settings.LLM_PROVIDER}/{settings.LLM_MODEL}")
-    
+
     # 初始化 Neo4j 知识图谱（仅创建约束和索引，不构建具体图谱）
     try:
         from app.core.neo4j_client import get_neo4j_client
         from app.knowledge.graph_service import get_graph_service
-        
+
         logger.info("🔍 初始化 Neo4j 知识图谱...")
         neo4j_client = get_neo4j_client()
-        
+
         if neo4j_client.health_check():
             logger.info("✅ Neo4j 连接正常")
             # 初始化约束和索引（由 graph_service 自动完成）
@@ -184,16 +189,19 @@ async def lifespan(app: FastAPI):
         else:
             logger.warning("⚠️ Neo4j 连接失败，知识图谱功能将不可用（不影响其他功能）")
     except Exception as e:
-        logger.warning(f"⚠️ Neo4j 初始化失败: {e}，知识图谱功能将不可用（不影响其他功能）")
-    
+        logger.warning(
+            f"⚠️ Neo4j 初始化失败: {e}，知识图谱功能将不可用（不影响其他功能）"
+        )
+
     yield
-    
+
     # 关闭时执行
     logger.info("=== FinnewsHunter Shutting Down ===")
-    
+
     # 关闭 Neo4j 连接
     try:
         from app.core.neo4j_client import close_neo4j_client
+
         close_neo4j_client()
         logger.info("✅ Neo4j 连接已关闭")
     except:
@@ -257,20 +265,17 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     body_str = ""
     try:
         body_bytes = await request.body()
-        body_str = body_bytes.decode('utf-8')
+        body_str = body_bytes.decode("utf-8")
     except Exception as e:
         logger.warning(f"Failed to read request body: {e}")
-    
+
     logger.error(f"Validation error for {request.method} {request.url.path}")
     logger.error(f"Validation errors: {exc.errors()}")
     logger.error(f"Request body: {body_str}")
-    
+
     return JSONResponse(
         status_code=422,
-        content={
-            "detail": exc.errors(),
-            "body": body_str if settings.DEBUG else None
-        }
+        content={"detail": exc.errors(), "body": body_str if settings.DEBUG else None},
     )
 
 
@@ -286,8 +291,8 @@ async def global_exception_handler(request, exc):
         content={
             "success": False,
             "error": "Internal server error",
-            "detail": str(exc) if settings.DEBUG else None
-        }
+            "detail": str(exc) if settings.DEBUG else None,
+        },
     )
 
 
@@ -391,13 +396,31 @@ app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
 if settings.APP_MODE == "research" and settings.RESEARCH_ENABLED:
     if research_components is not None and research_components.router is not None:
-        app.include_router(research_components.router, prefix=settings.API_V1_PREFIX)
+        from app.api.v1.research import (
+            get_identity_verifier,
+            get_research_service,
+        )
+
+        app.dependency_overrides[get_research_service] = lambda: (
+            research_components.service
+        )
+        app.dependency_overrides[get_identity_verifier] = lambda: (
+            research_components.identity_verifier
+        )
+        research_router = research_components.router
+        router_prefix = (
+            ""
+            if research_router.prefix == "/api/v1/research"
+            else settings.API_V1_PREFIX
+        )
+        app.include_router(research_router, prefix=router_prefix)
     if research_components is not None and research_components.mcp_app is not None:
         app.mount(f"{settings.API_V1_PREFIX}/mcp", research_components.mcp_app)
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(
         "app.main:app",
         host=settings.HOST,

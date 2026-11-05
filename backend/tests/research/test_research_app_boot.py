@@ -266,3 +266,38 @@ def test_component_lifespan_exit_errors_are_not_discarded() -> None:
         research_enabled=True,
     )
     assert output == ""
+
+
+def test_enabled_research_missing_security_material_stays_live_and_closed() -> None:
+    """Missing explicit DB/identity/transport policy cannot enable requests."""
+    output = run_research_script(
+        """
+        from fastapi.testclient import TestClient
+        from app.main import app
+        expected = {
+            "/api/v1/research/runs",
+            "/api/v1/research/runs/{id}",
+            "/api/v1/research/runs/{id}/events",
+            "/api/v1/research/evidence/{id}",
+        }
+        registered = set(app.openapi()["paths"])
+        assert {path for path in registered if path.startswith("/api/v1/research/")} == expected
+        assert all(getattr(route, "path", None) != "/api/v1/mcp" for route in app.routes)
+
+        with TestClient(app, raise_server_exceptions=False) as client:
+            assert client.get("/").status_code == 200
+            health = client.get("/health").json()
+            assert health["research"]["enabled"] is True
+            ready = client.get("/readyz")
+            assert ready.status_code == 503
+            checks = ready.json()["checks"]
+            assert all(check["ready"] is False for check in checks.values())
+            assert checks["ledger_ready"]["reason"] != "ledger_ready"
+            assert checks["identity_ready"]["reason"] == "identity_not_installed"
+            assert checks["mcp_ready"]["reason"] == "mcp_not_installed"
+            assert checks["executor_ready"]["reason"] == "executor_not_installed"
+            assert client.get("/api/v1/research/runs/not-a-run").status_code == 401
+        """,
+        research_enabled=True,
+    )
+    assert output == ""
