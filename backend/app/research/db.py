@@ -33,14 +33,6 @@ RESEARCH_ALEMBIC_HEAD = "20261031_snapshot_immutability"
 _RESEARCH_VERSION_TABLE = "research_alembic_version"
 
 
-async def _fetch_research_migration_version(connection) -> str | None:
-    """Read the isolated research Alembic head marker without logging SQL."""
-    result = await connection.execute(
-        text("SELECT version_num FROM " + _RESEARCH_VERSION_TABLE)
-    )
-    return result.scalar_one_or_none()
-
-
 class ResearchDatabase(ResearchDatabasePort):
     """Own one explicitly constructed research-only async SQLAlchemy context."""
 
@@ -73,7 +65,14 @@ class ResearchDatabase(ResearchDatabasePort):
             )
         try:
             async with self._engine.connect() as connection:
-                version = await _fetch_research_migration_version(connection)
+                version = (
+                    await connection.execute(
+                        text(
+                            "SELECT version_num FROM "
+                            + _RESEARCH_VERSION_TABLE
+                        )
+                    )
+                ).scalar_one_or_none()
         except SQLAlchemyError:
             return LedgerReadiness(
                 ready=False,

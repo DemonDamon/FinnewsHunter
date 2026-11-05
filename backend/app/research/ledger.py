@@ -802,7 +802,9 @@ class ResearchLedger:
         """Append a worker step event to the authoritative ledger."""
         async with self._database.session_factory() as s, s.begin():
             await _fenced_run(s, run_id, lease, now)
-            row = await _append_run_event(s, run_id, event.type, _json(event.payload), now)
+            row = await _append_run_event(
+                s, run_id, event.type, _json(event.payload), now
+            )
             return RunEventV1(
                 event_id=row.event_id,
                 run_id=run_id,
@@ -914,7 +916,9 @@ class ResearchLedger:
                 if quota:
                     quota.active_run_count = max(0, quota.active_run_count - 1)
                     quota.updated_at = now
-                await _append_run_event(s, run_id, "completed", {"result_ref": ref}, now)
+                await _append_run_event(
+                    s, run_id, "completed", {"result_ref": ref}, now
+                )
                 await _append_audit(s, action="run_completed", now=now, run_id=run_id)
                 return RunTransition(run_id=run_id, status="completed", occurred_at=now)
         except DomainError:

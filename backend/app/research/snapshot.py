@@ -179,6 +179,49 @@ async def _snapshot_member(
     )
 
 
+async def _locked_snapshot_run(session, run_id, lease, now):
+    """Lock the run row and verify the worker lease fingerprint."""
+    if lease.run_id != run_id:
+        raise _error("execution_fenced")
+    run = await session.scalar(
+        select(ResearchRun).where(ResearchRun.run_id == run_id).with_for_update()
+    )
+    if run is None:
+        raise _error("resource_not_found_or_denied")
+    _check_snapshot_deadline(run, now)
+    if run.execution_token_hash != lease.token.fingerprint():
+        raise _error("execution_fenced")
+    return run
+
+
+async def _stored_snapshot_members(session: AsyncSession, run: ResearchRun):
+    """Load persisted snapshot members joined to their evidence rows."""
+    query = (
+        select(ResearchSnapshotMember, ResearchEvidence)
+        .outerjoin(
+            ResearchEvidence,
+            (ResearchSnapshotMember.evidence_id == ResearchEvidence.evidence_id)
+            & (ResearchSnapshotMember.evidence_version == ResearchEvidence.version)
+            & (ResearchSnapshotMember.content_hash == ResearchEvidence.content_hash),
+        )
+        .where(ResearchSnapshotMember.run_id == run.run_id)
+        .order_by(ResearchEvidence.available_at, ResearchEvidence.evidence_id)
+    )
+    pairs = list((await session.execute(query)).all())
+    if any(evidence is None for _, evidence in pairs):
+        raise _error("request_conflict")
+    rows = [evidence for _, evidence in pairs]
+    if any(
+        row.entity_id != run.entity_id
+        or row.available_at > run.as_of
+        or row.origin != "live"
+        or row.quality_status != "verified_metadata"
+        for row in rows
+    ):
+        raise _error("request_conflict")
+    return rows
+
+
 class ResearchSnapshotService:
     """Own snapshot lifecycle using only the injected research database."""
 
@@ -201,7 +244,7 @@ class ResearchSnapshotService:
     ) -> SnapshotMaterialization:
         """Materialize eligible evidence into a run-bound snapshot selection."""
         async with self._database.session_factory() as session, session.begin():
-            run = await self._locked_run(session, run_id, lease, now)
+            run = await _locked_snapshot_run(session, run_id, lease, now)
             if run.snapshot_state == "frozen":
                 raise _error("snapshot_frozen")
             rows = await _snapshot_eligible(
@@ -213,7 +256,7 @@ class ResearchSnapshotService:
                 .limit(1)
             )
             if existing is not None:
-                stored = await self._stored_members(session, run)
+                stored = await _stored_snapshot_members(session, run)
                 if _snapshot_identity(stored) != _snapshot_identity(rows):
                     raise _error("request_conflict")
             else:
@@ -244,7 +287,7 @@ class ResearchSnapshotService:
     ) -> FrozenSnapshot:
         """Freeze the materialized selection into an immutable snapshot."""
         async with self._database.session_factory() as session, session.begin():
-            run = await self._locked_run(session, run_id, lease, now)
+            run = await _locked_snapshot_run(session, run_id, lease, now)
             return await self._freeze_snapshot_in_transaction(session, run, now=now)
 
     async def _freeze_snapshot_in_transaction(
@@ -253,7 +296,7 @@ class ResearchSnapshotService:
         """Freeze within a caller-owned PostgreSQL transaction; never close it."""
         await session.refresh(run, with_for_update=True)
         _check_snapshot_deadline(run, now)
-        stored = await self._stored_members(session, run)
+        stored = await _stored_snapshot_members(session, run)
         if run.snapshot_state in {"materialized", "frozen"} and stored:
             # Materialization pins its exact selection. Later eligible arrivals
             # are intentionally not compared against that immutable set.
@@ -281,8 +324,10 @@ class ResearchSnapshotService:
             run.snapshot_frozen_at = now
             run.updated_at = now
             await session.flush()
-        member_coros = [_snapshot_member(session, row, now=now) for row in rows]
-        members = tuple([await coro for coro in member_coros])
+        member_rows: list[SnapshotMember] = []
+        for row in rows:
+            member_rows.append(await _snapshot_member(session, row, now=now))
+        members = tuple(member_rows)
         return FrozenSnapshot(
             run_id=run.run_id,
             as_of=run.as_of,
@@ -295,10 +340,10 @@ class ResearchSnapshotService:
     ) -> FrozenSnapshot:
         """Read a frozen snapshot for an authorized worker lease."""
         async with self._database.session_factory() as session, session.begin():
-            run = await self._locked_run(session, run_id, lease, now)
+            run = await _locked_snapshot_run(session, run_id, lease, now)
             if run.snapshot_state != "frozen":
                 raise _error("invalid_run_state")
-            stored = await self._stored_members(session, run)
+            stored = await _stored_snapshot_members(session, run)
             if len(stored) > self._max_members:
                 raise _error("snapshot_frozen")
             members = []
@@ -316,46 +361,3 @@ class ResearchSnapshotService:
                 frozen_at=run.snapshot_frozen_at or now,
                 members=tuple(members),
             )
-
-    async def _locked_run(self, session, run_id, lease, now):
-        """Lock the run row and verify the worker lease fingerprint."""
-        if lease.run_id != run_id:
-            raise _error("execution_fenced")
-        run = await session.scalar(
-            select(ResearchRun).where(ResearchRun.run_id == run_id).with_for_update()
-        )
-        if run is None:
-            raise _error("resource_not_found_or_denied")
-        _check_snapshot_deadline(run, now)
-        if run.execution_token_hash != lease.token.fingerprint():
-            raise _error("execution_fenced")
-        return run
-
-    async def _stored_members(self, session: AsyncSession, run: ResearchRun):
-        """Load persisted snapshot members joined to their evidence rows."""
-        query = (
-            select(ResearchSnapshotMember, ResearchEvidence)
-            .outerjoin(
-                ResearchEvidence,
-                (ResearchSnapshotMember.evidence_id == ResearchEvidence.evidence_id)
-                & (ResearchSnapshotMember.evidence_version == ResearchEvidence.version)
-                & (
-                    ResearchSnapshotMember.content_hash == ResearchEvidence.content_hash
-                ),
-            )
-            .where(ResearchSnapshotMember.run_id == run.run_id)
-            .order_by(ResearchEvidence.available_at, ResearchEvidence.evidence_id)
-        )
-        pairs = list((await session.execute(query)).all())
-        if any(evidence is None for _, evidence in pairs):
-            raise _error("request_conflict")
-        rows = [evidence for _, evidence in pairs]
-        if any(
-            row.entity_id != run.entity_id
-            or row.available_at > run.as_of
-            or row.origin != "live"
-            or row.quality_status != "verified_metadata"
-            for row in rows
-        ):
-            raise _error("request_conflict")
-        return rows
