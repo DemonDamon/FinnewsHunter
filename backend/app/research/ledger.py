@@ -6,6 +6,7 @@ All mutable state changes are scoped to one caller-owned database transaction.
 from __future__ import annotations
 
 import secrets
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 from hashlib import sha256
 from typing import Any
@@ -71,6 +72,47 @@ def _err(code: str, message: str | None = None, retryable: bool = False) -> Doma
 def _json(model: Any) -> dict[str, Any]:
     """Serialize a Pydantic model to JSON-compatible data."""
     return model.model_dump(mode="json")
+
+
+def _start_request_hash(request: StartResearchInput) -> str:
+    """Hash normalized start-run input for idempotent reuse checks."""
+    normalized = {
+        "entity_id": request.entity_ids[0],
+        "seed_evidence_id": str(request.seed_evidence_id),
+        "as_of": request.as_of.isoformat(),
+        "question": (request.question or "").strip() or None,
+        "schema": "research-v1.1",
+        "policy": "research-v1.1",
+    }
+    payload = (
+        __import__("json")
+        .dumps(normalized, sort_keys=True, separators=(",", ":"))
+        .encode()
+    )
+    return sha256(payload).hexdigest()
+
+
+def _brief_citation_evidence_ids(brief: ResearchBriefV1) -> set[object]:
+    """Collect every evidence id cited by claims and counterarguments."""
+    return {
+        evidence_id
+        for claim in [*brief.claims, *brief.counterarguments]
+        for evidence_id in claim.evidence_ids
+    }
+
+
+def _snapshot_policies_allow_brief(
+    policies: Sequence[ResearchSourcePolicy], now: datetime
+) -> bool:
+    """Return whether every snapshot policy permits brief redisplay at now."""
+    return not any(
+        not policy.storage_allowed
+        or not policy.model_use_allowed
+        or not policy.redisplay_allowed
+        or policy.approved_at > now
+        or now >= policy.expires_at
+        for policy in policies
+    )
 
 
 def _run_view(
@@ -242,6 +284,67 @@ async def _fenced_run(
     return run
 
 
+async def _reuse_existing_start_run(
+    session: AsyncSession,
+    *,
+    existing: ResearchRun,
+    request_hash: str,
+    principal: Principal,
+    authorizer: AuthorizationPort,
+    ledger: ResearchLedger,
+    now: datetime,
+) -> ResearchRunViewV1:
+    """Return the run view when the caller retries with the same request id."""
+    if existing.request_hash != request_hash:
+        raise _err("request_conflict", "request_id was reused with different input")
+    authorizer.authorize_resource(
+        principal=principal,
+        owner_id=existing.principal_id,
+        entity_ids=frozenset({existing.entity_id}),
+        required_scope="research:read",
+        now=now,
+    )
+    await _append_audit(
+        session,
+        action="run_retry",
+        now=now,
+        run_id=existing.run_id,
+        principal_id=principal.principal_id,
+    )
+    return await ledger._safe_run_view(session, existing, principal, now)
+
+
+async def _load_start_seed_evidence(
+    session: AsyncSession,
+    request: StartResearchInput,
+    now: datetime,
+) -> tuple[ResearchEvidence, ResearchSourcePolicy]:
+    """Load seed evidence and an active policy for a new research run."""
+    evidence = await session.scalar(
+        select(ResearchEvidence).where(
+            ResearchEvidence.evidence_id == request.seed_evidence_id,
+            ResearchEvidence.entity_id == request.entity_ids[0],
+        )
+    )
+    if evidence is None or evidence.available_at > request.as_of:
+        raise _err(
+            "resource_not_found_or_denied",
+            "resource was not found or access is denied",
+        )
+    policy = await session.get(
+        ResearchSourcePolicy,
+        (evidence.source_id, evidence.source_policy_version),
+    )
+    if (
+        policy is None
+        or not policy.storage_allowed
+        or not policy.model_use_allowed
+        or now >= policy.expires_at
+    ):
+        raise _err("license_revoked", "evidence license is unavailable")
+    return evidence, policy
+
+
 class ResearchLedger:
     """Implement the frozen non-snapshot ledger ports using injected adapters."""
 
@@ -332,19 +435,7 @@ class ResearchLedger:
         )
         if request.as_of > now:
             raise _err("request_conflict", "as_of must not be in the future")
-        normalized = {
-            "entity_id": request.entity_ids[0],
-            "seed_evidence_id": str(request.seed_evidence_id),
-            "as_of": request.as_of.isoformat(),
-            "question": (request.question or "").strip() or None,
-            "schema": "research-v1.1",
-            "policy": "research-v1.1",
-        }
-        request_hash = sha256(
-            __import__("json")
-            .dumps(normalized, sort_keys=True, separators=(",", ":"))
-            .encode()
-        ).hexdigest()
+        request_hash = _start_request_hash(request)
         try:
             async with self._database.session_factory() as session, session.begin():
                 existing = await session.scalar(
@@ -356,48 +447,18 @@ class ResearchLedger:
                     .with_for_update()
                 )
                 if existing:
-                    if existing.request_hash != request_hash:
-                        raise _err(
-                            "request_conflict",
-                            "request_id was reused with different input",
-                        )
-                    self._authorizer.authorize_resource(
-                        principal=principal,
-                        owner_id=existing.principal_id,
-                        entity_ids=frozenset({existing.entity_id}),
-                        required_scope="research:read",
-                        now=now,
-                    )
-                    await _append_audit(
+                    return await _reuse_existing_start_run(
                         session,
-                        action="run_retry",
+                        existing=existing,
+                        request_hash=request_hash,
+                        principal=principal,
+                        authorizer=self._authorizer,
+                        ledger=self,
                         now=now,
-                        run_id=existing.run_id,
-                        principal_id=principal.principal_id,
                     )
-                    return await self._safe_run_view(session, existing, principal, now)
-                evidence = await session.scalar(
-                    select(ResearchEvidence).where(
-                        ResearchEvidence.evidence_id == request.seed_evidence_id,
-                        ResearchEvidence.entity_id == request.entity_ids[0],
-                    )
+                evidence, _policy = await _load_start_seed_evidence(
+                    session, request, now
                 )
-                if evidence is None or evidence.available_at > request.as_of:
-                    raise _err(
-                        "resource_not_found_or_denied",
-                        "resource was not found or access is denied",
-                    )
-                policy = await session.get(
-                    ResearchSourcePolicy,
-                    (evidence.source_id, evidence.source_policy_version),
-                )
-                if (
-                    policy is None
-                    or not policy.storage_allowed
-                    or not policy.model_use_allowed
-                    or now >= policy.expires_at
-                ):
-                    raise _err("license_revoked", "evidence license is unavailable")
                 readiness = await self._executor.get_readiness(now=now)
                 if not readiness.ready or now >= readiness.expires_at:
                     raise _err(
@@ -842,11 +903,7 @@ class ResearchLedger:
                         )
                     ).all()
                 )
-                cites = {
-                    e
-                    for c in [*brief.claims, *brief.counterarguments]
-                    for e in c.evidence_ids
-                }
+                cites = _brief_citation_evidence_ids(brief)
                 if not cites.issubset(members):
                     raise _err("citation_invalid")
                 policies = (
@@ -871,14 +928,7 @@ class ResearchLedger:
                         .where(ResearchSnapshotMember.run_id == run_id)
                     )
                 ).all()
-                if any(
-                    not p.storage_allowed
-                    or not p.model_use_allowed
-                    or not p.redisplay_allowed
-                    or p.approved_at > now
-                    or now >= p.expires_at
-                    for p in policies
-                ):
+                if not _snapshot_policies_allow_brief(policies, now):
                     raise _err("license_revoked")
                 ref = secrets.token_urlsafe(24)
                 s.add(

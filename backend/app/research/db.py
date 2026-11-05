@@ -30,7 +30,7 @@ from app.research.ports import (
 )
 
 RESEARCH_ALEMBIC_HEAD = "20261031_snapshot_immutability"
-_RESEARCH_VERSION_TABLE = "research_alembic_version"
+_RESEARCH_VERSION_SQL = text("SELECT version_num FROM research_alembic_version")
 
 
 class ResearchDatabase(ResearchDatabasePort):
@@ -66,12 +66,7 @@ class ResearchDatabase(ResearchDatabasePort):
         try:
             async with self._engine.connect() as connection:
                 version = (
-                    await connection.execute(
-                        text(
-                            "SELECT version_num FROM "
-                            + _RESEARCH_VERSION_TABLE
-                        )
-                    )
+                    await connection.execute(_RESEARCH_VERSION_SQL)
                 ).scalar_one_or_none()
         except SQLAlchemyError:
             return LedgerReadiness(

@@ -149,11 +149,50 @@ class _InstalledResearchLifespan:
             await self._database.dispose()
 
 
+def _research_is_enabled(settings: Settings) -> bool:
+    """Return whether research mode is explicitly enabled in settings."""
+    return getattr(settings, "APP_MODE", None) == "research" and bool(
+        getattr(settings, "RESEARCH_ENABLED", False)
+    )
+
+
+def _trusted_jwks_rsa_key(key: object) -> bool:
+    """Return True when one JWKS entry is a public RSA signing key."""
+    if not isinstance(key, dict):
+        return False
+    return (
+        isinstance(key.get("kid"), str)
+        and key.get("kty") == "RSA"
+        and isinstance(key.get("n"), str)
+        and isinstance(key.get("e"), str)
+        and "d" not in key
+        and "k" not in key
+        and key.get("alg") in (None, "RS256")
+        and key.get("use") in (None, "sig")
+    )
+
+
+def _load_trusted_jwks(settings: Settings) -> tuple[object | None, bool]:
+    """Parse configured JWKS JSON and report whether identity is install-ready."""
+    try:
+        raw = settings.RESEARCH_TRUSTED_JWKS_JSON
+        jwks = json.loads(raw) if raw else None
+        keys = jwks.get("keys") if isinstance(jwks, dict) else None
+        identity_ready = bool(
+            settings.RESEARCH_IDENTITY_ISSUER
+            and settings.RESEARCH_IDENTITY_AUDIENCE
+            and isinstance(keys, list)
+            and keys
+            and all(_trusted_jwks_rsa_key(key) for key in keys)
+        )
+        return jwks, identity_ready
+    except (TypeError, ValueError):
+        return None, False
+
+
 def build_research_components(settings: Settings) -> ResearchComponents:
     """Build research dependencies without connecting or discovering services."""
-    if getattr(settings, "APP_MODE", None) != "research" or not getattr(
-        settings, "RESEARCH_ENABLED", False
-    ):
+    if not _research_is_enabled(settings):
         return ResearchComponents(None, None, None, _uninstalled_readiness)
     from app.api.v1.research import router
     from app.mcp.finnews_server import create_finnews_mcp_app
@@ -178,32 +217,7 @@ def build_research_components(settings: Settings) -> ResearchComponents:
         clock=now,
         execution_enabled=settings.RESEARCH_EXECUTION_ENABLED,
     )
-    identity_ready = False
-    jwks = None
-    try:
-        raw = settings.RESEARCH_TRUSTED_JWKS_JSON
-        jwks = json.loads(raw) if raw else None
-        keys = jwks.get("keys") if isinstance(jwks, dict) else None
-        identity_ready = bool(
-            settings.RESEARCH_IDENTITY_ISSUER
-            and settings.RESEARCH_IDENTITY_AUDIENCE
-            and isinstance(keys, list)
-            and keys
-            and all(
-                isinstance(key, dict)
-                and isinstance(key.get("kid"), str)
-                and key.get("kty") == "RSA"
-                and isinstance(key.get("n"), str)
-                and isinstance(key.get("e"), str)
-                and "d" not in key
-                and "k" not in key
-                and key.get("alg") in (None, "RS256")
-                and key.get("use") in (None, "sig")
-                for key in keys
-            )
-        )
-    except (TypeError, ValueError, json.JSONDecodeError):
-        jwks = None
+    jwks, identity_ready = _load_trusted_jwks(settings)
     verifier = LocalRS256IdentityVerifier(
         issuer=settings.RESEARCH_IDENTITY_ISSUER or "",
         audience=settings.RESEARCH_IDENTITY_AUDIENCE or "",

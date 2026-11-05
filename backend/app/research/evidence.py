@@ -132,44 +132,64 @@ class DeterministicEvidenceAdmission(EvidenceAdmissionPort):
             raise _evidence_ineligible() from None
 
 
+def _evidence_https_trusted(
+    evidence: EvidenceV1, approved_source_hosts: Mapping[str, frozenset[str]]
+) -> bool:
+    """Return whether the evidence URL is HTTPS on an approved host."""
+    try:
+        parsed_url = urlsplit(str(evidence.source_url))
+    except ValueError:
+        return False
+    host = _canonical_host(parsed_url.hostname)
+    if host is None:
+        return False
+    return (
+        parsed_url.scheme.lower() == "https"
+        and bool(parsed_url.hostname)
+        and parsed_url.username is None
+        and parsed_url.password is None
+        and parsed_url.port in (None, 443)
+        and host in approved_source_hosts.get(evidence.source_id, frozenset())
+    )
+
+
+def _evidence_entity_ids_valid(entity_ids: object) -> bool:
+    """Return whether entity identifiers are a unique non-empty research set."""
+    if not isinstance(entity_ids, Sequence) or not entity_ids:
+        return False
+    if len(entity_ids) != len(set(entity_ids)):
+        return False
+    return all(
+        isinstance(entity_id, str)
+        and _ENTITY_ID_PATTERN.fullmatch(entity_id) is not None
+        for entity_id in entity_ids
+    )
+
+
+def _evidence_chronology_valid(evidence: EvidenceV1) -> bool:
+    """Return whether evidence timestamps are aware and ordered."""
+    return (
+        _is_aware(evidence.published_at)
+        and _is_aware(evidence.fetched_at)
+        and _is_aware(evidence.available_at)
+        and evidence.published_at <= evidence.available_at <= evidence.fetched_at
+    )
+
+
 def _evidence_is_admissible(
     evidence: EvidenceV1, approved_source_hosts: Mapping[str, frozenset[str]]
 ) -> bool:
     """Require verified HTTPS evidence with complete trusted chronology."""
-    source_url = evidence.source_url
     entity_ids = evidence.entity_ids
-    try:
-        parsed_url = urlsplit(str(source_url))
-        valid_url = (
-            parsed_url.scheme.lower() == "https"
-            and bool(parsed_url.hostname)
-            and parsed_url.username is None
-            and parsed_url.password is None
-            and parsed_url.port in (None, 443)
-            and _canonical_host(parsed_url.hostname)
-            in approved_source_hosts.get(evidence.source_id, frozenset())
-        )
-    except ValueError:
-        valid_url = False
     return (
         evidence.origin == "live"
         and evidence.quality_status == "verified_metadata"
         and evidence.license_scope != "unknown"
         and isinstance(evidence.source_id, str)
         and bool(evidence.source_id)
-        and valid_url
-        and isinstance(entity_ids, Sequence)
-        and bool(entity_ids)
-        and len(entity_ids) == len(set(entity_ids))
-        and all(
-            isinstance(entity_id, str)
-            and _ENTITY_ID_PATTERN.fullmatch(entity_id) is not None
-            for entity_id in entity_ids
-        )
-        and _is_aware(evidence.published_at)
-        and _is_aware(evidence.fetched_at)
-        and _is_aware(evidence.available_at)
-        and evidence.published_at <= evidence.available_at <= evidence.fetched_at
+        and _evidence_https_trusted(evidence, approved_source_hosts)
+        and _evidence_entity_ids_valid(entity_ids)
+        and _evidence_chronology_valid(evidence)
     )
 
 
@@ -195,13 +215,19 @@ def _policy_is_admissible(
     )
 
 
-def _market_is_admissible(
-    evidence: EvidenceV1,
-    market: MarketPayloadV1 | None,
-) -> bool:
-    """Require a fully traceable, non-mock market observation payload."""
-    if not isinstance(market, MarketPayloadV1):
-        return False
+def _market_field_metadata_valid(market: MarketPayloadV1) -> bool:
+    """Return whether market field names and units are present."""
+    return bool(market.fields) and all(
+        isinstance(field.unit, str)
+        and bool(field.unit)
+        and isinstance(field.name, str)
+        and bool(field.name)
+        for field in market.fields
+    )
+
+
+def _market_trace_valid(evidence: EvidenceV1, market: MarketPayloadV1) -> bool:
+    """Return whether market payload identifiers align with admitted evidence."""
     return (
         market.evidence_id == evidence.evidence_id
         and market.provider == evidence.source_id
@@ -212,14 +238,7 @@ def _market_is_admissible(
         and len(market.currency) == 3
         and market.currency.isupper()
         and market.adjustment in _ALLOWED_ADJUSTMENTS
-        and bool(market.fields)
-        and all(
-            isinstance(field.unit, str)
-            and bool(field.unit)
-            and isinstance(field.name, str)
-            and bool(field.name)
-            for field in market.fields
-        )
+        and _market_field_metadata_valid(market)
         and _is_aware(market.observed_at)
         and _is_aware(market.fetched_at)
         and _is_aware(market.available_at)
@@ -228,6 +247,16 @@ def _market_is_admissible(
         and market.available_at == evidence.available_at
         and market.fetched_at == evidence.fetched_at
     )
+
+
+def _market_is_admissible(
+    evidence: EvidenceV1,
+    market: MarketPayloadV1 | None,
+) -> bool:
+    """Require a fully traceable, non-mock market observation payload."""
+    if not isinstance(market, MarketPayloadV1):
+        return False
+    return _market_trace_valid(evidence, market)
 
 
 class EvidenceRegistrationService:

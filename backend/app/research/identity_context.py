@@ -179,8 +179,8 @@ def get_current_principal() -> Principal:
     return binding.principal
 
 
-def _principal_from_scope(scope: Scope, *, now: datetime) -> Principal:
-    """Validate the SDK's authenticated safe projection, not raw JWT claims."""
+def _verified_access_token(scope: Scope) -> tuple[AccessToken, AuthCredentials]:
+    """Return the SDK access token after basic scope authentication checks."""
     user = scope.get("user")
     auth = scope.get("auth")
     if not isinstance(user, AuthenticatedUser) or not isinstance(auth, AuthCredentials):
@@ -188,33 +188,62 @@ def _principal_from_scope(scope: Scope, *, now: datetime) -> Principal:
     info = user.access_token
     if not isinstance(info, AccessToken) or info.token != VERIFIED_TOKEN_MARKER:
         raise _invalid_identity()
+    return info, auth
+
+
+def _issuer_audience_valid(
+    info: AccessToken, issuer: object, audience: object
+) -> bool:
+    """Return whether issuer and audience claims match the token projection."""
+    return (
+        isinstance(issuer, str)
+        and bool(issuer)
+        and isinstance(audience, str)
+        and bool(audience)
+        and info.resource == audience
+        and isinstance(info.subject, str)
+        and info.client_id == info.subject
+    )
+
+
+def _token_scopes_valid(info: AccessToken, auth: AuthCredentials) -> bool:
+    """Return whether token scopes are allowed, unique, and match auth."""
+    if type(info.expires_at) is not int:
+        return False
+    if not isinstance(info.scopes, list) or not info.scopes:
+        return False
+    if any(type(item) is not str for item in info.scopes):
+        return False
+    if not set(info.scopes).issubset(_ALLOWED_SCOPES):
+        return False
+    if len(set(info.scopes)) != len(info.scopes):
+        return False
+    return set(auth.scopes) == set(info.scopes)
+
+
+def _entity_ids_claim_valid(entities: object) -> bool:
+    """Return whether entity_ids is a non-empty unique list of research ids."""
+    if not isinstance(entities, list) or not entities:
+        return False
+    if any(
+        type(item) is not str or _ENTITY.fullmatch(item) is None for item in entities
+    ):
+        return False
+    return len(set(entities)) == len(entities)
+
+
+def _principal_from_scope(scope: Scope, *, now: datetime) -> Principal:
+    """Validate the SDK's authenticated safe projection, not raw JWT claims."""
+    info, auth = _verified_access_token(scope)
     claims = info.claims
     if not isinstance(claims, dict) or set(claims) != {"iss", "aud", "entity_ids"}:
         raise _invalid_identity()
     issuer, audience, entities = claims["iss"], claims["aud"], claims["entity_ids"]
-    if (
-        not isinstance(issuer, str)
-        or not issuer
-        or not isinstance(audience, str)
-        or not audience
-        or info.resource != audience
-        or not isinstance(info.subject, str)
-        or info.client_id != info.subject
-        or type(info.expires_at) is not int
-        or not isinstance(info.scopes, list)
-        or not info.scopes
-        or any(type(item) is not str for item in info.scopes)
-        or not set(info.scopes).issubset(_ALLOWED_SCOPES)
-        or len(set(info.scopes)) != len(info.scopes)
-        or set(auth.scopes) != set(info.scopes)
-        or not isinstance(entities, list)
-        or not entities
-        or any(
-            type(item) is not str or _ENTITY.fullmatch(item) is None
-            for item in entities
-        )
-        or len(set(entities)) != len(entities)
-    ):
+    if not _issuer_audience_valid(info, issuer, audience):
+        raise _invalid_identity()
+    if not _token_scopes_valid(info, auth):
+        raise _invalid_identity()
+    if not _entity_ids_claim_valid(entities):
         raise _invalid_identity()
     try:
         principal_id = UUID(info.subject)

@@ -97,6 +97,70 @@ async def _snapshot_eligible(
     return rows
 
 
+def _snapshot_policy_allows_member(
+    policy: ResearchSourcePolicy | None, row: ResearchEvidence, now: datetime
+) -> bool:
+    """Return whether policy and evidence quality permit snapshot membership."""
+    if policy is None:
+        return False
+    return (
+        policy.storage_allowed
+        and policy.model_use_allowed
+        and policy.approved_at <= now
+        and policy.expires_at > now
+        and row.origin == "live"
+        and row.quality_status == "verified_metadata"
+    )
+
+
+def _market_payload_matches_row(market: MarketPayloadV1, row: ResearchEvidence) -> bool:
+    """Return whether a loaded market payload aligns with its evidence row."""
+    return (
+        market.evidence_id == row.evidence_id
+        and market.provider == row.source_id
+        and market.version == row.version
+        and market.symbol == row.entity_id
+        and market.available_at == row.available_at
+        and market.fetched_at == row.fetched_at
+        and market.observed_at == row.published_at
+        and market.timezone == row.timezone
+        and not market.is_mock
+    )
+
+
+async def _load_snapshot_market(
+    session: AsyncSession, row: ResearchEvidence
+) -> MarketPayloadV1 | None:
+    """Load and validate the market payload for a market evidence row."""
+    if row.evidence_kind != "market":
+        return None
+    payload = await session.get(ResearchMarketPayload, row.evidence_id)
+    if payload is None:
+        raise _error("market_data_unverifiable")
+    try:
+        market = MarketPayloadV1(
+            evidence_id=row.evidence_id,
+            symbol=payload.symbol,
+            observed_at=payload.observed_at,
+            available_at=payload.available_at,
+            fetched_at=payload.fetched_at,
+            timezone=payload.timezone,
+            currency=payload.currency,
+            adjustment=payload.adjustment,
+            fields=[
+                MarketFieldV1.model_validate(item) for item in payload.fields_projection
+            ],
+            provider=payload.provider,
+            version=payload.version,
+            is_mock=payload.is_mock,
+        )
+    except (TypeError, ValueError):
+        raise _error("market_data_unverifiable") from None
+    if not _market_payload_matches_row(market, row):
+        raise _error("market_data_unverifiable")
+    return market
+
+
 async def _snapshot_member(
     session: AsyncSession,
     row: ResearchEvidence,
@@ -108,53 +172,9 @@ async def _snapshot_member(
     policy = policy or await session.get(
         ResearchSourcePolicy, (row.source_id, row.source_policy_version)
     )
-    if (
-        policy is None
-        or not policy.storage_allowed
-        or not policy.model_use_allowed
-        or policy.approved_at > now
-        or policy.expires_at <= now
-        or row.origin != "live"
-        or row.quality_status != "verified_metadata"
-    ):
+    if not _snapshot_policy_allows_member(policy, row, now):
         raise _error("license_revoked")
-    market = None
-    if row.evidence_kind == "market":
-        payload = await session.get(ResearchMarketPayload, row.evidence_id)
-        if payload is None:
-            raise _error("market_data_unverifiable")
-        try:
-            market = MarketPayloadV1(
-                evidence_id=row.evidence_id,
-                symbol=payload.symbol,
-                observed_at=payload.observed_at,
-                available_at=payload.available_at,
-                fetched_at=payload.fetched_at,
-                timezone=payload.timezone,
-                currency=payload.currency,
-                adjustment=payload.adjustment,
-                fields=[
-                    MarketFieldV1.model_validate(item)
-                    for item in payload.fields_projection
-                ],
-                provider=payload.provider,
-                version=payload.version,
-                is_mock=payload.is_mock,
-            )
-        except (TypeError, ValueError):
-            raise _error("market_data_unverifiable") from None
-        if (
-            market.evidence_id != row.evidence_id
-            or market.provider != row.source_id
-            or market.version != row.version
-            or market.symbol != row.entity_id
-            or market.available_at != row.available_at
-            or market.fetched_at != row.fetched_at
-            or market.observed_at != row.published_at
-            or market.timezone != row.timezone
-            or market.is_mock
-        ):
-            raise _error("market_data_unverifiable")
+    market = await _load_snapshot_market(session, row)
     evidence = EvidenceV1(
         evidence_id=row.evidence_id,
         source_id=row.source_id,
