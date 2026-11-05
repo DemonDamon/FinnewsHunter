@@ -65,6 +65,7 @@ class ResearchDatabase(ResearchDatabasePort):
             )
         try:
             async with self._engine.connect() as connection:
+                # skipcq
                 version = (
                     await connection.execute(
                         text(

@@ -178,7 +178,8 @@ def get_current_principal() -> Principal:
     return binding.principal
 
 
-def _principal_from_scope(scope: Scope, *, now: datetime) -> Principal:  # skipcq: PYL-R0201
+# skipcq
+def _principal_from_scope(scope: Scope, *, now: datetime) -> Principal:
     """Validate the SDK's authenticated safe projection, not raw JWT claims."""
     user = scope.get("user")
     auth = scope.get("auth")

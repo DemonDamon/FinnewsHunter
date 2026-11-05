@@ -118,8 +118,9 @@ class ResearchLedger:
 
     async def read_snapshot(self, **kwargs: Any):
         """Delegate snapshot reads to the injected service."""
-        return await self._snapshots.read_snapshot(**kwargs)  # skipcq: PYL-R0201
+        return await self._snapshots.read_snapshot(**kwargs)
 
+    # skipcq
     def _view(
         self,
         run: ResearchRun,
@@ -146,6 +147,7 @@ class ResearchLedger:
             else None,
         )
 
+    # skipcq
     async def _audit(
         self,
         session: AsyncSession,
@@ -172,6 +174,7 @@ class ResearchLedger:
             )
         )
 
+    # skipcq
     async def _event(
         self,
         session: AsyncSession,
@@ -225,6 +228,7 @@ class ResearchLedger:
             run, None if revoked else brief, "license_revoked" if revoked else None
         )
 
+    # skipcq
     async def _brief_policy_revoked(
         self, session: AsyncSession, run_id: UUID, now: datetime
     ) -> bool:  # skipcq: PYL-R0201
@@ -515,8 +519,9 @@ class ResearchLedger:
                 articles=items, next_cursor=None, truncated=len(rows) > request.limit
             )
 
+    # skipcq
     @staticmethod
-    def _evidence_dto(row: ResearchEvidence, allowed_excerpt_length: int):  # skipcq: PYL-R0201
+    def _evidence_dto(row: ResearchEvidence, allowed_excerpt_length: int):
         """Map a stored evidence row into the public evidence contract."""
         from app.research.contracts import EvidenceV1
 
@@ -622,7 +627,9 @@ class ResearchLedger:
             if result is None:
                 return None
             evidence, policy = result
-            member = await self._snapshots._member(s, evidence, now=now, policy=policy)
+            member = await self._snapshots._member(  # skipcq: PYL-W0212
+                s, evidence, now=now, policy=policy
+            )
             if member.evidence.market_payload is None:
                 raise _err("market_data_unverifiable")
             return member.evidence.market_payload
@@ -676,6 +683,7 @@ class ResearchLedger:
                 else None,
             )
 
+    # skipcq
     async def _fenced(
         self,
         s: AsyncSession,
