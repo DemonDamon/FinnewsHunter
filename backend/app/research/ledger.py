@@ -58,6 +58,7 @@ from app.research.ports import (
     StepEvent,
     WorkerIdentity,
 )
+from app.research.snapshot import _snapshot_member
 
 
 def _err(code: str, message: str | None = None, retryable: bool = False) -> DomainError:
@@ -70,6 +71,175 @@ def _err(code: str, message: str | None = None, retryable: bool = False) -> Doma
 def _json(model: Any) -> dict[str, Any]:
     """Serialize a Pydantic model to JSON-compatible data."""
     return model.model_dump(mode="json")
+
+
+def _run_view(
+    run: ResearchRun,
+    brief: ResearchBrief | None = None,
+    error: str | None = None,
+) -> ResearchRunViewV1:
+    """Project a run row into the public run view contract."""
+    return ResearchRunViewV1(
+        run_id=run.run_id,
+        request_id=run.request_id,
+        principal_id=run.principal_id,
+        entity_ids=[run.entity_id],
+        as_of=run.as_of,
+        status=run.status,
+        created_at=run.created_at,
+        updated_at=run.updated_at,
+        model_id=run.model_id,
+        prompt_version=run.prompt_version,
+        policy_version=run.policy_version,
+        result_ref=run.result_ref,
+        error_code=error or run.error_code,
+        brief=ResearchBriefV1.model_validate(brief.brief_projection) if brief else None,
+    )
+
+
+async def _append_audit(
+    session: AsyncSession,
+    *,
+    action: str,
+    now: datetime,
+    run_id: UUID | None = None,
+    principal_id: UUID | None = None,
+    evidence_id: UUID | None = None,
+    safe_code: str | None = None,
+    details: dict[str, Any] | None = None,
+) -> None:
+    """Append an audit row for a ledger-side action."""
+    session.add(
+        ResearchAudit(
+            audit_id=uuid4(),
+            run_id=run_id,
+            evidence_id=evidence_id,
+            principal_id=principal_id,
+            action=action,
+            safe_code=safe_code,
+            details_projection=details or {},
+            occurred_at=now,
+        )
+    )
+
+
+async def _append_run_event(
+    session: AsyncSession,
+    run_id: UUID,
+    event_type: str,
+    payload: dict[str, Any],
+    now: datetime,
+) -> ResearchRunEvent:
+    """Append the next sequenced run event inside the current transaction."""
+    count = await session.scalar(
+        select(func.coalesce(func.max(ResearchRunEvent.seq), 0)).where(
+            ResearchRunEvent.run_id == run_id
+        )
+    )
+    row = ResearchRunEvent(
+        event_id=uuid4(),
+        run_id=run_id,
+        seq=int(count or 0) + 1,
+        event_type=event_type,
+        occurred_at=now,
+        payload_projection=payload,
+    )
+    session.add(row)
+    await session.flush()
+    return row
+
+
+async def _brief_policy_revoked(
+    session: AsyncSession, run_id: UUID, now: datetime
+) -> bool:
+    """Return whether brief-linked source policies are no longer redisplayable."""
+    policies = (
+        (
+            await session.execute(
+                select(ResearchSourcePolicy)
+                .join(
+                    ResearchEvidence,
+                    (ResearchEvidence.source_id == ResearchSourcePolicy.source_id)
+                    & (
+                        ResearchEvidence.source_policy_version
+                        == ResearchSourcePolicy.policy_version
+                    ),
+                )
+                .join(
+                    ResearchSnapshotMember,
+                    ResearchSnapshotMember.evidence_id == ResearchEvidence.evidence_id,
+                )
+                .where(ResearchSnapshotMember.run_id == run_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return any(
+        not p.storage_allowed
+        or not p.redisplay_allowed
+        or p.approved_at > now
+        or now >= p.expires_at
+        for p in policies
+    )
+
+
+def _evidence_dto(row: ResearchEvidence, allowed_excerpt_length: int):
+    """Map a stored evidence row into the public evidence contract."""
+    from app.research.contracts import EvidenceV1
+
+    return EvidenceV1(
+        evidence_id=row.evidence_id,
+        source_id=row.source_id,
+        source_url=row.source_url,
+        content_hash=row.content_hash,
+        published_at=row.published_at,
+        fetched_at=row.fetched_at,
+        available_at=row.available_at,
+        timezone=row.timezone,
+        license_scope=row.license_scope,
+        entity_ids=[row.entity_id],
+        excerpt=row.excerpt[:allowed_excerpt_length],
+        quality_status=row.quality_status,
+        evidence_kind=row.evidence_kind,
+        version=row.version,
+        source_policy_version=row.source_policy_version,
+        origin=row.origin,
+        market_payload=None,
+    )
+
+
+async def _fenced_run(
+    s: AsyncSession,
+    run_id: UUID,
+    lease: RunLease,
+    now: datetime,
+    *,
+    lock: bool = True,
+) -> ResearchRun:
+    """Load a run and verify the worker lease fingerprint when required."""
+    q = select(ResearchRun).where(ResearchRun.run_id == run_id)
+    if lock:
+        q = q.with_for_update()
+    run = await s.scalar(q)
+    if run is None:
+        raise _err("resource_not_found_or_denied")
+    if run.status != "running":
+        raise _err(
+            "terminal_state"
+            if run.status in {"completed", "failed", "needs_review", "cancelled"}
+            else "invalid_run_state"
+        )
+    if run.execution_token_hash != lease.token.fingerprint():
+        raise _err("execution_fenced")
+    if (
+        run.lease_expires_at is None
+        or now >= run.lease_expires_at
+        or run.deadline_at is None
+        or now >= run.deadline_at
+    ):
+        raise _err("lease_expired")
+    return run
 
 
 class ResearchLedger:
@@ -110,97 +280,18 @@ class ResearchLedger:
 
     async def materialize_snapshot(self, **kwargs: Any):
         """Delegate snapshot materialization to the injected service."""
-        return await self._snapshots.materialize_snapshot(**kwargs)  # skipcq: PYL-R0201
+        snapshots = self._snapshots
+        return await snapshots.materialize_snapshot(**kwargs)
 
     async def freeze_snapshot(self, **kwargs: Any):
         """Delegate snapshot freeze to the injected service."""
-        return await self._snapshots.freeze_snapshot(**kwargs)  # skipcq: PYL-R0201
+        snapshots = self._snapshots
+        return await snapshots.freeze_snapshot(**kwargs)
 
     async def read_snapshot(self, **kwargs: Any):
         """Delegate snapshot reads to the injected service."""
-        return await self._snapshots.read_snapshot(**kwargs)
-
-    # skipcq
-    def _view(
-        self,
-        run: ResearchRun,
-        brief: ResearchBrief | None = None,
-        error: str | None = None,
-    ) -> ResearchRunViewV1:  # skipcq: PYL-R0201
-        """Project a run row into the public run view contract."""
-        return ResearchRunViewV1(
-            run_id=run.run_id,
-            request_id=run.request_id,
-            principal_id=run.principal_id,
-            entity_ids=[run.entity_id],
-            as_of=run.as_of,
-            status=run.status,
-            created_at=run.created_at,
-            updated_at=run.updated_at,
-            model_id=run.model_id,
-            prompt_version=run.prompt_version,
-            policy_version=run.policy_version,
-            result_ref=run.result_ref,
-            error_code=error or run.error_code,
-            brief=ResearchBriefV1.model_validate(brief.brief_projection)
-            if brief
-            else None,
-        )
-
-    # skipcq
-    async def _audit(
-        self,
-        session: AsyncSession,
-        *,
-        action: str,
-        now: datetime,
-        run_id: UUID | None = None,
-        principal_id: UUID | None = None,
-        evidence_id: UUID | None = None,
-        safe_code: str | None = None,
-        details: dict[str, Any] | None = None,
-    ) -> None:  # skipcq: PYL-R0201
-        """Append an audit row for a ledger-side action."""
-        session.add(
-            ResearchAudit(
-                audit_id=uuid4(),
-                run_id=run_id,
-                evidence_id=evidence_id,
-                principal_id=principal_id,
-                action=action,
-                safe_code=safe_code,
-                details_projection=details or {},
-                occurred_at=now,
-            )
-        )
-
-    # skipcq
-    async def _event(
-        self,
-        session: AsyncSession,
-        run_id: UUID,
-        event_type: str,
-        payload: dict[str, Any],
-        now: datetime,
-    ) -> ResearchRunEvent:  # skipcq: PYL-R0201
-        """Append the next sequenced run event inside the current transaction."""
-        # The locked run row serializes sequence allocation in PostgreSQL.
-        count = await session.scalar(
-            select(func.coalesce(func.max(ResearchRunEvent.seq), 0)).where(
-                ResearchRunEvent.run_id == run_id
-            )
-        )
-        row = ResearchRunEvent(
-            event_id=uuid4(),
-            run_id=run_id,
-            seq=int(count or 0) + 1,
-            event_type=event_type,
-            occurred_at=now,
-            payload_projection=payload,
-        )
-        session.add(row)
-        await session.flush()
-        return row
+        snapshots = self._snapshots
+        return await snapshots.read_snapshot(**kwargs)
 
     async def _safe_run_view(
         self,
@@ -221,47 +312,11 @@ class ResearchLedger:
         )
         if brief is None:
             brief = await session.get(ResearchBrief, run.run_id)
-        revoked = bool(brief) and await self._brief_policy_revoked(
+        revoked = bool(brief) and await _brief_policy_revoked(
             session, run.run_id, now
         )
-        return self._view(
+        return _run_view(
             run, None if revoked else brief, "license_revoked" if revoked else None
-        )
-
-    # skipcq
-    async def _brief_policy_revoked(
-        self, session: AsyncSession, run_id: UUID, now: datetime
-    ) -> bool:  # skipcq: PYL-R0201
-        """Return whether brief-linked source policies are no longer redisplayable."""
-        policies = (
-            (
-                await session.execute(
-                    select(ResearchSourcePolicy)
-                    .join(
-                        ResearchEvidence,
-                        (ResearchEvidence.source_id == ResearchSourcePolicy.source_id)
-                        & (
-                            ResearchEvidence.source_policy_version
-                            == ResearchSourcePolicy.policy_version
-                        ),
-                    )
-                    .join(
-                        ResearchSnapshotMember,
-                        ResearchSnapshotMember.evidence_id
-                        == ResearchEvidence.evidence_id,
-                    )
-                    .where(ResearchSnapshotMember.run_id == run_id)
-                )
-            )
-            .scalars()
-            .all()
-        )
-        return any(
-            not p.storage_allowed
-            or not p.redisplay_allowed
-            or p.approved_at > now
-            or now >= p.expires_at
-            for p in policies
         )
 
     async def create_or_reuse_run(
@@ -313,7 +368,7 @@ class ResearchLedger:
                         required_scope="research:read",
                         now=now,
                     )
-                    await self._audit(
+                    await _append_audit(
                         session,
                         action="run_retry",
                         now=now,
@@ -417,14 +472,14 @@ class ResearchLedger:
                 quota.active_run_count += 1
                 quota.daily_run_count += 1
                 quota.updated_at = now
-                await self._audit(
+                await _append_audit(
                     session,
                     action="run_created",
                     now=now,
                     run_id=run.run_id,
                     principal_id=principal.principal_id,
                 )
-                return self._view(run)
+                return _run_view(run)
         except DomainError:
             raise
         except IntegrityError:
@@ -514,37 +569,10 @@ class ResearchLedger:
                     .limit(request.limit + 1)
                 )
             ).all()
-            items = [self._evidence_dto(r, n) for r, n in rows[: request.limit]]
+            items = [_evidence_dto(r, n) for r, n in rows[: request.limit]]
             return ArticlesSearchResult(
                 articles=items, next_cursor=None, truncated=len(rows) > request.limit
             )
-
-    # skipcq
-    @staticmethod
-    def _evidence_dto(row: ResearchEvidence, allowed_excerpt_length: int):
-        """Map a stored evidence row into the public evidence contract."""
-        from app.research.contracts import EvidenceV1
-
-        # Stored projection is immutable; market details join separately.
-        return EvidenceV1(
-            evidence_id=row.evidence_id,
-            source_id=row.source_id,
-            source_url=row.source_url,
-            content_hash=row.content_hash,
-            published_at=row.published_at,
-            fetched_at=row.fetched_at,
-            available_at=row.available_at,
-            timezone=row.timezone,
-            license_scope=row.license_scope,
-            entity_ids=[row.entity_id],
-            excerpt=row.excerpt[:allowed_excerpt_length],
-            quality_status=row.quality_status,
-            evidence_kind=row.evidence_kind,
-            version=row.version,
-            source_policy_version=row.source_policy_version,
-            origin=row.origin,
-            market_payload=None,
-        )
 
     async def read_evidence(
         self, *, principal: Principal, request: GetEvidenceInput, now: datetime
@@ -580,7 +608,7 @@ class ResearchLedger:
                 or now >= policy.expires_at
             ):
                 raise _err("license_revoked", "evidence license is unavailable")
-            return self._evidence_dto(row, policy.allowed_excerpt_length)
+            return _evidence_dto(row, policy.allowed_excerpt_length)
 
     async def get_market_snapshot(
         self, *, principal: Principal, request: GetMarketSnapshotInput, now: datetime
@@ -627,9 +655,7 @@ class ResearchLedger:
             if result is None:
                 return None
             evidence, policy = result
-            member = await self._snapshots._member(  # skipcq: PYL-W0212
-                s, evidence, now=now, policy=policy
-            )
+            member = await _snapshot_member(s, evidence, now=now, policy=policy)
             if member.evidence.market_payload is None:
                 raise _err("market_data_unverifiable")
             return member.evidence.market_payload
@@ -682,40 +708,6 @@ class ResearchLedger:
                 if len(rows) > page_limit and events
                 else None,
             )
-
-    # skipcq
-    async def _fenced(
-        self,
-        s: AsyncSession,
-        run_id: UUID,
-        lease: RunLease,
-        now: datetime,
-        *,
-        lock: bool = True,
-    ) -> ResearchRun:  # skipcq: PYL-R0201
-        """Load a run and verify the worker lease fingerprint when required."""
-        q = select(ResearchRun).where(ResearchRun.run_id == run_id)
-        if lock:
-            q = q.with_for_update()
-        run = await s.scalar(q)
-        if run is None:
-            raise _err("resource_not_found_or_denied")
-        if run.status != "running":
-            raise _err(
-                "terminal_state"
-                if run.status in {"completed", "failed", "needs_review", "cancelled"}
-                else "invalid_run_state"
-            )
-        if run.execution_token_hash != lease.token.fingerprint():
-            raise _err("execution_fenced")
-        if (
-            run.lease_expires_at is None
-            or now >= run.lease_expires_at
-            or run.deadline_at is None
-            or now >= run.deadline_at
-        ):
-            raise _err("lease_expired")
-        return run
 
     async def claim_run(
         self, *, task: DispatchTask, worker: WorkerIdentity, now: datetime
@@ -773,8 +765,8 @@ class ResearchLedger:
                 )
                 run.snapshot_state = "frozen"
                 run.snapshot_frozen_at = frozen.frozen_at
-                await self._event(s, run.run_id, "started", {}, now)
-                await self._audit(s, action="run_claimed", now=now, run_id=run.run_id)
+                await _append_run_event(s, run.run_id, "started", {}, now)
+                await _append_audit(s, action="run_claimed", now=now, run_id=run.run_id)
                 return RunLease(
                     run_id=run.run_id,
                     token=token,
@@ -791,7 +783,7 @@ class ResearchLedger:
     ) -> RunLease:
         """Extend an active worker lease for an in-flight run."""
         async with self._database.session_factory() as s, s.begin():
-            run = await self._fenced(s, run_id, lease, now)
+            run = await _fenced_run(s, run_id, lease, now)
             if run.execution_worker_id != worker.worker_id:
                 raise _err("execution_fenced")
             end = min(now + self._lease_duration, run.deadline_at)
@@ -809,8 +801,8 @@ class ResearchLedger:
     ) -> RunEventV1:
         """Append a worker step event to the authoritative ledger."""
         async with self._database.session_factory() as s, s.begin():
-            await self._fenced(s, run_id, lease, now)
-            row = await self._event(s, run_id, event.type, _json(event.payload), now)
+            await _fenced_run(s, run_id, lease, now)
+            row = await _append_run_event(s, run_id, event.type, _json(event.payload), now)
             return RunEventV1(
                 event_id=row.event_id,
                 run_id=run_id,
@@ -831,7 +823,7 @@ class ResearchLedger:
         """Publish a brief from a frozen, licensed snapshot only."""
         try:
             async with self._database.session_factory() as s, s.begin():
-                run = await self._fenced(s, run_id, lease, now)
+                run = await _fenced_run(s, run_id, lease, now)
                 brief = approved_brief.brief
                 if (
                     brief.run_id != run_id
@@ -922,8 +914,8 @@ class ResearchLedger:
                 if quota:
                     quota.active_run_count = max(0, quota.active_run_count - 1)
                     quota.updated_at = now
-                await self._event(s, run_id, "completed", {"result_ref": ref}, now)
-                await self._audit(s, action="run_completed", now=now, run_id=run_id)
+                await _append_run_event(s, run_id, "completed", {"result_ref": ref}, now)
+                await _append_audit(s, action="run_completed", now=now, run_id=run_id)
                 return RunTransition(run_id=run_id, status="completed", occurred_at=now)
         except DomainError:
             raise
@@ -935,7 +927,7 @@ class ResearchLedger:
     ) -> RunTransition:
         """Terminalize a run from an authorized worker transition."""
         async with self._database.session_factory() as s, s.begin():
-            run = await self._fenced(s, run_id, lease, now)
+            run = await _fenced_run(s, run_id, lease, now)
             run.status = finish.status
             run.error_code = finish.code
             run.updated_at = now
@@ -954,8 +946,8 @@ class ResearchLedger:
                 if etype == "cancelled"
                 else {"code": finish.code}
             )
-            await self._event(s, run_id, etype, payload, now)
-            await self._audit(
+            await _append_run_event(s, run_id, etype, payload, now)
+            await _append_audit(
                 s,
                 action="run_" + finish.status,
                 now=now,
@@ -994,8 +986,8 @@ class ResearchLedger:
                 run.error_code = code
                 run.execution_token_hash = None
                 run.updated_at = now
-                await self._event(s, run.run_id, "failed", {"code": code}, now)
-                await self._audit(
+                await _append_run_event(s, run.run_id, "failed", {"code": code}, now)
+                await _append_audit(
                     s, action="run_reaped", now=now, run_id=run.run_id, safe_code=code
                 )
                 q = await s.scalar(

@@ -82,6 +82,73 @@ def _research_clock() -> datetime:
     return datetime.now(UTC)
 
 
+class _InstalledResearchReadiness:
+    """Aggregate readiness probes for an installed research stack."""
+
+    __slots__ = ("_database", "_clock", "_identity_ready", "_mcp")
+
+    def __init__(
+        self,
+        database: object,
+        clock: Callable[[], datetime],
+        *,
+        identity_ready: bool,
+        mcp_component: object | None,
+    ) -> None:
+        self._database = database
+        self._clock = clock
+        self._identity_ready = identity_ready
+        self._mcp = mcp_component
+
+    async def __call__(self) -> dict[str, ResearchReadinessCheck]:
+        """Aggregate ledger, identity, MCP, and executor readiness probes."""
+        result = await self._database.check_ready(now=self._clock())
+        db_reason = (
+            result.reason
+            if result.reason
+            in {
+                "ledger_ready",
+                "ledger_not_configured",
+                "ledger_dsn_missing_or_invalid",
+                "ledger_migration_unavailable",
+            }
+            else "ledger_not_ready"
+        )
+        mcp_ready = bool(self._mcp and self._mcp.readiness.get("mcp"))
+        return {
+            "ledger_ready": ResearchReadinessCheck(result.ready, db_reason),
+            "identity_ready": ResearchReadinessCheck(
+                self._identity_ready,
+                "identity_ready" if self._identity_ready else "identity_not_installed",
+            ),
+            "mcp_ready": ResearchReadinessCheck(
+                mcp_ready, "mcp_ready" if mcp_ready else "mcp_not_installed"
+            ),
+            "executor_ready": ResearchReadinessCheck(False, "executor_not_installed"),
+        }
+
+
+class _InstalledResearchLifespan:
+    """Dispose database resources after optional MCP lifespan."""
+
+    __slots__ = ("_database", "_mcp")
+
+    def __init__(self, database: object, mcp_component: object | None) -> None:
+        self._database = database
+        self._mcp = mcp_component
+
+    @asynccontextmanager
+    async def __call__(self, _application: FastAPI):
+        """Enter MCP manager lifecycle and dispose database resources on exit."""
+        try:
+            async with AsyncExitStack() as stack:
+                if self._mcp is not None:
+                    await stack.enter_async_context(self._mcp.lifespan())
+                yield
+        finally:
+            await self._database.dispose()
+
+
 def build_research_components(settings: Settings) -> ResearchComponents:
     """Build research dependencies without connecting or discovering services."""
     if getattr(settings, "APP_MODE", None) != "research" or not getattr(
@@ -154,44 +221,13 @@ def build_research_components(settings: Settings) -> ResearchComponents:
             allowed_origins=origins,
         )
 
-    async def readiness():  # skipcq: PYL-R0201 -- closure captures composition locals
-        """Aggregate ledger, identity, MCP, and executor readiness probes."""
-        result = await database.check_ready(now=now())
-        db_reason = (
-            result.reason
-            if result.reason
-            in {
-                "ledger_ready",
-                "ledger_not_configured",
-                "ledger_dsn_missing_or_invalid",
-                "ledger_migration_unavailable",
-            }
-            else "ledger_not_ready"
-        )
-        mcp_ready = bool(mcp_component and mcp_component.readiness.get("mcp"))
-        return {
-            "ledger_ready": ResearchReadinessCheck(result.ready, db_reason),
-            "identity_ready": ResearchReadinessCheck(
-                identity_ready,
-                "identity_ready" if identity_ready else "identity_not_installed",
-            ),
-            "mcp_ready": ResearchReadinessCheck(
-                mcp_ready, "mcp_ready" if mcp_ready else "mcp_not_installed"
-            ),
-            "executor_ready": ResearchReadinessCheck(False, "executor_not_installed"),
-        }
-
-    @asynccontextmanager
-    # skipcq: PYL-R0201
-    async def lifespan(_application: FastAPI):
-        """Enter MCP manager lifecycle and dispose database resources on exit."""
-        try:
-            async with AsyncExitStack() as stack:
-                if mcp_component is not None:
-                    await stack.enter_async_context(mcp_component.lifespan())
-                yield
-        finally:
-            await database.dispose()
+    readiness = _InstalledResearchReadiness(
+        database,
+        now,
+        identity_ready=identity_ready,
+        mcp_component=mcp_component,
+    )
+    lifespan = _InstalledResearchLifespan(database, mcp_component)
 
     return ResearchComponents(
         router=router,

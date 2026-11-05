@@ -30,6 +30,83 @@ from app.research.ports import (
 )
 
 
+def _persistence_error() -> DomainError:
+    """Return one safe failure projection without SQL or value diagnostics."""
+    return DomainError(
+        code="persistence_failed",
+        safe_message="research evidence registration could not be persisted",
+        retryable=True,
+    )
+
+
+def _policy_matches(existing: ResearchSourcePolicy, policy: SourcePolicy) -> bool:
+    """Compare every immutable policy business field without diagnostics."""
+    return (
+        existing.license_id,
+        existing.terms_ref,
+        existing.approved_at,
+        existing.expires_at,
+        existing.redisplay_allowed,
+        existing.model_use_allowed,
+        existing.storage_allowed,
+        existing.allowed_excerpt_length,
+    ) == (
+        policy.license_id,
+        policy.terms_ref,
+        policy.approved_at,
+        policy.expires_at,
+        policy.redisplay_allowed,
+        policy.model_use_allowed,
+        policy.storage_allowed,
+        policy.allowed_excerpt_length,
+    )
+
+
+async def _find_registered_evidence(
+    session: AsyncSession,
+    admission: AdmittedEvidence,
+) -> ResearchEvidence | None:
+    """Look up the immutable source/version key after policy persistence."""
+    return await session.scalar(
+        select(ResearchEvidence).where(
+            ResearchEvidence.source_id == admission.evidence.source_id,
+            ResearchEvidence.version == admission.evidence.version,
+        )
+    )
+
+
+async def _register_source_policy(
+    session: AsyncSession,
+    policy: SourcePolicy,
+) -> None:
+    """Insert an immutable policy projection or verify an exact existing copy."""
+    statement = (
+        insert(ResearchSourcePolicy)
+        .values(
+            source_id=policy.source_id,
+            policy_version=policy.policy_version,
+            license_id=policy.license_id,
+            terms_ref=policy.terms_ref,
+            approved_at=policy.approved_at,
+            expires_at=policy.expires_at,
+            redisplay_allowed=policy.redisplay_allowed,
+            model_use_allowed=policy.model_use_allowed,
+            storage_allowed=policy.storage_allowed,
+            allowed_excerpt_length=policy.allowed_excerpt_length,
+        )
+        .on_conflict_do_nothing(constraint="research_source_policy_pk")
+    )
+    await session.execute(statement)
+    existing = await session.scalar(
+        select(ResearchSourcePolicy).where(
+            ResearchSourcePolicy.source_id == policy.source_id,
+            ResearchSourcePolicy.policy_version == policy.policy_version,
+        )
+    )
+    if existing is None or not _policy_matches(existing, policy):
+        raise _persistence_error()
+
+
 class EvidenceRegistrationRepository(EvidenceRegistrationPort):
     """Atomically persist an admitted evidence/policy/market projection only."""
 
@@ -52,63 +129,18 @@ class EvidenceRegistrationRepository(EvidenceRegistrationPort):
             raise ValueError("now must be timezone-aware")
         try:
             async with self._database.session_factory() as session, session.begin():
-                await self._register_policy(session, admission.policy)
-                existing = await self._find_evidence(session, admission)
+                await _register_source_policy(session, admission.policy)
+                existing = await _find_registered_evidence(session, admission)
                 if existing is None:
                     await self._insert_evidence(session, admission)
                 elif not self._evidence_matches(existing, admission):
-                    raise self._persistence_error()
+                    raise _persistence_error()
                 await self._register_market_if_present(session, admission)
             return admission.evidence
         except DomainError:
             raise
         except SQLAlchemyError as error:
-            raise self._persistence_error() from error
-
-    async def _register_policy(
-        self,
-        session: AsyncSession,
-        policy: SourcePolicy,
-    ) -> None:
-        """Insert an immutable policy projection or verify an exact existing copy."""
-        statement = (
-            insert(ResearchSourcePolicy)
-            .values(
-                source_id=policy.source_id,
-                policy_version=policy.policy_version,
-                license_id=policy.license_id,
-                terms_ref=policy.terms_ref,
-                approved_at=policy.approved_at,
-                expires_at=policy.expires_at,
-                redisplay_allowed=policy.redisplay_allowed,
-                model_use_allowed=policy.model_use_allowed,
-                storage_allowed=policy.storage_allowed,
-                allowed_excerpt_length=policy.allowed_excerpt_length,
-            )
-            .on_conflict_do_nothing(constraint="research_source_policy_pk")
-        )
-        await session.execute(statement)
-        existing = await session.scalar(
-            select(ResearchSourcePolicy).where(
-                ResearchSourcePolicy.source_id == policy.source_id,
-                ResearchSourcePolicy.policy_version == policy.policy_version,
-            )
-        )
-        if existing is None or not self._policy_matches(existing, policy):
-            raise self._persistence_error()
-
-    async def _find_evidence(
-        self,
-        session: AsyncSession,
-        admission: AdmittedEvidence,
-    ) -> ResearchEvidence | None:
-        """Look up the immutable source/version key after policy persistence."""
-        return await session.scalar(
-            select(ResearchEvidence).where(
-                ResearchEvidence.source_id == admission.evidence.source_id,
-                ResearchEvidence.version == admission.evidence.version,
-            )
-        )
+            raise _persistence_error() from error
 
     async def _insert_evidence(
         self,
@@ -142,9 +174,9 @@ class EvidenceRegistrationRepository(EvidenceRegistrationPort):
         )
         result = await session.execute(statement)
         if result.rowcount == 0:
-            existing = await self._find_evidence(session, admission)
+            existing = await _find_registered_evidence(session, admission)
             if existing is None or not self._evidence_matches(existing, admission):
-                raise self._persistence_error()
+                raise _persistence_error()
 
     async def _register_market_if_present(
         self,
@@ -180,30 +212,7 @@ class EvidenceRegistrationRepository(EvidenceRegistrationPort):
             if existing is None or not self._market_matches(
                 existing, fields_projection, admission
             ):
-                raise self._persistence_error()
-
-    @staticmethod
-    def _policy_matches(existing: ResearchSourcePolicy, policy: SourcePolicy) -> bool:
-        """Compare every immutable policy business field without diagnostics."""
-        return (
-            existing.license_id,
-            existing.terms_ref,
-            existing.approved_at,
-            existing.expires_at,
-            existing.redisplay_allowed,
-            existing.model_use_allowed,
-            existing.storage_allowed,
-            existing.allowed_excerpt_length,
-        ) == (
-            policy.license_id,
-            policy.terms_ref,
-            policy.approved_at,
-            policy.expires_at,
-            policy.redisplay_allowed,
-            policy.model_use_allowed,
-            policy.storage_allowed,
-            policy.allowed_excerpt_length,
-        )
+                raise _persistence_error()
 
     @staticmethod
     def _evidence_matches(
@@ -277,13 +286,4 @@ class EvidenceRegistrationRepository(EvidenceRegistrationPort):
             market.provider,
             market.version,
             market.is_mock,
-        )
-
-    @staticmethod
-    def _persistence_error() -> DomainError:
-        """Return one safe failure projection without SQL or value diagnostics."""
-        return DomainError(
-            code="persistence_failed",
-            safe_message="research evidence registration could not be persisted",
-            retryable=True,
         )

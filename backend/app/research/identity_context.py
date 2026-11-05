@@ -158,7 +158,7 @@ class ResearchBearerAuthBackend(BearerAuthBackend):
 
     Install this in Starlette AuthenticationMiddleware, outside
     PrincipalContextMiddleware. The official backend still owns authentication
-    and constructs AuthenticatedUser; this bridge never supplies a Principal.
+    and     constructs AuthenticatedUser; this bridge never supplies a Principal.
     """
 
     # skipcq: PYL-R0201
@@ -179,7 +179,6 @@ def get_current_principal() -> Principal:
     return binding.principal
 
 
-# skipcq
 def _principal_from_scope(scope: Scope, *, now: datetime) -> Principal:
     """Validate the SDK's authenticated safe projection, not raw JWT claims."""
     user = scope.get("user")

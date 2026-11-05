@@ -114,13 +114,13 @@ class DeterministicEvidenceAdmission(EvidenceAdmissionPort):
         """Return an immutable admission only when every required fact is present."""
         if not isinstance(evidence, EvidenceV1) or not isinstance(policy, SourcePolicy):
             raise _evidence_ineligible()
-        if not _is_aware(now) or not self._evidence_is_admissible(
+        if not _is_aware(now) or not _evidence_is_admissible(
             evidence, self._approved_source_hosts
         ):
             raise _evidence_ineligible()
-        if not self._policy_is_admissible(evidence, policy, now):
+        if not _policy_is_admissible(evidence, policy, now):
             raise _evidence_ineligible()
-        if evidence.evidence_kind == "market" and not self._market_is_admissible(
+        if evidence.evidence_kind == "market" and not _market_is_admissible(
             evidence, evidence.market_payload
         ):
             raise _market_unverifiable()
@@ -131,105 +131,103 @@ class DeterministicEvidenceAdmission(EvidenceAdmissionPort):
         except ValueError:
             raise _evidence_ineligible() from None
 
-    # skipcq
-    @staticmethod
-    def _evidence_is_admissible(
-        evidence: EvidenceV1, approved_source_hosts: Mapping[str, frozenset[str]]
-    ) -> bool:
-        """Require verified HTTPS evidence with complete trusted chronology."""
-        source_url = evidence.source_url
-        entity_ids = evidence.entity_ids
-        try:
-            parsed_url = urlsplit(str(source_url))
-            valid_url = (
-                parsed_url.scheme.lower() == "https"
-                and bool(parsed_url.hostname)
-                and parsed_url.username is None
-                and parsed_url.password is None
-                and parsed_url.port in (None, 443)
-                and _canonical_host(parsed_url.hostname)
-                in approved_source_hosts.get(evidence.source_id, frozenset())
-            )
-        except ValueError:
-            valid_url = False
-        return (
-            evidence.origin == "live"
-            and evidence.quality_status == "verified_metadata"
-            and evidence.license_scope != "unknown"
-            and isinstance(evidence.source_id, str)
-            and bool(evidence.source_id)
-            and valid_url
-            and isinstance(entity_ids, Sequence)
-            and bool(entity_ids)
-            and len(entity_ids) == len(set(entity_ids))
-            and all(
-                isinstance(entity_id, str)
-                and _ENTITY_ID_PATTERN.fullmatch(entity_id) is not None
-                for entity_id in entity_ids
-            )
-            and _is_aware(evidence.published_at)
-            and _is_aware(evidence.fetched_at)
-            and _is_aware(evidence.available_at)
-            and evidence.published_at <= evidence.available_at <= evidence.fetched_at
-        )
 
-    @staticmethod
-    def _policy_is_admissible(
-        evidence: EvidenceV1,
-        policy: SourcePolicy,
-        now: datetime,
-    ) -> bool:
-        """Require active matched policy and explicit storage/model permissions."""
-        return (
-            _is_aware(policy.approved_at)
-            and _is_aware(policy.expires_at)
-            and policy.approved_at <= now < policy.expires_at
-            and policy.storage_allowed
-            and policy.model_use_allowed
-            and (evidence.excerpt is None or policy.redisplay_allowed)
-            and (
-                evidence.excerpt is None
-                or len(evidence.excerpt) <= policy.allowed_excerpt_length
-            )
-            and evidence.source_id == policy.source_id
-            and evidence.source_policy_version == policy.policy_version
+def _evidence_is_admissible(
+    evidence: EvidenceV1, approved_source_hosts: Mapping[str, frozenset[str]]
+) -> bool:
+    """Require verified HTTPS evidence with complete trusted chronology."""
+    source_url = evidence.source_url
+    entity_ids = evidence.entity_ids
+    try:
+        parsed_url = urlsplit(str(source_url))
+        valid_url = (
+            parsed_url.scheme.lower() == "https"
+            and bool(parsed_url.hostname)
+            and parsed_url.username is None
+            and parsed_url.password is None
+            and parsed_url.port in (None, 443)
+            and _canonical_host(parsed_url.hostname)
+            in approved_source_hosts.get(evidence.source_id, frozenset())
         )
+    except ValueError:
+        valid_url = False
+    return (
+        evidence.origin == "live"
+        and evidence.quality_status == "verified_metadata"
+        and evidence.license_scope != "unknown"
+        and isinstance(evidence.source_id, str)
+        and bool(evidence.source_id)
+        and valid_url
+        and isinstance(entity_ids, Sequence)
+        and bool(entity_ids)
+        and len(entity_ids) == len(set(entity_ids))
+        and all(
+            isinstance(entity_id, str)
+            and _ENTITY_ID_PATTERN.fullmatch(entity_id) is not None
+            for entity_id in entity_ids
+        )
+        and _is_aware(evidence.published_at)
+        and _is_aware(evidence.fetched_at)
+        and _is_aware(evidence.available_at)
+        and evidence.published_at <= evidence.available_at <= evidence.fetched_at
+    )
 
-    # skipcq
-    @staticmethod
-    def _market_is_admissible(
-        evidence: EvidenceV1,
-        market: MarketPayloadV1 | None,
-    ) -> bool:
-        """Require a fully traceable, non-mock market observation payload."""
-        if not isinstance(market, MarketPayloadV1):
-            return False
-        return (
-            market.evidence_id == evidence.evidence_id
-            and market.provider == evidence.source_id
-            and market.version == evidence.version
-            and market.symbol in evidence.entity_ids
-            and market.is_mock is False
-            and isinstance(market.currency, str)
-            and len(market.currency) == 3
-            and market.currency.isupper()
-            and market.adjustment in _ALLOWED_ADJUSTMENTS
-            and bool(market.fields)
-            and all(
-                isinstance(field.unit, str)
-                and bool(field.unit)
-                and isinstance(field.name, str)
-                and bool(field.name)
-                for field in market.fields
-            )
-            and _is_aware(market.observed_at)
-            and _is_aware(market.fetched_at)
-            and _is_aware(market.available_at)
-            and market.observed_at <= market.available_at
-            and market.available_at <= market.fetched_at
-            and market.available_at == evidence.available_at
-            and market.fetched_at == evidence.fetched_at
+
+def _policy_is_admissible(
+    evidence: EvidenceV1,
+    policy: SourcePolicy,
+    now: datetime,
+) -> bool:
+    """Require active matched policy and explicit storage/model permissions."""
+    return (
+        _is_aware(policy.approved_at)
+        and _is_aware(policy.expires_at)
+        and policy.approved_at <= now < policy.expires_at
+        and policy.storage_allowed
+        and policy.model_use_allowed
+        and (evidence.excerpt is None or policy.redisplay_allowed)
+        and (
+            evidence.excerpt is None
+            or len(evidence.excerpt) <= policy.allowed_excerpt_length
         )
+        and evidence.source_id == policy.source_id
+        and evidence.source_policy_version == policy.policy_version
+    )
+
+
+def _market_is_admissible(
+    evidence: EvidenceV1,
+    market: MarketPayloadV1 | None,
+) -> bool:
+    """Require a fully traceable, non-mock market observation payload."""
+    if not isinstance(market, MarketPayloadV1):
+        return False
+    return (
+        market.evidence_id == evidence.evidence_id
+        and market.provider == evidence.source_id
+        and market.version == evidence.version
+        and market.symbol in evidence.entity_ids
+        and market.is_mock is False
+        and isinstance(market.currency, str)
+        and len(market.currency) == 3
+        and market.currency.isupper()
+        and market.adjustment in _ALLOWED_ADJUSTMENTS
+        and bool(market.fields)
+        and all(
+            isinstance(field.unit, str)
+            and bool(field.unit)
+            and isinstance(field.name, str)
+            and bool(field.name)
+            for field in market.fields
+        )
+        and _is_aware(market.observed_at)
+        and _is_aware(market.fetched_at)
+        and _is_aware(market.available_at)
+        and market.observed_at <= market.available_at
+        and market.available_at <= market.fetched_at
+        and market.available_at == evidence.available_at
+        and market.fetched_at == evidence.fetched_at
+    )
 
 
 class EvidenceRegistrationService:
