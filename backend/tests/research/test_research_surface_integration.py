@@ -1,4 +1,7 @@
-"""Same-ASGI-app HTTP/MCP wiring with in-memory identity and fake ledger service."""
+"""Same-ASGI-app HTTP/MCP wiring with in-memory identity and fake ledger service.
+
+Author: Damon Li
+"""
 
 from __future__ import annotations
 
@@ -10,15 +13,16 @@ from uuid import UUID, uuid4
 
 import httpx
 import jwt
-from app.api.v1.research import get_identity_verifier, get_research_service, router
-from app.mcp.finnews_server import ALLOWED_TOOL_NAMES, create_finnews_mcp_app
-from app.research.auth import LocalRS256IdentityVerifier
-from app.research.contracts import ResearchEnvelope, ResearchRunViewV1
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import FastAPI
 from jwt.algorithms import RSAAlgorithm
 from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamable_http_client
+
+from app.api.v1.research import get_identity_verifier, get_research_service, router
+from app.mcp.finnews_server import ALLOWED_TOOL_NAMES, create_finnews_mcp_app
+from app.research.auth import LocalRS256IdentityVerifier
+from app.research.contracts import ResearchEnvelope, ResearchRunViewV1
 
 NOW = datetime.now(UTC)
 SUBJECT = UUID("11111111-1111-1111-1111-111111111111")
