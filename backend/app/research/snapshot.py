@@ -106,8 +106,7 @@ def _snapshot_policy_allows_member(
     return (
         policy.storage_allowed
         and policy.model_use_allowed
-        and policy.approved_at <= now
-        and policy.expires_at > now
+        and policy.approved_at <= now < policy.expires_at
         and row.origin == "live"
         and row.quality_status == "verified_metadata"
     )

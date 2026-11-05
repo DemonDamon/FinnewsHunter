@@ -284,6 +284,31 @@ async def _fenced_run(
     return run
 
 
+async def _authorized_run_view(
+    authorizer: AuthorizationPort,
+    session: AsyncSession,
+    run: ResearchRun,
+    principal: Principal,
+    now: datetime,
+    *,
+    brief: ResearchBrief | None = None,
+) -> ResearchRunViewV1:
+    """Return a read-authorized run view with optional brief redaction."""
+    authorizer.authorize_resource(
+        principal=principal,
+        owner_id=run.principal_id,
+        entity_ids=frozenset({run.entity_id}),
+        required_scope="research:read",
+        now=now,
+    )
+    if brief is None:
+        brief = await session.get(ResearchBrief, run.run_id)
+    revoked = bool(brief) and await _brief_policy_revoked(session, run.run_id, now)
+    return _run_view(
+        run, None if revoked else brief, "license_revoked" if revoked else None
+    )
+
+
 async def _reuse_existing_start_run(
     session: AsyncSession,
     *,
@@ -291,19 +316,11 @@ async def _reuse_existing_start_run(
     request_hash: str,
     principal: Principal,
     authorizer: AuthorizationPort,
-    ledger: ResearchLedger,
     now: datetime,
 ) -> ResearchRunViewV1:
     """Return the run view when the caller retries with the same request id."""
     if existing.request_hash != request_hash:
         raise _err("request_conflict", "request_id was reused with different input")
-    authorizer.authorize_resource(
-        principal=principal,
-        owner_id=existing.principal_id,
-        entity_ids=frozenset({existing.entity_id}),
-        required_scope="research:read",
-        now=now,
-    )
     await _append_audit(
         session,
         action="run_retry",
@@ -311,7 +328,9 @@ async def _reuse_existing_start_run(
         run_id=existing.run_id,
         principal_id=principal.principal_id,
     )
-    return await ledger._safe_run_view(session, existing, principal, now)
+    return await _authorized_run_view(
+        authorizer, session, existing, principal, now
+    )
 
 
 async def _load_start_seed_evidence(
@@ -406,20 +425,8 @@ class ResearchLedger:
         brief: ResearchBrief | None = None,
     ) -> ResearchRunViewV1:
         """Return a read-authorized run view with optional brief redaction."""
-        self._authorizer.authorize_resource(
-            principal=principal,
-            owner_id=run.principal_id,
-            entity_ids=frozenset({run.entity_id}),
-            required_scope="research:read",
-            now=now,
-        )
-        if brief is None:
-            brief = await session.get(ResearchBrief, run.run_id)
-        revoked = bool(brief) and await _brief_policy_revoked(
-            session, run.run_id, now
-        )
-        return _run_view(
-            run, None if revoked else brief, "license_revoked" if revoked else None
+        return await _authorized_run_view(
+            self._authorizer, session, run, principal, now, brief=brief
         )
 
     async def create_or_reuse_run(
@@ -453,7 +460,6 @@ class ResearchLedger:
                         request_hash=request_hash,
                         principal=principal,
                         authorizer=self._authorizer,
-                        ledger=self,
                         now=now,
                     )
                 evidence, _policy = await _load_start_seed_evidence(

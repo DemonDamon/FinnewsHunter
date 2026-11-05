@@ -226,6 +226,29 @@ def _market_field_metadata_valid(market: MarketPayloadV1) -> bool:
     )
 
 
+def _market_currency_valid(market: MarketPayloadV1) -> bool:
+    """Return whether market currency and adjustment metadata are valid."""
+    return (
+        isinstance(market.currency, str)
+        and len(market.currency) == 3
+        and market.currency.isupper()
+        and market.adjustment in _ALLOWED_ADJUSTMENTS
+    )
+
+
+def _market_time_alignment(evidence: EvidenceV1, market: MarketPayloadV1) -> bool:
+    """Return whether market timestamps align with evidence."""
+    return (
+        _is_aware(market.observed_at)
+        and _is_aware(market.fetched_at)
+        and _is_aware(market.available_at)
+        and market.observed_at <= market.available_at
+        and market.available_at <= market.fetched_at
+        and market.available_at == evidence.available_at
+        and market.fetched_at == evidence.fetched_at
+    )
+
+
 def _market_trace_valid(evidence: EvidenceV1, market: MarketPayloadV1) -> bool:
     """Return whether market payload identifiers align with admitted evidence."""
     return (
@@ -234,18 +257,9 @@ def _market_trace_valid(evidence: EvidenceV1, market: MarketPayloadV1) -> bool:
         and market.version == evidence.version
         and market.symbol in evidence.entity_ids
         and market.is_mock is False
-        and isinstance(market.currency, str)
-        and len(market.currency) == 3
-        and market.currency.isupper()
-        and market.adjustment in _ALLOWED_ADJUSTMENTS
+        and _market_currency_valid(market)
         and _market_field_metadata_valid(market)
-        and _is_aware(market.observed_at)
-        and _is_aware(market.fetched_at)
-        and _is_aware(market.available_at)
-        and market.observed_at <= market.available_at
-        and market.available_at <= market.fetched_at
-        and market.available_at == evidence.available_at
-        and market.fetched_at == evidence.fetched_at
+        and _market_time_alignment(evidence, market)
     )
 
 
