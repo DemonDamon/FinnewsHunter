@@ -30,11 +30,14 @@ ENTITY = "CN.SH.600519"
 
 
 class FakeService:
+    """Test helper FakeService."""
     def __init__(self) -> None:
+        """Test helper __init__."""
         self.calls = []
         self.run_id = uuid4()
 
     def result(self):
+        """Test helper result."""
         return ResearchRunViewV1(
             run_id=self.run_id,
             request_id=UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
@@ -53,6 +56,7 @@ class FakeService:
         )
 
     async def start_research(self, *, principal, request, envelope=False):
+        """Test helper start_research."""
         self.calls.append((principal.principal_id, request.model_dump(mode="json")))
         result = self.result()
         if not envelope:
@@ -71,7 +75,9 @@ class FakeService:
 
 
 def test_http_and_mcp_share_one_service_and_verified_principal():
+    """Test helper test_http_and_mcp_share_one_service_and_verified_principal."""
     async def scenario():
+        """Test helper scenario."""
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         jwk = json.loads(RSAAlgorithm.to_jwk(key.public_key()))
         jwk.update({"kid": "memory", "alg": "RS256", "use": "sig"})
@@ -105,6 +111,7 @@ def test_http_and_mcp_share_one_service_and_verified_principal():
 
         @asynccontextmanager
         async def lifespan(app):
+            """Test helper lifespan."""
             async with mcp.lifespan():
                 yield
 

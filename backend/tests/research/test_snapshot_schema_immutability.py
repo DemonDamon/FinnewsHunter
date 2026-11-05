@@ -86,6 +86,7 @@ async def test_snapshot_membership_requires_materialized_and_freeze_is_immutable
         )
 
         async def rejected(statement, params):
+            """Test helper rejected."""
             with pytest.raises(DBAPIError) as caught:
                 async with engine.begin() as connection:
                     await connection.execute(text(statement), params)

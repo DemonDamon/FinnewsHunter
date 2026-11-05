@@ -75,6 +75,7 @@ async def _table_names(context: IsolatedPostgres) -> set[str]:
     """Inspect the schema-local tables using PostgreSQL's actual catalog."""
 
     async def inspect_tables(connection: AsyncConnection) -> set[str]:
+        """Test helper inspect_tables."""
         return await connection.run_sync(
             lambda sync_connection: set(
                 inspect(sync_connection).get_table_names(schema=context.schema)
@@ -88,6 +89,7 @@ async def _constraint_catalog(context: IsolatedPostgres) -> dict[str, object]:
     """Read migration-created unique/check/foreign-key metadata from PostgreSQL."""
 
     def inspect_constraints(sync_connection):
+        """Test helper inspect_constraints."""
         inspector = inspect(sync_connection)
         return {
             "run_unique": inspector.get_unique_constraints(
@@ -111,6 +113,7 @@ async def _constraint_catalog(context: IsolatedPostgres) -> dict[str, object]:
         }
 
     async def inspect_all(connection: AsyncConnection) -> dict[str, object]:
+        """Test helper inspect_all."""
         return await connection.run_sync(inspect_constraints)
 
     return await _run_in_schema(context, inspect_all)
@@ -128,6 +131,7 @@ async def _seed_policy_evidence_run(context: IsolatedPostgres) -> dict[str, UUID
     }
 
     async def seed(connection: AsyncConnection) -> None:
+        """Test helper seed."""
         await connection.execute(
             text(
                 """
@@ -333,6 +337,7 @@ def test_upgrade_preserves_legacy_sentinel(postgres_context: IsolatedPostgres) -
     sentinel = b"legacy-sentinel-byte-equivalent"
 
     async def create_sentinel(connection: AsyncConnection) -> None:
+        """Test helper create_sentinel."""
         await connection.execute(
             text(
                 "CREATE TABLE legacy_sentinel (id integer primary key, payload bytea not null)"
@@ -347,6 +352,7 @@ def test_upgrade_preserves_legacy_sentinel(postgres_context: IsolatedPostgres) -
     upgrade_head(postgres_context)
 
     async def read_sentinel(connection: AsyncConnection) -> tuple[bytes, set[str]]:
+        """Test helper read_sentinel."""
         payload = (
             await connection.execute(
                 text("SELECT payload FROM legacy_sentinel WHERE id = 1")
@@ -412,6 +418,7 @@ def test_constraints_are_enforced_by_postgresql(
     identifiers = asyncio.run(_seed_policy_evidence_run(postgres_context))
 
     async def duplicate_run(connection: AsyncConnection) -> None:
+        """Test helper duplicate_run."""
         await connection.execute(
             text(
                 """
@@ -432,6 +439,7 @@ def test_constraints_are_enforced_by_postgresql(
         asyncio.run(_run_in_schema(postgres_context, duplicate_run))
 
     async def add_event_then_duplicate(connection: AsyncConnection) -> None:
+        """Test helper add_event_then_duplicate."""
         for event_id in (uuid4(), uuid4()):
             await connection.execute(
                 text(
@@ -448,6 +456,7 @@ def test_constraints_are_enforced_by_postgresql(
         asyncio.run(_run_in_schema(postgres_context, add_event_then_duplicate))
 
     async def duplicate_snapshot(connection: AsyncConnection) -> None:
+        """Test helper duplicate_snapshot."""
         await connection.execute(
             text(
                 """
@@ -470,6 +479,7 @@ def test_constraints_are_enforced_by_postgresql(
         asyncio.run(_run_in_schema(postgres_context, duplicate_snapshot))
 
     async def duplicate_outbox(connection: AsyncConnection) -> None:
+        """Test helper duplicate_outbox."""
         await connection.execute(
             text(
                 """
@@ -487,6 +497,7 @@ def test_constraints_are_enforced_by_postgresql(
         asyncio.run(_run_in_schema(postgres_context, duplicate_outbox))
 
     async def invalid_run_status(connection: AsyncConnection) -> None:
+        """Test helper invalid_run_status."""
         await connection.execute(
             text(
                 """
@@ -514,6 +525,7 @@ def test_constraints_are_enforced_by_postgresql(
         asyncio.run(_run_in_schema(postgres_context, invalid_run_status))
 
     async def invalid_event_type(connection: AsyncConnection) -> None:
+        """Test helper invalid_event_type."""
         await connection.execute(
             text(
                 """
@@ -537,6 +549,7 @@ def test_registration_rolls_back_policy_and_evidence(
     sentinel = b"registration-sentinel"
 
     async def create_sentinel(connection: AsyncConnection) -> None:
+        """Test helper create_sentinel."""
         await connection.execute(
             text(
                 "CREATE TABLE legacy_sentinel (id integer primary key, payload bytea not null)"
@@ -594,6 +607,7 @@ def test_registration_rolls_back_policy_and_evidence(
     assert engine is not None
 
     def force_evidence_write_failure(*_args, **_kwargs) -> None:
+        """Test helper force_evidence_write_failure."""
         raise SQLAlchemyError("forced second write failure")
 
     event.listen(
@@ -613,6 +627,7 @@ def test_registration_rolls_back_policy_and_evidence(
     assert raised.value.code == "persistence_failed"
 
     async def count_rows(connection: AsyncConnection) -> tuple[int, int, int, bytes]:
+        """Test helper count_rows."""
         policy_count = (
             await connection.execute(
                 select(func.count()).select_from(ResearchSourcePolicy)
@@ -653,6 +668,7 @@ def test_snapshot_member_binds_exact_evidence_identity(
     ids = asyncio.run(_seed_policy_evidence_run(postgres_context))
 
     async def insert_mismatched_member(connection: AsyncConnection) -> None:
+        """Test helper insert_mismatched_member."""
         await connection.execute(
             text("""
                 INSERT INTO research_snapshot_member (
@@ -681,6 +697,7 @@ def test_server_timestamp_default_is_timezone_independent(
     upgrade_head(postgres_context)
 
     async def insert_and_compare(connection: AsyncConnection) -> None:
+        """Test helper insert_and_compare."""
         await connection.execute(text("SET LOCAL TIME ZONE 'Asia/Shanghai'"))
         await connection.execute(
             text("""
@@ -782,6 +799,7 @@ def test_registration_retry_ignores_later_admitted_at(
     repository = EvidenceRegistrationRepository(database)
 
     async def register_twice() -> None:
+        """Test helper register_twice."""
         try:
             assert (
                 await repository.register_evidence(admission=first, now=NOW)
@@ -797,6 +815,7 @@ def test_registration_retry_ignores_later_admitted_at(
     asyncio.run(register_twice())
 
     async def read_saved(connection: AsyncConnection):
+        """Test helper read_saved."""
         return await connection.execute(
             text("""
             SELECT admitted_at, count(*) OVER () FROM research_evidence
@@ -816,6 +835,7 @@ def test_deferred_market_evidence_pair_constraint_and_registration(
     upgrade_head(postgres_context)
 
     async def seed_policy(connection: AsyncConnection) -> None:
+        """Test helper seed_policy."""
         await connection.execute(
             text("""
             INSERT INTO research_source_policy (
@@ -833,6 +853,7 @@ def test_deferred_market_evidence_pair_constraint_and_registration(
     async def insert_evidence(
         connection: AsyncConnection, *, kind: str, eid: UUID
     ) -> None:
+        """Test helper insert_evidence."""
         await connection.execute(
             text("""
             INSERT INTO research_evidence (
@@ -862,6 +883,7 @@ def test_deferred_market_evidence_pair_constraint_and_registration(
         )
 
     async def event_with_payload(connection: AsyncConnection) -> None:
+        """Test helper event_with_payload."""
         eid = uuid4()
         await insert_evidence(connection, kind="event", eid=eid)
         await connection.execute(
@@ -894,6 +916,7 @@ def test_deferred_market_evidence_pair_constraint_and_registration(
         asyncio.run(database.dispose())
 
     async def confirm_valid_pair(connection: AsyncConnection) -> tuple[int, int]:
+        """Test helper confirm_valid_pair."""
         evidence_count = (
             await connection.execute(
                 text("SELECT count(*) FROM research_evidence WHERE evidence_id = :id"),

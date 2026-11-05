@@ -153,6 +153,7 @@ def test_exact_port_mapping_and_same_clock_in_both_transports(
     model,
     envelope,
 ) -> None:
+    """Test helper test_exact_port_mapping_and_same_clock_in_both_transports."""
     request, result = _request(name), _result(name, model)
     getattr(ledger, port_name).return_value = result
     clock = Mock(return_value=NOW)
@@ -197,11 +198,13 @@ def test_envelopes_get_fresh_server_request_ids_and_single_clock_samples(
     authorization,
     principal,
 ) -> None:
+    """Test helper test_envelopes_get_fresh_server_request_ids_and_single_clock_samples."""
     ledger.get_run.return_value = _result("get_run", ResearchRunViewV1)
     clock = Mock(side_effect=[NOW, NOW + timedelta(seconds=1)])
     service = _service(ledger, authorization, clock=clock)
 
     async def scenario():
+        """Test helper scenario."""
         return [
             await service.get_run(
                 principal=principal, request=_request("get_run"), envelope=True
@@ -226,6 +229,7 @@ def test_execution_disabled_never_calls_ledger(
     principal,
     envelope,
 ) -> None:
+    """Test helper test_execution_disabled_never_calls_ledger."""
     service = _service(ledger, authorization, enabled=False)
     if envelope:
         result = asyncio.run(
@@ -257,6 +261,7 @@ def test_enabled_execution_still_relies_on_atomic_ledger_readiness(
     authorization,
     principal,
 ) -> None:
+    """Test helper test_enabled_execution_still_relies_on_atomic_ledger_readiness."""
     ledger.create_or_reuse_run.side_effect = DomainError(
         code="execution_unavailable",
         safe_message=UNSAFE,
@@ -278,12 +283,14 @@ def test_enabled_execution_still_relies_on_atomic_ledger_readiness(
 def test_idempotency_is_not_cached_or_decided_by_service(
     ledger, authorization, principal
 ) -> None:
+    """Test helper test_idempotency_is_not_cached_or_decided_by_service."""
     result = _result("start_research", ResearchRunViewV1)
     ledger.create_or_reuse_run.return_value = result
     request = _request("start_research")
     service = _service(ledger, authorization)
 
     async def scenario():
+        """Test helper scenario."""
         first = await service.start_research(principal=principal, request=request)
         second = await service.start_research(principal=principal, request=request)
         assert first is second is result
@@ -306,6 +313,7 @@ def test_all_domain_error_codes_have_safe_consistent_dto_or_envelope_outcomes(
     envelope,
     caplog,
 ) -> None:
+    """Test helper test_all_domain_error_codes_have_safe_consistent_dto_or_envelope_outcomes."""
     retryable = code in {
         "identity_material_unavailable",
         "execution_unavailable",
@@ -362,6 +370,7 @@ def test_denial_is_normalized_on_every_tool_path(
     port_name,
     model,
 ) -> None:
+    """Test helper test_denial_is_normalized_on_every_tool_path."""
     getattr(ledger, port_name).side_effect = DomainError(
         code="resource_not_found_or_denied",
         safe_message=UNSAFE,
@@ -387,6 +396,7 @@ def test_only_retryable_infrastructure_errors_are_unavailable(
     principal,
     retryable,
 ) -> None:
+    """Test helper test_only_retryable_infrastructure_errors_are_unavailable."""
     ledger.get_run.side_effect = DomainError(
         code="persistence_failed",
         safe_message=UNSAFE,
@@ -407,6 +417,7 @@ def test_retryable_business_error_does_not_masquerade_as_infrastructure(
     authorization,
     principal,
 ) -> None:
+    """Test helper test_retryable_business_error_does_not_masquerade_as_infrastructure."""
     ledger.get_run.side_effect = DomainError(
         code="quota_exceeded",
         safe_message=UNSAFE,
@@ -427,6 +438,7 @@ def test_retryable_business_error_does_not_masquerade_as_infrastructure(
 def test_missing_market_data_is_not_false_ok(
     ledger, authorization, principal, envelope
 ) -> None:
+    """Test helper test_missing_market_data_is_not_false_ok."""
     ledger.get_market_snapshot.return_value = None
     service = _service(ledger, authorization)
     if envelope:
@@ -455,6 +467,7 @@ def test_run_revoked_projection_is_preserved_without_brief_reconstruction(
     authorization,
     principal,
 ) -> None:
+    """Test helper test_run_revoked_projection_is_preserved_without_brief_reconstruction."""
     base = _result("get_run", ResearchRunViewV1).model_dump()
     base.update(status="completed", brief=None, error_code="license_revoked")
     revoked = ResearchRunViewV1.model_validate(base)
@@ -479,6 +492,7 @@ def test_event_page_uses_exact_cursor_clock_and_fixed_server_limit(
     principal,
     cursor,
 ) -> None:
+    """Test helper test_event_page_uses_exact_cursor_clock_and_fixed_server_limit."""
     event = RunEventV1(
         event_id=uuid4(),
         run_id=RUN_ID,
@@ -510,6 +524,7 @@ def test_event_page_uses_exact_cursor_clock_and_fixed_server_limit(
 
 
 def test_event_cursor_denial_stays_safe(ledger, authorization, principal) -> None:
+    """Test helper test_event_cursor_denial_stays_safe."""
     ledger.read_events.side_effect = DomainError(
         code="event_cursor_invalid",
         safe_message=UNSAFE,
@@ -530,6 +545,7 @@ def test_event_cursor_denial_stays_safe(ledger, authorization, principal) -> Non
 def test_bad_clock_never_reaches_ledger(
     ledger, authorization, principal, bad_now
 ) -> None:
+    """Test helper test_bad_clock_never_reaches_ledger."""
     with pytest.raises(ValueError, match="timezone-aware"):
         asyncio.run(
             _service(ledger, authorization, clock=lambda: bad_now).get_run(
@@ -544,6 +560,7 @@ def test_bad_clock_never_reaches_ledger(
 def test_aware_non_utc_clock_is_normalized_once(
     ledger, authorization, principal
 ) -> None:
+    """Test helper test_aware_non_utc_clock_is_normalized_once."""
     offset_now = NOW.astimezone(timezone(timedelta(hours=8)))
     ledger.get_run.return_value = _result("get_run", ResearchRunViewV1)
     output = asyncio.run(
@@ -561,6 +578,7 @@ def test_aware_non_utc_clock_is_normalized_once(
 def test_execution_switch_is_strictly_boolean(
     ledger, authorization, bad_enabled
 ) -> None:
+    """Test helper test_execution_switch_is_strictly_boolean."""
     with pytest.raises(ValueError, match="boolean"):
         _service(ledger, authorization, enabled=bad_enabled)
     assert not ledger.mock_calls
@@ -575,6 +593,7 @@ def test_unexpected_errors_and_cancellation_are_not_fabricated_as_success(
     principal,
     error,
 ) -> None:
+    """Test helper test_unexpected_errors_and_cancellation_are_not_fabricated_as_success."""
     ledger.get_run.side_effect = error
     with pytest.raises(type(error)):
         asyncio.run(
@@ -587,6 +606,7 @@ def test_unexpected_errors_and_cancellation_are_not_fabricated_as_success(
 
 
 def test_public_service_operation_set_is_exact() -> None:
+    """Test helper test_public_service_operation_set_is_exact."""
     names = {
         name
         for name in vars(ResearchApplicationService)

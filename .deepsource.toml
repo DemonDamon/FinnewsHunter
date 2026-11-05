@@ -1,17 +1,16 @@
 version = 1
 
-# Research migrations and agent plans are not product Python surfaces.
+test_patterns = [
+  "backend/tests/**",
+  "**/test_*.py",
+]
+
 exclude_patterns = [
-  "backend/alembic/**",
+  "**/alembic/**",
   ".cursor/**",
   ".work/**",
   "legacy_v1/**",
   "thirdparty/**",
-]
-
-test_patterns = [
-  "backend/tests/**",
-  "**/test_*.py",
 ]
 
 [[analyzers]]

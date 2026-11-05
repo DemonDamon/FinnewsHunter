@@ -46,11 +46,13 @@ from backend.tests.research.postgres_fixtures import (
 
 @pytest.fixture
 def postgres_context() -> IsolatedPostgres:
+    """Test helper postgres_context."""
     return create_postgres_context()
 
 
 class _ReadyExecutor:
     async def get_readiness(self, *, now):
+        """Test helper get_readiness."""
         return ExecutorReadiness(
             ready=True,
             reason="test",
@@ -203,6 +205,7 @@ async def _claim(ledger, now, worker, task):
 
 @pytest.mark.asyncio
 async def test_dispatch_claim_lease_heartbeat_and_fence(postgres_context):
+    """Test helper test_dispatch_claim_lease_heartbeat_and_fence."""
     database, ledger, now, _, run_id, _, principal, worker, task = await _setup(
         postgres_context
     )
@@ -272,6 +275,7 @@ async def test_dispatch_claim_lease_heartbeat_and_fence(postgres_context):
 
 @pytest.mark.asyncio
 async def test_event_sequence_and_full_transaction_rollback(postgres_context):
+    """Test helper test_event_sequence_and_full_transaction_rollback."""
     database, ledger, now, pid, run_id, _, principal, worker, task = await _setup(
         postgres_context
     )
@@ -381,6 +385,7 @@ async def test_event_sequence_and_full_transaction_rollback(postgres_context):
 
 @pytest.mark.asyncio
 async def test_terminal_publish_and_reap_race_is_atomic(postgres_context):
+    """Test helper test_terminal_publish_and_reap_race_is_atomic."""
     database, ledger, now, pid, run_id, _evidence_id, _, worker, task = await _setup(
         postgres_context
     )
@@ -391,6 +396,7 @@ async def test_terminal_publish_and_reap_race_is_atomic(postgres_context):
         expire_time = lease.lease_expires_at
 
         async def finish():
+            """Test helper finish."""
             try:
                 return await ledger.finish_run(
                     run_id=run_id,
@@ -404,6 +410,7 @@ async def test_terminal_publish_and_reap_race_is_atomic(postgres_context):
                 return exc.code
 
         async def reap():
+            """Test helper reap."""
             return await ledger.reap_stale(
                 now=expire_time + timedelta(seconds=1), limit=10
             )
@@ -537,6 +544,7 @@ async def test_terminal_publish_and_reap_race_is_atomic(postgres_context):
 async def test_expired_exact_policy_redacts_completed_brief_on_read_and_retry(
     postgres_context,
 ):
+    """Test helper test_expired_exact_policy_redacts_completed_brief_on_read_and_retry."""
     from hashlib import sha256
 
     from app.research.contracts import (
@@ -664,6 +672,7 @@ async def test_expired_exact_policy_redacts_completed_brief_on_read_and_retry(
 
 @pytest.mark.asyncio
 async def test_evidence_excerpt_and_market_reads_obey_current_policy(postgres_context):
+    """Test helper test_evidence_excerpt_and_market_reads_obey_current_policy."""
     from app.research.contracts import (
         GetEvidenceInput,
         GetMarketSnapshotInput,
@@ -885,6 +894,7 @@ async def test_evidence_excerpt_and_market_reads_obey_current_policy(postgres_co
 async def test_publish_rejects_expired_exact_policy_without_partial_writes(
     postgres_context,
 ):
+    """Test helper test_publish_rejects_expired_exact_policy_without_partial_writes."""
     from app.research.contracts import ClaimV1, ResearchBriefV1
 
     (
@@ -959,6 +969,7 @@ async def test_publish_rejects_expired_exact_policy_without_partial_writes(
 
 @pytest.mark.asyncio
 async def test_direct_market_read_validates_non_mock_projection(postgres_context):
+    """Test helper test_direct_market_read_validates_non_mock_projection."""
     from app.research.contracts import GetMarketSnapshotInput
 
     database, ledger, now, _, _, _, principal, _, _ = await _setup(
@@ -1137,6 +1148,7 @@ async def test_direct_market_read_validates_non_mock_projection(postgres_context
 async def test_publish_uses_exact_policy_version_for_snapshot_evidence(
     postgres_context,
 ):
+    """Test helper test_publish_uses_exact_policy_version_for_snapshot_evidence."""
     from app.research.contracts import ClaimV1, ResearchBriefV1
 
     database, ledger, now, _, run_id, evidence_id, _, worker, task = await _setup(

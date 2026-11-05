@@ -34,6 +34,7 @@ OTHER_ENTITY = "CN.SZ.000001"
 
 @pytest.fixture
 def postgres_context() -> IsolatedPostgres:
+    """Test helper postgres_context."""
     return create_postgres_context()
 
 
@@ -138,6 +139,7 @@ async def _run(database, *, seed_id, now, as_of, entity=ENTITY, state="none"):
 
 @pytest.mark.asyncio
 async def test_duplicate_materialization_uses_eligibility_order(postgres_context):
+    """Test helper test_duplicate_materialization_uses_eligibility_order."""
     await asyncio.to_thread(upgrade_head, postgres_context)
     database = create_research_database(
         postgres_context.url,
@@ -188,6 +190,7 @@ async def test_duplicate_materialization_uses_eligibility_order(postgres_context
 
 @pytest.mark.asyncio
 async def test_snapshot_point_in_time_freeze_and_fail_closed(postgres_context):
+    """Test helper test_snapshot_point_in_time_freeze_and_fail_closed."""
     await asyncio.to_thread(upgrade_head, postgres_context)
     database = create_research_database(
         postgres_context.url,
@@ -361,6 +364,7 @@ async def test_snapshot_point_in_time_freeze_and_fail_closed(postgres_context):
 
 @pytest.mark.asyncio
 async def test_freeze_rechecks_expiry_after_materialization(postgres_context):
+    """Test helper test_freeze_rechecks_expiry_after_materialization."""
     await asyncio.to_thread(upgrade_head, postgres_context)
     database = create_research_database(
         postgres_context.url,
@@ -417,6 +421,7 @@ async def test_freeze_rechecks_expiry_after_materialization(postgres_context):
 
 @pytest.mark.asyncio
 async def test_market_payload_round_trip_and_fail_closed(postgres_context):
+    """Test helper test_market_payload_round_trip_and_fail_closed."""
     await asyncio.to_thread(upgrade_head, postgres_context)
     database = create_research_database(
         postgres_context.url,
@@ -586,6 +591,7 @@ async def test_market_payload_round_trip_and_fail_closed(postgres_context):
 async def test_denied_policy_never_materializes_or_returns_content(
     postgres_context, policy_changes
 ):
+    """Test helper test_denied_policy_never_materializes_or_returns_content."""
     await asyncio.to_thread(upgrade_head, postgres_context)
     database = create_research_database(
         postgres_context.url,

@@ -30,11 +30,14 @@ from backend.tests.research.postgres_fixtures import (
 
 @pytest.fixture
 def postgres_context() -> IsolatedPostgres:
+    """Test helper postgres_context."""
     return create_postgres_context()
 
 
 class ReadyExecutor:
+    """Test helper ReadyExecutor."""
     async def get_readiness(self, *, now):
+        """Test helper get_readiness."""
         return ExecutorReadiness(
             ready=True,
             reason="test",
@@ -44,13 +47,17 @@ class ReadyExecutor:
 
 
 class SnapshotStub:
+    """Test helper SnapshotStub."""
     async def materialize_snapshot(self, **kwargs):
+        """Test helper materialize_snapshot."""
         raise NotImplementedError
 
     async def freeze_snapshot(self, **kwargs):
+        """Test helper freeze_snapshot."""
         raise NotImplementedError
 
     async def read_snapshot(self, **kwargs):
+        """Test helper read_snapshot."""
         raise NotImplementedError
 
 
@@ -67,6 +74,7 @@ def _principal(pid):
 
 @pytest.mark.asyncio
 async def test_ten_concurrent_same_principal_requests_write_one_run(postgres_context):
+    """Test helper test_ten_concurrent_same_principal_requests_write_one_run."""
     context = postgres_context
     await asyncio.to_thread(upgrade_head, context)
     engine = create_async_engine(
@@ -154,6 +162,7 @@ async def test_ten_concurrent_same_principal_requests_write_one_run(postgres_con
 
 @pytest.mark.asyncio
 async def test_distinct_requests_serialize_first_quota_creation(postgres_context):
+    """Test helper test_distinct_requests_serialize_first_quota_creation."""
     context = postgres_context
     await asyncio.to_thread(upgrade_head, context)
     database = create_research_database(
@@ -244,6 +253,7 @@ async def _seed_evidence(database, now):
 
 @pytest.mark.asyncio
 async def test_hash_conflict_and_principal_isolation(postgres_context):
+    """Test helper test_hash_conflict_and_principal_isolation."""
     from app.research.errors import DomainError
     from app.research.models import ResearchAudit
     from sqlalchemy import func
@@ -312,10 +322,13 @@ async def test_hash_conflict_and_principal_isolation(postgres_context):
 
 @pytest.mark.asyncio
 async def test_unready_executor_writes_no_ledger_rows(postgres_context):
+    """Test helper test_unready_executor_writes_no_ledger_rows."""
     from app.research.errors import DomainError
 
     class Unready:
+        """Test helper Unready."""
         async def get_readiness(self, *, now):
+            """Test helper get_readiness."""
             return ExecutorReadiness(
                 ready=False,
                 reason="offline",
@@ -375,12 +388,14 @@ async def test_unready_executor_writes_no_ledger_rows(postgres_context):
 async def test_unique_request_race_uses_integrity_fallback(
     postgres_context, questions, expect_conflict, deny_fallback_read
 ):
+    """Test helper test_unique_request_race_uses_integrity_fallback."""
     from app.research.errors import DomainError
 
     class ReadRevokedAuthorizer:
         """Deny the fallback's read recheck after allowing initial create calls."""
 
         def authorize_resource(self, **kwargs):
+            """Test helper authorize_resource."""
             if kwargs["required_scope"] == "research:read":
                 raise DomainError(
                     code="resource_not_found_or_denied",
@@ -393,11 +408,13 @@ async def test_unique_request_race_uses_integrity_fallback(
         """Hold both transactions after they observe no existing request."""
 
         def __init__(self):
+            """Test helper __init__."""
             self._lock = asyncio.Lock()
             self._ready = asyncio.Event()
             self._calls = 0
 
         async def get_readiness(self, *, now):
+            """Test helper get_readiness."""
             async with self._lock:
                 self._calls += 1
                 if self._calls == 2:
@@ -450,6 +467,7 @@ async def test_unique_request_race_uses_integrity_fallback(
     ]
 
     async def create(request):
+        """Test helper create."""
         try:
             return await ledger.create_or_reuse_run(
                 principal=principal, request=request, now=now
@@ -499,6 +517,7 @@ async def test_unique_request_race_uses_integrity_fallback(
 async def test_existing_run_retry_works_when_executor_down_and_quota_full(
     postgres_context,
 ):
+    """Test helper test_existing_run_retry_works_when_executor_down_and_quota_full."""
     from app.research.errors import DomainError
 
     class ToggleExecutor:
@@ -507,6 +526,7 @@ async def test_existing_run_retry_works_when_executor_down_and_quota_full(
         ready = True
 
         async def get_readiness(self, *, now):
+            """Test helper get_readiness."""
             return ExecutorReadiness(
                 ready=self.ready,
                 reason="test-ready" if self.ready else "offline",

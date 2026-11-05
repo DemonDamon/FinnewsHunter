@@ -54,6 +54,7 @@ def no_network(
     caplog.set_level(logging.DEBUG)
 
     def forbidden(*args, **kwargs):
+        """Test helper forbidden."""
         raise AssertionError("network is forbidden in S03-A tests")
 
     monkeypatch.setattr(socket.socket, "connect", forbidden)
@@ -166,6 +167,7 @@ def _assert_no_context() -> None:
     "header", [b"Bearer abc.A_-~+/==", b"bearer opaque", b"bEaReR x"]
 )
 def test_parser_accepts_only_one_bounded_ascii_bearer(header: bytes) -> None:
+    """Test helper test_parser_accepts_only_one_bounded_ascii_bearer."""
     credential = parse_bearer_headers([(b"Authorization", header)])
     assert credential.for_verification() == header.split(b" ")[1].decode("ascii")
     assert credential.for_verification() not in repr(credential)
@@ -196,6 +198,7 @@ def test_parser_accepts_only_one_bounded_ascii_bearer(header: bytes) -> None:
     ],
 )
 def test_parser_rejects_missing_ambiguous_or_malformed_headers(headers) -> None:
+    """Test helper test_parser_rejects_missing_ambiguous_or_malformed_headers."""
     with pytest.raises(DomainError) as raised:
         parse_bearer_headers(headers)
     assert raised.value.code == "identity_invalid"
@@ -204,6 +207,7 @@ def test_parser_rejects_missing_ambiguous_or_malformed_headers(headers) -> None:
 
 
 def test_parser_exact_authorization_size_boundary() -> None:
+    """Test helper test_parser_exact_authorization_size_boundary."""
     accepted = b"Bearer " + b"x" * (MAX_AUTHORIZATION_LENGTH - 7)
     assert len(accepted) == MAX_AUTHORIZATION_LENGTH
     assert parse_bearer_headers([(b"authorization", accepted)]).for_verification() == (
@@ -217,7 +221,9 @@ def test_http_and_sdk_bridge_share_verifier_and_safe_identity(
     identity: MemoryIdentity,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    """Test helper test_http_and_sdk_bridge_share_verifier_and_safe_identity."""
     async def scenario():
+        """Test helper scenario."""
         token = identity.token()
         spy = AsyncMock(wraps=identity.verifier.verify_bearer)
         verifier = AsyncMock()
@@ -274,6 +280,7 @@ def test_sdk_adapter_rejects_invalid_local_rs256_without_leaks(
     case: str,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    """Test helper test_sdk_adapter_rejects_invalid_local_rs256_without_leaks."""
     updates = {
         "issuer": {"iss": "https://wrong.example.test"},
         "audience": {"aud": "wrong"},
@@ -317,6 +324,7 @@ def test_sdk_adapter_rejects_invalid_local_rs256_without_leaks(
 
 @pytest.mark.parametrize("token", ["", "x" * 4090, "a b", "a,b", "\xff", None])
 def test_adapter_rejects_bad_token_before_verifier(token) -> None:
+    """Test helper test_adapter_rejects_bad_token_before_verifier."""
     verifier = AsyncMock()
     adapter = ResearchTokenVerifier(verifier=verifier, clock=lambda: NOW)
     assert asyncio.run(adapter.verify_token(token)) is None
@@ -326,6 +334,7 @@ def test_adapter_rejects_bad_token_before_verifier(token) -> None:
 def test_adapter_unavailable_and_unexpected_errors_are_not_logged(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    """Test helper test_adapter_unavailable_and_unexpected_errors_are_not_logged."""
     verifier = AsyncMock()
     adapter = ResearchTokenVerifier(verifier=verifier, clock=lambda: NOW)
     for error in (
@@ -344,7 +353,9 @@ def test_adapter_unavailable_and_unexpected_errors_are_not_logged(
 def test_sdk_backend_rejects_duplicate_headers_before_verification(
     identity: MemoryIdentity,
 ) -> None:
+    """Test helper test_sdk_backend_rejects_duplicate_headers_before_verification."""
     async def scenario():
+        """Test helper scenario."""
         verifier = AsyncMock(wraps=_adapter(identity))
         backend = ResearchBearerAuthBackend(verifier)
         from starlette.requests import HTTPConnection
@@ -360,12 +371,15 @@ def test_sdk_backend_rejects_duplicate_headers_before_verification(
 def test_concurrent_sdk_authenticated_requests_are_isolated(
     identity: MemoryIdentity,
 ) -> None:
+    """Test helper test_concurrent_sdk_authenticated_requests_are_isolated."""
     async def scenario():
+        """Test helper scenario."""
         arrived = 0
         both = asyncio.Event()
         observed = []
 
         async def app(scope, receive, send):
+            """Test helper app."""
             nonlocal arrived
             first = get_current_principal()
             arrived += 1
@@ -381,6 +395,7 @@ def test_concurrent_sdk_authenticated_requests_are_isolated(
         protected = _protected(app, identity)
 
         async def request(subject):
+            """Test helper request."""
             _assert_no_context()
             await protected(_scope(identity.token(subject)), _receive, _send)
             _assert_no_context()
@@ -397,8 +412,11 @@ def test_context_resets_in_same_task_after_every_exit(
     identity: MemoryIdentity,
     outcome: str,
 ) -> None:
+    """Test helper test_context_resets_in_same_task_after_every_exit."""
     async def scenario():
+        """Test helper scenario."""
         async def app(scope, receive, send):
+            """Test helper app."""
             assert get_current_principal().principal_id == A
             await asyncio.sleep(0)
             if outcome == "exception":
@@ -409,6 +427,7 @@ def test_context_resets_in_same_task_after_every_exit(
                 await send({"type": "http.response.body", "body": b""})
 
         async def send(message):
+            """Test helper send."""
             if outcome == "send_error":
                 raise RuntimeError("send failure")
 
@@ -429,16 +448,20 @@ def test_context_resets_in_same_task_after_every_exit(
 def test_real_task_cancel_clears_context_before_task_finishes(
     identity: MemoryIdentity,
 ) -> None:
+    """Test helper test_real_task_cancel_clears_context_before_task_finishes."""
     async def scenario():
+        """Test helper scenario."""
         entered, wait_forever = asyncio.Event(), asyncio.Event()
         cleaned = []
 
         async def app(scope, receive, send):
+            """Test helper app."""
             assert get_current_principal().principal_id == A
             entered.set()
             await wait_forever.wait()
 
         async def request():
+            """Test helper request."""
             try:
                 await _protected(app, identity)(
                     _scope(identity.token()), _receive, _send
@@ -461,11 +484,15 @@ def test_real_task_cancel_clears_context_before_task_finishes(
 def test_nested_request_restores_previous_verified_principal(
     identity: MemoryIdentity,
 ) -> None:
+    """Test helper test_nested_request_restores_previous_verified_principal."""
     async def scenario():
+        """Test helper scenario."""
         async def inner(scope, receive, send):
+            """Test helper inner."""
             assert get_current_principal().principal_id == B
 
         async def outer(scope, receive, send):
+            """Test helper outer."""
             before = get_current_principal()
             assert before.principal_id == A
             await _protected(inner, identity)(_scope(identity.token(B)), receive, send)
@@ -509,7 +536,9 @@ def test_context_middleware_fails_closed_for_untrusted_or_malformed_scope(
     identity: MemoryIdentity,
     mutation: str,
 ) -> None:
+    """Test helper test_context_middleware_fails_closed_for_untrusted_or_malformed_scope."""
     async def scenario():
+        """Test helper scenario."""
         raw = identity.token()
         access = await _adapter(identity).verify_token(raw)
         assert access is not None
@@ -564,9 +593,11 @@ def test_context_middleware_fails_closed_for_untrusted_or_malformed_scope(
         called, messages = [], []
 
         async def app(scope, receive, send):
+            """Test helper app."""
             called.append(True)
 
         async def send(message):
+            """Test helper send."""
             messages.append(message)
 
         await PrincipalContextMiddleware(app, clock=lambda: NOW)(scope, _receive, send)
@@ -583,9 +614,11 @@ def test_context_middleware_fails_closed_for_untrusted_or_malformed_scope(
 def test_non_http_lifecycle_is_passed_through_without_identity(
     identity: MemoryIdentity,
 ) -> None:
+    """Test helper test_non_http_lifecycle_is_passed_through_without_identity."""
     calls = []
 
     async def app(scope, receive, send):
+        """Test helper app."""
         _assert_no_context()
         calls.append(scope)
 
@@ -601,15 +634,19 @@ def test_copied_background_context_cannot_retain_identity_after_request(
     identity: MemoryIdentity,
     outcome: str,
 ) -> None:
+    """Test helper test_copied_background_context_cannot_retain_identity_after_request."""
     async def scenario():
+        """Test helper scenario."""
         resume = asyncio.Event()
         tasks = []
 
         async def child():
+            """Test helper child."""
             await resume.wait()
             _assert_no_context()
 
         async def app(scope, receive, send):
+            """Test helper app."""
             assert get_current_principal().principal_id == A
             tasks.append(asyncio.create_task(child()))
             if outcome == "exception":
@@ -638,9 +675,11 @@ def test_message_scope_binding_restores_outer_context_and_revokes_copies(
     identity: MemoryIdentity,
     outcome: str,
 ) -> None:
+    """Test helper test_message_scope_binding_restores_outer_context_and_revokes_copies."""
     from app.research.identity_context import bind_mcp_principal_context
 
     async def scenario():
+        """Test helper scenario."""
         access = await _adapter(identity).verify_token(identity.token(B))
         scope = _scope(identity.token(B))
         scope["user"] = AuthenticatedUser(access)
@@ -648,10 +687,12 @@ def test_message_scope_binding_restores_outer_context_and_revokes_copies(
         resume, tasks = asyncio.Event(), []
 
         async def child():
+            """Test helper child."""
             await resume.wait()
             _assert_no_context()
 
         async def app(outer_scope, receive, send):
+            """Test helper app."""
             outer = get_current_principal()
             assert outer.principal_id == A
             try:
@@ -684,6 +725,7 @@ def test_message_scope_binding_restores_outer_context_and_revokes_copies(
 
 
 def test_adapter_does_not_swallow_real_cancellation() -> None:
+    """Test helper test_adapter_does_not_swallow_real_cancellation."""
     verifier = AsyncMock()
     verifier.verify_bearer.side_effect = asyncio.CancelledError()
     with pytest.raises(asyncio.CancelledError):
@@ -707,11 +749,13 @@ def test_actual_stateful_sdk_reads_current_message_not_initialize_identity(
     from mcp.server.transport_security import TransportSecuritySettings
 
     async def scenario():
+        """Test helper scenario."""
         server = Server("s03a-identity-bridge-test")
         observed = []
 
         @server.list_tools()
         async def list_tools():
+            """Test helper list_tools."""
             _assert_no_context()  # the opening request's copied binding is revoked
             request = server.request_context.request
             with bind_mcp_principal_context(request.scope, clock=lambda: NOW):
@@ -726,6 +770,7 @@ def test_actual_stateful_sdk_reads_current_message_not_initialize_identity(
 
         @server.call_tool(validate_input=False)
         async def call_tool(name, arguments):
+            """Test helper call_tool."""
             assert name == "identity_probe" and arguments == {}
             _assert_no_context()
             request = server.request_context.request

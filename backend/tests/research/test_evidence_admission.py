@@ -320,6 +320,7 @@ def test_admission_has_no_orm_or_provider_dependency() -> None:
 
 
 def test_source_host_policy_is_exact_frozen_and_fail_closed() -> None:
+    """Test helper test_source_host_policy_is_exact_frozen_and_fail_closed."""
     hosts = {"approved-source": {HOST}}
     admission = DeterministicEvidenceAdmission(approved_source_hosts=hosts)
     hosts["approved-source"].add("attacker.example.test")
@@ -380,6 +381,7 @@ def test_source_host_policy_is_exact_frozen_and_fail_closed() -> None:
 
 
 def test_excerpt_policy_and_market_consistency_are_enforced() -> None:
+    """Test helper test_excerpt_policy_and_market_consistency_are_enforced."""
     admission = _admission()
     for ev, pol in (
         (_event_evidence(), _policy()),

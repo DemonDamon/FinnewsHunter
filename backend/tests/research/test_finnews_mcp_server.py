@@ -36,6 +36,7 @@ class MemoryVerifier:
     async def verify_bearer(
         self, *, credential: BearerCredential, now: datetime
     ) -> Principal:
+        """Test helper verify_bearer."""
         token = credential.for_verification()
         if token == "invalid":
             raise DomainError(
@@ -59,9 +60,11 @@ class RecordingService:
     """Provide bounded service envelopes and record the current bound Principal."""
 
     def __init__(self) -> None:
+        """Test helper __init__."""
         self.principals: list[UUID] = []
 
     async def search_articles(self, *, principal, request, envelope):
+        """Test helper search_articles."""
         assert envelope is True
         self.principals.append(principal.principal_id)
         now = NOW
@@ -78,6 +81,7 @@ class RecordingService:
         )
 
     async def get_run(self, *, principal, request, envelope):
+        """Test helper get_run."""
         assert envelope is True
         self.principals.append(principal.principal_id)
         return ResearchEnvelope[Any](
@@ -101,11 +105,13 @@ class BlockingService:
     """Hold one tool call until the client cancels its in-flight request."""
 
     def __init__(self) -> None:
+        """Test helper __init__."""
         self.entered = asyncio.Event()
         self.cancelled = asyncio.Event()
         self.principals: list[UUID] = []
 
     async def search_articles(self, *, principal, request, envelope):
+        """Test helper search_articles."""
         assert envelope is True
         self.principals.append(principal.principal_id)
         self.entered.set()
@@ -127,6 +133,7 @@ async def _post(client: httpx.AsyncClient, headers: dict[str, str], body: dict):
 
 
 def test_lock_version_schema_strictness_and_explicit_security_policy() -> None:
+    """Test helper test_lock_version_schema_strictness_and_explicit_security_policy."""
     assert version("mcp") == "1.30.0"
     service = RecordingService()
     with pytest.raises(ValueError, match="explicit and non-empty"):
@@ -160,6 +167,7 @@ def test_lock_version_schema_strictness_and_explicit_security_policy() -> None:
     assert tools == {}
 
     async def lifecycle() -> None:
+        """Test helper lifecycle."""
         async with app.lifespan():
             assert app.readiness["mcp"] is True
         assert app.readiness["mcp"] is False
@@ -175,7 +183,9 @@ def test_lock_version_schema_strictness_and_explicit_security_policy() -> None:
 
 
 def test_streamable_http_transcript_session_identity_and_results() -> None:
+    """Test helper test_streamable_http_transcript_session_identity_and_results."""
     async def scenario() -> None:
+        """Test helper scenario."""
         service = RecordingService()
         created = create_finnews_mcp_app(
             service=service,
@@ -360,7 +370,9 @@ def test_streamable_http_transcript_session_identity_and_results() -> None:
 
 
 def test_cancelled_client_request_cancels_handler_and_closes_manager() -> None:
+    """Test helper test_cancelled_client_request_cancels_handler_and_closes_manager."""
     async def scenario() -> None:
+        """Test helper scenario."""
         service = BlockingService()
         created = create_finnews_mcp_app(
             service=service,

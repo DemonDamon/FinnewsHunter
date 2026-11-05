@@ -25,7 +25,9 @@ RUN_ID = UUID("33333333-3333-3333-3333-333333333333")
 
 
 class Service:
+    """Test helper Service."""
     def __init__(self, *, execution_enabled: bool = False) -> None:
+        """Test helper __init__."""
         self.execution_enabled = execution_enabled
         self.start_calls = 0
         self.get_run = AsyncMock(
@@ -45,6 +47,7 @@ class Service:
         self.read_events = AsyncMock()
 
     async def start_research(self, *, principal, request):
+        """Test helper start_research."""
         self.start_calls += 1
         if "research:create" not in principal.scopes or not set(
             request.entity_ids
@@ -77,6 +80,7 @@ def _headers(token: str) -> dict[str, str]:
 
 
 def test_router_exposes_exactly_four_paths() -> None:
+    """Test helper test_router_exposes_exactly_four_paths."""
     paths = {
         (route.path, tuple(sorted(route.methods or []))) for route in router.routes
     }
@@ -91,6 +95,7 @@ def test_router_exposes_exactly_four_paths() -> None:
 def test_missing_and_invalid_bearer_are_rejected_without_reflection(
     monkeypatch,
 ) -> None:
+    """Test helper test_missing_and_invalid_bearer_are_rejected_without_reflection."""
     identity, service = make_memory_identity(), Service()
     with _client(identity, service, monkeypatch) as client:
         assert client.get(f"/api/v1/research/runs/{RUN_ID}").status_code == 401
@@ -105,10 +110,13 @@ def test_missing_and_invalid_bearer_are_rejected_without_reflection(
 def test_identity_failures_use_fixed_error_dto_and_hide_verifier_exception(
     monkeypatch,
 ) -> None:
+    """Test helper test_identity_failures_use_fixed_error_dto_and_hide_verifier_exception."""
     identity, service = make_memory_identity(), Service()
 
     class BrokenVerifier:
+        """Test helper BrokenVerifier."""
         async def verify_bearer(self, *, credential, now):
+            """Test helper verify_bearer."""
             raise RuntimeError("private verifier detail")
 
     with _client(identity, service, monkeypatch) as client:
@@ -129,6 +137,7 @@ def test_identity_failures_use_fixed_error_dto_and_hide_verifier_exception(
 
 
 def test_disabled_execution_rejects_before_any_ledger_write(monkeypatch) -> None:
+    """Test helper test_disabled_execution_rejects_before_any_ledger_write."""
     identity, service = make_memory_identity(), Service(execution_enabled=False)
     request = {
         "request_id": str(uuid4()),
@@ -147,6 +156,7 @@ def test_disabled_execution_rejects_before_any_ledger_write(monkeypatch) -> None
 
 
 def test_strict_body_and_invalid_ids_are_rejected(monkeypatch) -> None:
+    """Test helper test_strict_body_and_invalid_ids_are_rejected."""
     identity, service = make_memory_identity(), Service()
     headers = _headers(identity.token())
     request = {
@@ -181,6 +191,7 @@ def test_strict_body_and_invalid_ids_are_rejected(monkeypatch) -> None:
 
 
 def test_scope_and_entity_denial_are_non_enumerating(monkeypatch) -> None:
+    """Test helper test_scope_and_entity_denial_are_non_enumerating."""
     identity, service = make_memory_identity(), Service(execution_enabled=True)
     body = {
         "request_id": str(uuid4()),
@@ -206,6 +217,7 @@ def test_scope_and_entity_denial_are_non_enumerating(monkeypatch) -> None:
 
 
 def test_sse_is_one_finite_page_and_uses_event_uuid_and_type(monkeypatch) -> None:
+    """Test helper test_sse_is_one_finite_page_and_uses_event_uuid_and_type."""
     identity, service = make_memory_identity(), Service()
     event_id = uuid4()
     event = RunEventV1(
@@ -230,6 +242,7 @@ def test_sse_is_one_finite_page_and_uses_event_uuid_and_type(monkeypatch) -> Non
 
 
 def test_cursor_must_be_uuid(monkeypatch) -> None:
+    """Test helper test_cursor_must_be_uuid."""
     identity, service = make_memory_identity(), Service()
     with _client(identity, service, monkeypatch) as client:
         response = client.get(
