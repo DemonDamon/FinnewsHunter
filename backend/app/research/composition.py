@@ -63,6 +63,7 @@ class _NoExecutor:
     """S04 is not installed: every run creation must fail closed."""
 
     async def get_readiness(self, *, now: datetime) -> Any:
+        """Report executor readiness as permanently unavailable until S04."""
         from app.research.ports import ExecutorReadiness
 
         return ExecutorReadiness(
@@ -70,6 +71,7 @@ class _NoExecutor:
         )
 
     async def record_heartbeat(self, *, worker: Any, now: datetime) -> Any:
+        """Ignore worker heartbeats while the executor registry is not installed."""
         return await self.get_readiness(now=now)
 
 
@@ -146,6 +148,7 @@ def build_research_components(settings: Settings) -> ResearchComponents:
         )
 
     async def readiness():
+        """Aggregate ledger, identity, MCP, and executor readiness probes."""
         result = await database.check_ready(now=now())
         db_reason = (
             result.reason
@@ -173,6 +176,7 @@ def build_research_components(settings: Settings) -> ResearchComponents:
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
+        """Enter MCP manager lifecycle and dispose database resources on exit."""
         try:
             async with AsyncExitStack() as stack:
                 if mcp_component is not None:

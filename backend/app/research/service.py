@@ -175,7 +175,9 @@ class ResearchApplicationService:
         principal: Principal,
         request: SearchArticlesInput,
         envelope: Literal[False] = False,
-    ) -> ArticlesSearchResult: ...
+    ) -> ArticlesSearchResult:
+        """Typed overload for plain DTO responses."""
+        ...
 
     @overload
     async def search_articles(
@@ -184,7 +186,9 @@ class ResearchApplicationService:
         principal: Principal,
         request: SearchArticlesInput,
         envelope: Literal[True],
-    ) -> ResearchEnvelope[ArticlesSearchResult]: ...
+    ) -> ResearchEnvelope[ArticlesSearchResult]:
+        """Typed overload for envelope responses."""
+        ...
 
     async def search_articles(
         self,
@@ -209,7 +213,9 @@ class ResearchApplicationService:
         principal: Principal,
         request: GetEvidenceInput,
         envelope: Literal[False] = False,
-    ) -> EvidenceV1: ...
+    ) -> EvidenceV1:
+        """Typed overload for plain DTO responses."""
+        ...
 
     @overload
     async def get_evidence(
@@ -218,7 +224,9 @@ class ResearchApplicationService:
         principal: Principal,
         request: GetEvidenceInput,
         envelope: Literal[True],
-    ) -> ResearchEnvelope[EvidenceV1]: ...
+    ) -> ResearchEnvelope[EvidenceV1]:
+        """Typed overload for envelope responses."""
+        ...
 
     async def get_evidence(
         self,
@@ -243,7 +251,9 @@ class ResearchApplicationService:
         principal: Principal,
         request: GetMarketSnapshotInput,
         envelope: Literal[False] = False,
-    ) -> MarketPayloadV1: ...
+    ) -> MarketPayloadV1:
+        """Typed overload for plain DTO responses."""
+        ...
 
     @overload
     async def get_market_snapshot(
@@ -252,7 +262,9 @@ class ResearchApplicationService:
         principal: Principal,
         request: GetMarketSnapshotInput,
         envelope: Literal[True],
-    ) -> ResearchEnvelope[MarketPayloadV1]: ...
+    ) -> ResearchEnvelope[MarketPayloadV1]:
+        """Typed overload for envelope responses."""
+        ...
 
     async def get_market_snapshot(
         self,
@@ -264,6 +276,7 @@ class ResearchApplicationService:
         """Translate the Port's missing-data None into a truthful bounded failure."""
 
         async def read(now: datetime) -> MarketPayloadV1:
+            """Load market payload or map absence to a bounded domain error."""
             data = await self._ledger.get_market_snapshot(
                 principal=principal, request=request, now=now
             )
@@ -284,7 +297,9 @@ class ResearchApplicationService:
         principal: Principal,
         request: StartResearchInput,
         envelope: Literal[False] = False,
-    ) -> ResearchRunViewV1: ...
+    ) -> ResearchRunViewV1:
+        """Typed overload for plain DTO responses."""
+        ...
 
     @overload
     async def start_research(
@@ -293,7 +308,9 @@ class ResearchApplicationService:
         principal: Principal,
         request: StartResearchInput,
         envelope: Literal[True],
-    ) -> ResearchEnvelope[ResearchRunViewV1]: ...
+    ) -> ResearchEnvelope[ResearchRunViewV1]:
+        """Typed overload for envelope responses."""
+        ...
 
     async def start_research(
         self,
@@ -309,6 +326,7 @@ class ResearchApplicationService:
         """
 
         async def create(now: datetime) -> ResearchRunViewV1:
+            """Gate execution before delegating to the ledger idempotency path."""
             if not self._execution_enabled:
                 raise DomainError(
                     code="execution_unavailable",
@@ -330,7 +348,9 @@ class ResearchApplicationService:
         principal: Principal,
         request: GetRunInput,
         envelope: Literal[False] = False,
-    ) -> ResearchRunViewV1: ...
+    ) -> ResearchRunViewV1:
+        """Typed overload for plain DTO responses."""
+        ...
 
     @overload
     async def get_run(
@@ -339,7 +359,9 @@ class ResearchApplicationService:
         principal: Principal,
         request: GetRunInput,
         envelope: Literal[True],
-    ) -> ResearchEnvelope[ResearchRunViewV1]: ...
+    ) -> ResearchEnvelope[ResearchRunViewV1]:
+        """Typed overload for envelope responses."""
+        ...
 
     async def get_run(
         self,

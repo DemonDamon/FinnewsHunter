@@ -46,6 +46,7 @@ class DomainError(Exception):
         safe_message: str,
         retryable: bool,
     ) -> None:
+        """Bind a stable error code and safe message without secret material."""
         if not safe_message:
             raise ValueError("safe_message must not be empty")
         self.code = code

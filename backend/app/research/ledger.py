@@ -86,6 +86,7 @@ class ResearchLedger:
         lease_duration: timedelta = timedelta(seconds=60),
         worker_heartbeat_ttl: timedelta = timedelta(seconds=90),
     ) -> None:
+        """Wire database, authorization, executor, and snapshot adapters."""
         if (
             min(max_concurrent_runs, daily_run_limit) < 0
             or min(
@@ -106,12 +107,15 @@ class ResearchLedger:
         self._heartbeat_ttl = worker_heartbeat_ttl
 
     async def materialize_snapshot(self, **kwargs: Any):
+        """Delegate snapshot materialization to the injected service."""
         return await self._snapshots.materialize_snapshot(**kwargs)
 
     async def freeze_snapshot(self, **kwargs: Any):
+        """Delegate snapshot freeze to the injected service."""
         return await self._snapshots.freeze_snapshot(**kwargs)
 
     async def read_snapshot(self, **kwargs: Any):
+        """Delegate snapshot reads to the injected service."""
         return await self._snapshots.read_snapshot(**kwargs)
 
     def _view(
@@ -252,6 +256,7 @@ class ResearchLedger:
     async def create_or_reuse_run(
         self, *, principal: Principal, request: StartResearchInput, now: datetime
     ) -> ResearchRunViewV1:
+        """Create or reuse a run inside the caller transaction."""
         self._authorizer.authorize_resource(
             principal=principal,
             owner_id=principal.principal_id,
@@ -454,6 +459,7 @@ class ResearchLedger:
     async def get_run(
         self, *, principal: Principal, request: GetRunInput, now: datetime
     ) -> ResearchRunViewV1:
+        """Return an authorized run view or a non-enumerating denial."""
         async with self._database.session_factory() as s:
             run = await self._authorized_run(s, request.run_id, principal, now)
             return await self._safe_run_view(s, run, principal, now)
@@ -461,6 +467,7 @@ class ResearchLedger:
     async def search_articles(
         self, *, principal: Principal, request: SearchArticlesInput, now: datetime
     ) -> ArticlesSearchResult:
+        """Search articles visible to the principal at the frozen cutoff."""
         self._authorizer.authorize_resource(
             principal=principal,
             owner_id=principal.principal_id,
@@ -528,6 +535,7 @@ class ResearchLedger:
     async def read_evidence(
         self, *, principal: Principal, request: GetEvidenceInput, now: datetime
     ):
+        """Read evidence only through authorized snapshot membership."""
         async with self._database.session_factory() as s:
             run = await self._authorized_run(s, request.run_id, principal, now)
             member = await s.scalar(
@@ -563,6 +571,7 @@ class ResearchLedger:
     async def get_market_snapshot(
         self, *, principal: Principal, request: GetMarketSnapshotInput, now: datetime
     ):
+        """Return a licensed market payload for authorized evidence."""
         self._authorizer.authorize_resource(
             principal=principal,
             owner_id=principal.principal_id,
@@ -618,6 +627,7 @@ class ResearchLedger:
         limit: int,
         now: datetime,
     ) -> RunEventPage:
+        """Page run events after an optional cursor for the principal."""
         async with self._database.session_factory() as s:
             run = await self._authorized_run(s, run_id, principal, now)
             after = 0
@@ -692,6 +702,7 @@ class ResearchLedger:
     async def claim_run(
         self, *, task: DispatchTask, worker: WorkerIdentity, now: datetime
     ) -> RunLease | None:
+        """Claim a queued run with a bounded worker lease."""
         try:
             async with self._database.session_factory() as s, s.begin():
                 hb = await s.scalar(
@@ -759,6 +770,7 @@ class ResearchLedger:
     async def heartbeat_run(
         self, *, run_id: UUID, lease: RunLease, worker: WorkerIdentity, now: datetime
     ) -> RunLease:
+        """Extend an active worker lease for an in-flight run."""
         async with self._database.session_factory() as s, s.begin():
             run = await self._fenced(s, run_id, lease, now)
             if run.execution_worker_id != worker.worker_id:
@@ -776,6 +788,7 @@ class ResearchLedger:
     async def append_step_event(
         self, *, run_id: UUID, lease: RunLease, event: StepEvent, now: datetime
     ) -> RunEventV1:
+        """Append a worker step event to the authoritative ledger."""
         async with self._database.session_factory() as s, s.begin():
             await self._fenced(s, run_id, lease, now)
             row = await self._event(s, run_id, event.type, _json(event.payload), now)
@@ -796,6 +809,7 @@ class ResearchLedger:
         approved_brief: ApprovedBrief,
         now: datetime,
     ) -> RunTransition:
+        """Publish a brief from a frozen, licensed snapshot only."""
         try:
             async with self._database.session_factory() as s, s.begin():
                 run = await self._fenced(s, run_id, lease, now)
@@ -900,6 +914,7 @@ class ResearchLedger:
     async def finish_run(
         self, *, run_id: UUID, lease: RunLease, finish: RunFinishRequest, now: datetime
     ) -> RunTransition:
+        """Terminalize a run from an authorized worker transition."""
         async with self._database.session_factory() as s, s.begin():
             run = await self._fenced(s, run_id, lease, now)
             run.status = finish.status
@@ -931,6 +946,7 @@ class ResearchLedger:
             return RunTransition(run_id=run_id, status=finish.status, occurred_at=now)
 
     async def reap_stale(self, *, now: datetime, limit: int) -> tuple[Any, ...]:
+        """Reap stale leases and timed-out runs without leaking secrets."""
         from app.research.ports import ReapedRun
 
         results = []

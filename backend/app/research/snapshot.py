@@ -42,6 +42,7 @@ class ResearchSnapshotService:
         *,
         max_members: int = 100,
     ) -> None:
+        """Retain the injected database and snapshot member limits."""
         if max_members < 1:
             raise ValueError("max_members must be positive")
         self._database = database
@@ -51,6 +52,7 @@ class ResearchSnapshotService:
     async def materialize_snapshot(
         self, *, run_id, lease: RunLease, now: datetime
     ) -> SnapshotMaterialization:
+        """Materialize eligible evidence into a run-bound snapshot selection."""
         async with self._database.session_factory() as session, session.begin():
             run = await self._locked_run(session, run_id, lease, now)
             if run.snapshot_state == "frozen":
@@ -91,6 +93,7 @@ class ResearchSnapshotService:
     async def freeze_snapshot(
         self, *, run_id, lease: RunLease, now: datetime
     ) -> FrozenSnapshot:
+        """Freeze the materialized selection into an immutable snapshot."""
         async with self._database.session_factory() as session, session.begin():
             run = await self._locked_run(session, run_id, lease, now)
             return await self._freeze_snapshot_in_transaction(session, run, now=now)
@@ -137,6 +140,7 @@ class ResearchSnapshotService:
     async def read_snapshot(
         self, *, run_id, lease: RunLease, now: datetime
     ) -> FrozenSnapshot:
+        """Read a frozen snapshot for an authorized worker lease."""
         async with self._database.session_factory() as session, session.begin():
             run = await self._locked_run(session, run_id, lease, now)
             if run.snapshot_state != "frozen":

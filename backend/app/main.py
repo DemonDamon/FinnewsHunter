@@ -106,6 +106,7 @@ class DocsCSPMiddleware(BaseHTTPMiddleware):
     """为文档页面设置 CSP 头，允许 unsafe-eval（Swagger UI 需要）"""
 
     async def dispatch(self, request: Request, call_next):
+        """Apply CSP headers to documentation routes and map research failures safely."""
         try:
             response = await call_next(request)
         except Exception:
@@ -282,6 +283,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 # 全局异常处理
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
+    """Return fixed JSON for research mode and legacy diagnostics otherwise."""
     if settings.APP_MODE == "research":
         return _research_internal_error_response()
 

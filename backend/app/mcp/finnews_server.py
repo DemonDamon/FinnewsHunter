@@ -163,12 +163,14 @@ def create_finnews_mcp_app(
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:
+        """Return the fixed research tool catalog for the authenticated principal."""
         scope = server.request_context.request.scope
         with bind_mcp_principal_context(scope, clock=clock):
             return tools
 
     @server.call_tool(validate_input=False)
     async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
+        """Dispatch one allowed MCP tool call through the shared research service."""
         if name not in _INPUT_MODELS:
             return _tool_result(_safe_failure("tool_not_found", "tool is unavailable"))
         scope = server.request_context.request.scope
@@ -234,6 +236,7 @@ def create_finnews_mcp_app(
 
     @asynccontextmanager
     async def lifespan() -> AsyncIterator[None]:
+        """Run the MCP session manager until parent composition shuts down."""
         async with manager.run():
             readiness["mcp"] = True
             try:

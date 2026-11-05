@@ -110,16 +110,14 @@ def _domain_response(error: DomainError) -> JSONResponse:
 
 async def _strict_body(request: Request, model: type[Any]) -> Any:
     """Read at most the configured bytes, then validate strict C1 JSON."""
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(body) + len(chunk) > MAX_REQUEST_BODY_SIZE:
+            raise RequestBodyTooLarge
+        body.extend(chunk)
     try:
-        body = bytearray()
-        async for chunk in request.stream():
-            if len(body) + len(chunk) > MAX_REQUEST_BODY_SIZE:
-                raise RequestBodyTooLarge
-            body.extend(chunk)
         return model.model_validate_json(bytes(body))
-    except RequestBodyTooLarge:
-        raise
-    except (ValidationError, ValueError, json.JSONDecodeError):
+    except (ValidationError, ValueError):
         raise ValueError("invalid request") from None
 
 
@@ -227,7 +225,7 @@ async def get_run_events(
         )
     except DomainError as error:
         return _domain_response(error)
-    except (ValueError, UnicodeDecodeError):
+    except ValueError:
         return _error("event_cursor_invalid", 422)
     except Exception:  # noqa: BLE001
         return _error("persistence_failed", 500)
