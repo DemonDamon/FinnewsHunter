@@ -125,7 +125,10 @@ class ResearchEvidence(ResearchBase):
             "content_hash ~ '^[0-9a-f]{64}$'", name="research_evidence_hash_check"
         ),
         CheckConstraint(
-            "license_scope IN ('redisplay', 'metadata_only', 'no_redisplay', 'unknown')",
+            (
+                "license_scope IN ('redisplay', 'metadata_only', "
+                "'no_redisplay', 'unknown')"
+            ),
             name="research_evidence_license_scope_check",
         ),
         CheckConstraint(
@@ -231,7 +234,10 @@ class ResearchRun(ResearchBase):
             name="research_run_seed_evidence_fk",
         ),
         CheckConstraint(
-            "status IN ('queued', 'running', 'completed', 'failed', 'needs_review', 'cancelled')",
+            (
+                "status IN ('queued', 'running', 'completed', 'failed', "
+                "'needs_review', 'cancelled')"
+            ),
             name="research_run_status_check",
         ),
         CheckConstraint(
@@ -373,8 +379,11 @@ class ResearchRunEvent(ResearchBase):
         UniqueConstraint("run_id", "seq", name="research_event_run_seq_key"),
         CheckConstraint("seq >= 1", name="research_event_seq_check"),
         CheckConstraint(
-            "event_type IN ('started', 'step_started', 'evidence_added', 'claim_checked', "
-            "'needs_review', 'completed', 'failed', 'cancelled')",
+            (
+                "event_type IN ('started', 'step_started', 'evidence_added', "
+                "'claim_checked', 'needs_review', 'completed', 'failed', "
+                "'cancelled')"
+            ),
             name="research_event_type_check",
         ),
     )

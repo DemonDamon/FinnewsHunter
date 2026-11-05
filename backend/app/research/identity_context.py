@@ -161,7 +161,8 @@ class ResearchBearerAuthBackend(BearerAuthBackend):
     and constructs AuthenticatedUser; this bridge never supplies a Principal.
     """
 
-    async def authenticate(self, conn: HTTPConnection):  # skipcq: PYL-R0201 -- SDK override preflight
+    # skipcq: PYL-R0201
+    async def authenticate(self, conn: HTTPConnection):
         """Reject duplicates/oversize/folded credentials before calling the SDK."""
         try:
             parse_bearer_headers(conn.scope.get("headers", []))

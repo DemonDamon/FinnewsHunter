@@ -182,7 +182,8 @@ def build_research_components(settings: Settings) -> ResearchComponents:
         }
 
     @asynccontextmanager
-    async def lifespan(_application: FastAPI):  # skipcq: PYL-R0201 -- ASGI lifespan hook
+    # skipcq: PYL-R0201
+    async def lifespan(_application: FastAPI):
         """Enter MCP manager lifecycle and dispose database resources on exit."""
         try:
             async with AsyncExitStack() as stack:

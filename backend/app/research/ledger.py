@@ -525,7 +525,7 @@ class ResearchLedger:
         """Map a stored evidence row into the public evidence contract."""
         from app.research.contracts import EvidenceV1
 
-        # The stored projection is immutable; market details are separately joined by market reads.
+        # Stored projection is immutable; market details join separately.
         return EvidenceV1(
             evidence_id=row.evidence_id,
             source_id=row.source_id,
@@ -766,7 +766,7 @@ class ResearchLedger:
                 run.deadline_at = deadline
                 await s.flush()
                 frozen: FrozenSnapshot = (
-                    await self._snapshots._freeze_snapshot_in_transaction(
+                    await self._snapshots._freeze_snapshot_in_transaction(  # skipcq: PYL-W0212
                         s, run, now=now
                     )
                 )
