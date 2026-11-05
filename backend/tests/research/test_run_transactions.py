@@ -92,7 +92,7 @@ async def _setup(
         audience="test",
         expires_at=now + timedelta(hours=1),
     )
-    async with database.session_factory() as session, session.begin():
+    async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
         session.add(
             ResearchSourcePolicy(
                 source_id=source_id,
@@ -263,7 +263,7 @@ async def test_dispatch_claim_lease_heartbeat_and_fence(postgres_context):
             now=now,
         )
         assert "token" not in json.dumps(public.model_dump(mode="json")).lower()
-        async with database.session_factory() as session:
+        async with database.session_factory() as session:  # skipcq: PYL-E1102 -- async session factory from research port
             row = await session.get(ResearchRun, run_id)
             assert row.execution_token_hash == lease.token.fingerprint()
             assert lease.token._secret.decode(errors="ignore") not in json.dumps(
@@ -367,7 +367,7 @@ async def test_event_sequence_and_full_transaction_rollback(postgres_context):
                 now=now + timedelta(seconds=11),
             )
         assert reused.value.code == "terminal_state"
-        async with database.session_factory() as session:
+        async with database.session_factory() as session:  # skipcq: PYL-E1102 -- async session factory from research port
             run = await session.get(ResearchRun, run_id)
             quota = await session.get(ResearchPrincipalQuota, run.principal_id)
             assert run.execution_token_hash is None and quota.active_run_count == 1
@@ -419,7 +419,7 @@ async def test_terminal_publish_and_reap_race_is_atomic(postgres_context):
         finish_won = not isinstance(results[0], str)
         reaper_won = any(item.run_id == run_id for item in results[1])
         assert finish_won != reaper_won
-        async with database.session_factory() as session:
+        async with database.session_factory() as session:  # skipcq: PYL-E1102 -- async session factory from research port
             run = await session.get(ResearchRun, run_id)
             quota = await session.get(ResearchPrincipalQuota, pid)
             event_rows = (
@@ -452,7 +452,7 @@ async def test_terminal_publish_and_reap_race_is_atomic(postgres_context):
         ) = await _setup(postgres_context, suffix="-publish")
         try:
             lease2 = await _claim(ledger2, now2, worker2, task2)
-            async with database2.session_factory() as session, session.begin():
+            async with database2.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
                 session.add(
                     ResearchSourcePolicy(
                         source_id="test-source-publish",
@@ -512,7 +512,7 @@ async def test_terminal_publish_and_reap_race_is_atomic(postgres_context):
                     now=now2 + timedelta(seconds=2),
                 )
             assert stale.value.code == "terminal_state"
-            async with database2.session_factory() as session:
+            async with database2.session_factory() as session:  # skipcq: PYL-E1102 -- async session factory from research port
                 row = await session.get(ResearchRun, run2)
                 quota = await session.get(ResearchPrincipalQuota, pid2)
                 assert row.execution_token_hash is None and row.status == "completed"
@@ -587,7 +587,7 @@ async def test_expired_exact_policy_redacts_completed_brief_on_read_and_retry(
             limitations=[],
             model_trace=[],
         )
-        async with database.session_factory() as session, session.begin():
+        async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
             run = await session.get(ResearchRun, run_id)
             run.snapshot_state = "materialized"
             run.updated_at = now
@@ -627,7 +627,7 @@ async def test_expired_exact_policy_redacts_completed_brief_on_read_and_retry(
                     created_at=now,
                 )
             )
-        async with database.session_factory() as session:
+        async with database.session_factory() as session:  # skipcq: PYL-E1102 -- async session factory from research port
             policy = await session.get(
                 ResearchSourcePolicy, ("test-source-expired-brief", "v1")
             )
@@ -650,7 +650,7 @@ async def test_expired_exact_policy_redacts_completed_brief_on_read_and_retry(
             "schema": "research-v1.1",
             "policy": "research-v1.1",
         }
-        async with database.session_factory() as session, session.begin():
+        async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
             run = await session.get(ResearchRun, run_id)
             run.request_id = request.request_id
             run.request_hash = sha256(
@@ -695,7 +695,7 @@ async def test_evidence_excerpt_and_market_reads_obey_current_policy(postgres_co
             audience=principal.audience,
             expires_at=later + timedelta(hours=1),
         )
-        async with database.session_factory() as session, session.begin():
+        async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
             run = await session.get(ResearchRun, run_id)
             run.snapshot_state = "materialized"
             run.updated_at = now
@@ -738,7 +738,7 @@ async def test_evidence_excerpt_and_market_reads_obey_current_policy(postgres_co
             ("deny-expiry", True, now - timedelta(days=1), now - timedelta(seconds=1)),
         ]
         denied_ids = []
-        async with database.session_factory() as session, session.begin():
+        async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
             for source_id, storage, approved_at, expires_at in denied:
                 eid = uuid4()
                 read_at = later if source_id == "deny-expiry" else now
@@ -948,7 +948,7 @@ async def test_publish_rejects_expired_exact_policy_without_partial_writes(
                 now=now + timedelta(seconds=10),
             )
         assert denied.value.code == "license_revoked"
-        async with database.session_factory() as session:
+        async with database.session_factory() as session:  # skipcq: PYL-E1102 -- async session factory from research port
             run = await session.get(ResearchRun, run_id)
             quota = await session.get(ResearchPrincipalQuota, principal_id)
             assert run.status == "running"
@@ -977,7 +977,7 @@ async def test_direct_market_read_validates_non_mock_projection(postgres_context
     )
     source = "direct-market-provider"
     try:
-        async with database.session_factory() as session, session.begin():
+        async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
             session.add(
                 ResearchSourcePolicy(
                     source_id=source,
@@ -1012,7 +1012,7 @@ async def test_direct_market_read_validates_non_mock_projection(postgres_context
             origin="live",
             admitted_at=now,
         )
-        async with database.session_factory() as session, session.begin():
+        async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
             session.add(good)
             await session.flush()
             session.add(
@@ -1065,7 +1065,7 @@ async def test_direct_market_read_validates_non_mock_projection(postgres_context
             admitted_at=now,
         )
         try:
-            async with database.session_factory() as session, session.begin():
+            async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
                 session.add(mock)
                 await session.flush()
                 session.add(
@@ -1116,7 +1116,7 @@ async def test_direct_market_read_validates_non_mock_projection(postgres_context
             origin="live",
             admitted_at=now,
         )
-        async with database.session_factory() as session, session.begin():
+        async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
             session.add(malformed)
             await session.flush()
             session.add(
@@ -1156,7 +1156,7 @@ async def test_publish_uses_exact_policy_version_for_snapshot_evidence(
     )
     try:
         lease = await _claim(ledger, now, worker, task)
-        async with database.session_factory() as session, session.begin():
+        async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
             original = await session.get(ResearchEvidence, evidence_id)
             assert original is not None
             denied_evidence_id = uuid4()
@@ -1229,7 +1229,7 @@ async def test_publish_uses_exact_policy_version_for_snapshot_evidence(
             approved_brief=approved,
             now=now + timedelta(seconds=1),
         )
-        async with database.session_factory() as session:
+        async with database.session_factory() as session:  # skipcq: PYL-E1102 -- async session factory from research port
             run = await session.get(ResearchRun, run_id)
             assert run.status == "completed"
             assert await session.get(ResearchBrief, run_id) is not None

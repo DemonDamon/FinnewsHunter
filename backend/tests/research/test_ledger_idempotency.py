@@ -92,7 +92,7 @@ async def test_ten_concurrent_same_principal_requests_write_one_run(postgres_con
     from app.research.models import ResearchEvidence, ResearchSourcePolicy
 
     eid = uuid4()
-    async with database.session_factory() as s, s.begin():
+    async with database.session_factory() as s, s.begin():  # skipcq: PYL-E1102 -- async session factory from research port
         s.add(
             ResearchSourcePolicy(
                 source_id="test",
@@ -151,7 +151,7 @@ async def test_ten_concurrent_same_principal_requests_write_one_run(postgres_con
         )
     )
     assert len({r.run_id for r in results}) == 1
-    async with database.session_factory() as s:
+    async with database.session_factory() as s:  # skipcq: PYL-E1102 -- async session factory from research port
         assert await s.scalar(select(func.count()).select_from(ResearchRun)) == 1
         assert await s.scalar(select(func.count()).select_from(ResearchOutbox)) == 1
         quota = await s.get(ResearchPrincipalQuota, pid)
@@ -196,7 +196,7 @@ async def test_distinct_requests_serialize_first_quota_creation(postgres_context
         )
     )
     assert len({result.run_id for result in results}) == 2
-    async with database.session_factory() as session:
+    async with database.session_factory() as session:  # skipcq: PYL-E1102 -- async session factory from research port
         quota = await session.get(ResearchPrincipalQuota, pid)
         assert quota.active_run_count == 2
         assert quota.daily_run_count == 2
@@ -211,7 +211,7 @@ async def _seed_evidence(database, now):
     from app.research.models import ResearchEvidence, ResearchSourcePolicy
 
     eid = uuid4()
-    async with database.session_factory() as session, session.begin():
+    async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
         session.add(
             ResearchSourcePolicy(
                 source_id="test",
@@ -304,7 +304,7 @@ async def test_hash_conflict_and_principal_isolation(postgres_context):
         principal=other, request=request, now=now
     )
     assert other_result.run_id != created.run_id
-    async with database.session_factory() as session:
+    async with database.session_factory() as session:  # skipcq: PYL-E1102 -- async session factory from research port
         assert await session.scalar(select(func.count()).select_from(ResearchRun)) == 2
         assert (
             await session.scalar(select(func.count()).select_from(ResearchOutbox)) == 2
@@ -362,7 +362,7 @@ async def test_unready_executor_writes_no_ledger_rows(postgres_context):
             now=now,
         )
     assert error.value.code == "execution_unavailable"
-    async with database.session_factory() as session:
+    async with database.session_factory() as session:  # skipcq: PYL-E1102 -- async session factory from research port
         assert await session.scalar(select(func.count()).select_from(ResearchRun)) == 0
         assert (
             await session.scalar(select(func.count()).select_from(ResearchOutbox)) == 0
@@ -495,7 +495,7 @@ async def test_unique_request_race_uses_integrity_fallback(
             assert runs[0].run_id == runs[1].run_id
             assert safe_view_calls == [runs[0].run_id]
 
-        async with database.session_factory() as session:
+        async with database.session_factory() as session:  # skipcq: PYL-E1102 -- async session factory from research port
             persisted = (
                 await session.scalars(
                     select(ResearchRun).where(ResearchRun.request_id == request_id)
@@ -575,7 +575,7 @@ async def test_existing_run_retry_works_when_executor_down_and_quota_full(
                 now=now,
             )
         assert unavailable.value.code == "execution_unavailable"
-        async with database.session_factory() as session:
+        async with database.session_factory() as session:  # skipcq: PYL-E1102 -- async session factory from research port
             quota = await session.get(ResearchPrincipalQuota, principal_id)
             assert quota.active_run_count == 1
             assert quota.daily_run_count == 1

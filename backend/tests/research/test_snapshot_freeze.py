@@ -82,7 +82,7 @@ def _evidence(eid, *, now, available, entity=ENTITY, source="news", **changes):
 async def _seed(database, now):
     seed_id, late_id = uuid4(), uuid4()
     other_id = uuid4()
-    async with database.session_factory() as session, session.begin():
+    async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
         # FK order is deliberate: policy rows must be flushed before evidence.
         session.add_all(
             [_policy("news", now), _policy("bad", now, model_use_allowed=False)]
@@ -108,7 +108,7 @@ async def _seed(database, now):
 
 async def _run(database, *, seed_id, now, as_of, entity=ENTITY, state="none"):
     rid = uuid4()
-    async with database.session_factory() as session, session.begin():
+    async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
         session.add(
             ResearchRun(
                 run_id=rid,
@@ -150,7 +150,7 @@ async def test_duplicate_materialization_uses_eligibility_order(postgres_context
     lower_id = UUID("00000000-0000-0000-0000-000000000001")
     higher_id = UUID("00000000-0000-0000-0000-000000000002")
     try:
-        async with database.session_factory() as session, session.begin():
+        async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
             session.add(_policy("news", now))
             await session.flush()
             session.add_all(
@@ -211,7 +211,7 @@ async def test_snapshot_point_in_time_freeze_and_fail_closed(postgres_context):
         # A newly inserted, now-eligible record after materialization must not
         # expand the pinned set when that run freezes.
         arrival_id = uuid4()
-        async with database.session_factory() as session, session.begin():
+        async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
             session.add(
                 _evidence(
                     arrival_id,
@@ -226,7 +226,7 @@ async def test_snapshot_point_in_time_freeze_and_fail_closed(postgres_context):
 
         # Pin before the later record becomes available to this as_of; new arrivals
         # must not change the already materialized member set during freeze.
-        async with database.session_factory() as session, session.begin():
+        async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
             run = await session.get(ResearchRun, rid)
             run.as_of = now + timedelta(minutes=5)
             run.updated_at = now
@@ -259,7 +259,7 @@ async def test_snapshot_point_in_time_freeze_and_fail_closed(postgres_context):
             database, seed_id=seed_id, now=now, as_of=now
         )
         await service.materialize_snapshot(run_id=rid_other, lease=lease_other, now=now)
-        async with database.session_factory() as session, session.begin():
+        async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
             session.add(
                 ResearchSnapshotMember(
                     snapshot_member_id=uuid4(),
@@ -283,7 +283,7 @@ async def test_snapshot_point_in_time_freeze_and_fail_closed(postgres_context):
             database, seed_id=seed_id, now=now, as_of=now
         )
         await service.materialize_snapshot(run_id=drift_run, lease=drift_lease, now=now)
-        async with database.session_factory() as session, session.begin():
+        async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
             member = await session.scalar(
                 select(ResearchSnapshotMember).where(
                     ResearchSnapshotMember.run_id == drift_run
@@ -293,7 +293,7 @@ async def test_snapshot_point_in_time_freeze_and_fail_closed(postgres_context):
             with pytest.raises(IntegrityError):
                 await session.flush()
             await session.rollback()
-        async with database.session_factory() as session, session.begin():
+        async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
             member = await session.scalar(
                 select(ResearchSnapshotMember).where(
                     ResearchSnapshotMember.run_id == drift_run
@@ -339,7 +339,7 @@ async def test_snapshot_point_in_time_freeze_and_fail_closed(postgres_context):
 
         # The C1 transaction helper participates in, but never commits, its caller's transaction.
         rid3, _lease3 = await _run(database, seed_id=seed_id, now=now, as_of=now)
-        async with database.session_factory() as session:
+        async with database.session_factory() as session:  # skipcq: PYL-E1102 -- async session factory from research port
             transaction = await session.begin()
             run = await session.get(ResearchRun, rid3)
             await service._freeze_snapshot_in_transaction(session, run, now=now)
@@ -350,7 +350,7 @@ async def test_snapshot_point_in_time_freeze_and_fail_closed(postgres_context):
             )
             assert count_inside == 2 and transaction.is_active
             await transaction.rollback()
-        async with database.session_factory() as session:
+        async with database.session_factory() as session:  # skipcq: PYL-E1102 -- async session factory from research port
             count_after = await session.scalar(
                 select(func.count())
                 .select_from(ResearchSnapshotMember)
@@ -374,7 +374,7 @@ async def test_freeze_rechecks_expiry_after_materialization(postgres_context):
     evidence_id = uuid4()
     service = ResearchSnapshotService(database)
     try:
-        async with database.session_factory() as session, session.begin():
+        async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
             session.add(
                 _policy("expiring", now, expires_at=now + timedelta(seconds=20))
             )
@@ -405,7 +405,7 @@ async def test_freeze_rechecks_expiry_after_materialization(postgres_context):
         assert error.value.code == "license_revoked"
         assert "must-not-escape-on-expired-freeze" not in str(error.value)
 
-        async with database.session_factory() as session:
+        async with database.session_factory() as session:  # skipcq: PYL-E1102 -- async session factory from research port
             run = await session.get(ResearchRun, run_id)
             count = await session.scalar(
                 select(func.count())
@@ -433,7 +433,7 @@ async def test_market_payload_round_trip_and_fail_closed(postgres_context):
     try:
         from app.research.models import ResearchMarketPayload
 
-        async with database.session_factory() as session, session.begin():
+        async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
             session.add(_policy(source, now))
         good_id = uuid4()
         good = _evidence(
@@ -445,7 +445,7 @@ async def test_market_payload_round_trip_and_fail_closed(postgres_context):
             version="market-v1",
             content_hash="d" * 64,
         )
-        async with database.session_factory() as session, session.begin():
+        async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
             session.add(good)
             await session.flush()
             session.add(
@@ -526,7 +526,7 @@ async def test_market_payload_round_trip_and_fail_closed(postgres_context):
             }
             values[name] = replacement
             try:
-                async with database.session_factory() as session, session.begin():
+                async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
                     session.add(row)
                     await session.flush()
                     session.add(ResearchMarketPayload(**values))
@@ -536,7 +536,7 @@ async def test_market_payload_round_trip_and_fail_closed(postgres_context):
                 case_run, case_lease = await _run(
                     database, seed_id=evidence_id, now=now, as_of=now
                 )
-                async with database.session_factory() as session, session.begin():
+                async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
                     run = await session.get(ResearchRun, case_run)
                     run.snapshot_state = "materialized"
                     run.updated_at = now
@@ -570,7 +570,7 @@ async def test_market_payload_round_trip_and_fail_closed(postgres_context):
             content_hash="9" * 64,
         )
         with pytest.raises(IntegrityError):
-            async with database.session_factory() as session, session.begin():
+            async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
                 session.add(missing)
     finally:
         await database.dispose()
@@ -602,7 +602,7 @@ async def test_denied_policy_never_materializes_or_returns_content(
     evidence_id = uuid4()
     service = ResearchSnapshotService(database)
     try:
-        async with database.session_factory() as session, session.begin():
+        async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
             session.add(_policy(source, now, **policy_changes))
             await session.flush()
             evidence = _evidence(
@@ -620,7 +620,7 @@ async def test_denied_policy_never_materializes_or_returns_content(
 
         # Exercise read-time authorization against a persisted frozen membership.
         # Policies remain immutable; no UPDATE is used to simulate revocation.
-        async with database.session_factory() as session, session.begin():
+        async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
             run = await session.get(ResearchRun, rid)
             run.snapshot_state = "materialized"
             run.updated_at = now
