@@ -8,6 +8,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import inspect
+import json
 import os
 import subprocess
 import sys
@@ -17,18 +18,26 @@ from pathlib import Path
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 
-def run_research_script(script: str, *, research_enabled: bool = False) -> str:
+def run_research_script(
+    script: str,
+    *,
+    research_enabled: bool = False,
+    execution_enabled: bool = False,
+    extra_env: dict[str, str] | None = None,
+) -> str:
     """Run an isolated research-mode probe with the selected interpreter."""
     environment = os.environ.copy()
     environment.update(
         {
             "APP_MODE": "research",
             "RESEARCH_ENABLED": str(research_enabled).lower(),
-            "RESEARCH_EXECUTION_ENABLED": "false",
+            "RESEARCH_EXECUTION_ENABLED": str(execution_enabled).lower(),
             "PYTHONDONTWRITEBYTECODE": "1",
             "PYTHONPATH": str(BACKEND_ROOT),
         }
     )
+    if extra_env:
+        environment.update(extra_env)
     completed = subprocess.run(
         [sys.executable, "-c", textwrap.dedent(script)],
         cwd=BACKEND_ROOT,
@@ -122,6 +131,7 @@ def test_research_app_runs_real_lifespan_and_stays_not_ready() -> None:
                     "/api/v1/news",
                     "/api/v1/alpha",
                     "/api/v1/mcp",
+                    "/api/v1/research/runs",
                 ):
                     assert client.get(path).status_code == 404, path
 
@@ -150,7 +160,7 @@ def test_research_app_runs_real_lifespan_and_stays_not_ready() -> None:
 
 
 def test_injected_components_compose_router_and_cleanup() -> None:
-    """A test-only component fixture must compose and clean up in deterministic order."""
+    """A test-only component fixture must compose and clean up in determin..."""
     output = run_research_script(
         """
         from contextlib import asynccontextmanager
@@ -262,6 +272,209 @@ def test_component_lifespan_exit_errors_are_not_discarded() -> None:
             raise AssertionError("component teardown error was discarded")
 
         assert events == ["enter", "exit"]
+        """,
+        research_enabled=True,
+    )
+    assert output == ""
+
+
+def test_legacy_default_exposes_news_and_hides_research_surfaces() -> None:
+    """Legacy mode must keep existing API routes and omit research HTTP/MCP mounts."""
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "APP_MODE": "legacy",
+            "RESEARCH_ENABLED": "false",
+            "RESEARCH_EXECUTION_ENABLED": "false",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONPATH": str(BACKEND_ROOT),
+        }
+    )
+    script = """
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+
+        paths = set(app.openapi()["paths"])
+        assert any(path.startswith("/api/v1/news") for path in paths)
+        assert not any(path.startswith("/api/v1/research/") for path in paths)
+        assert all(getattr(route, "path", None) != "/api/v1/mcp" for route in app.routes)
+
+        with TestClient(app, raise_server_exceptions=False) as client:
+            assert client.get("/").status_code == 200
+            assert client.get("/readyz").json()["mode"] == "legacy"
+            for path in (
+                "/api/v1/research/runs",
+                "/api/v1/research/evidence/not-a-run",
+                "/api/v1/mcp",
+            ):
+                assert client.get(path).status_code == 404, path
+    """
+    completed = subprocess.run(
+        [sys.executable, "-c", textwrap.dedent(script)],
+        cwd=BACKEND_ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, (
+        f"legacy subprocess failed\nstdout:\n{completed.stdout}\n"
+        f"stderr:\n{completed.stderr}"
+    )
+
+
+def test_enabled_research_readiness_tracks_each_explicit_configuration_gap() -> None:
+    """Each missing research credential or transport policy must map to a..."""
+    valid_jwks = '{"keys":[{"kid":"memory","kty":"RSA","n":"abc","e":"AQAB","alg":"RS256","use":"sig"}]}'
+    scenarios = {
+        "missing_database": (
+            {},
+            lambda checks: (
+                checks["ledger_ready"]["reason"] == "ledger_dsn_missing_or_invalid"
+            ),
+        ),
+        "missing_issuer": (
+            {
+                "RESEARCH_IDENTITY_AUDIENCE": "research-test",
+                "RESEARCH_TRUSTED_JWKS_JSON": valid_jwks,
+            },
+            lambda checks: checks["identity_ready"]["ready"] is False,
+        ),
+        "missing_audience": (
+            {
+                "RESEARCH_IDENTITY_ISSUER": "https://identity.test",
+                "RESEARCH_TRUSTED_JWKS_JSON": valid_jwks,
+            },
+            lambda checks: checks["identity_ready"]["ready"] is False,
+        ),
+        "missing_jwks": (
+            {
+                "RESEARCH_IDENTITY_ISSUER": "https://identity.test",
+                "RESEARCH_IDENTITY_AUDIENCE": "research-test",
+            },
+            lambda checks: checks["identity_ready"]["ready"] is False,
+        ),
+        "missing_allowed_host": (
+            {
+                "RESEARCH_IDENTITY_ISSUER": "https://identity.test",
+                "RESEARCH_IDENTITY_AUDIENCE": "research-test",
+                "RESEARCH_TRUSTED_JWKS_JSON": valid_jwks,
+                "RESEARCH_MCP_ALLOWED_ORIGINS": '["https://research.test"]',
+            },
+            lambda checks: checks["mcp_ready"]["ready"] is False,
+        ),
+        "missing_allowed_origin": (
+            {
+                "RESEARCH_IDENTITY_ISSUER": "https://identity.test",
+                "RESEARCH_IDENTITY_AUDIENCE": "research-test",
+                "RESEARCH_TRUSTED_JWKS_JSON": valid_jwks,
+                "RESEARCH_MCP_ALLOWED_HOSTS": '["research.test"]',
+            },
+            lambda checks: checks["mcp_ready"]["ready"] is False,
+        ),
+    }
+    for name, (extra_env, assertion) in scenarios.items():
+        output = run_research_script(
+            """
+            import asyncio
+            import json
+            import socket
+
+            def refuse_network(*args, **kwargs):
+                raise AssertionError("network access is not allowed during readiness probes")
+
+            socket.create_connection = refuse_network
+
+            from app.core.config import Settings
+            from app.research.composition import build_research_components
+
+            components = build_research_components(Settings())
+            checks = asyncio.run(components.readiness())
+            print(json.dumps({name: {"ready": check.ready, "reason": check.reason} for name, check in checks.items()}))
+            """,
+            research_enabled=True,
+            extra_env=extra_env,
+        )
+        payload = json.loads(output.strip())
+        assert assertion(payload), name
+
+
+def test_malformed_jwks_keeps_liveness_without_leaking_configuration() -> None:
+    """Invalid JWKS material must not break liveness or echo raw configuration."""
+    output = run_research_script(
+        """
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+
+        secret = "malformed-jwks-secret"
+        with TestClient(app, raise_server_exceptions=False) as client:
+            assert client.get("/health").status_code == 200
+            readiness = client.get("/readyz")
+            assert readiness.status_code == 503
+            assert readiness.json()["checks"]["identity_ready"]["ready"] is False
+            assert secret not in readiness.text
+        """,
+        research_enabled=True,
+        extra_env={"RESEARCH_TRUSTED_JWKS_JSON": "malformed-jwks-secret"},
+    )
+    assert output == ""
+
+
+def test_execution_switch_never_marks_executor_ready() -> None:
+    """S04 is absent: execution may be toggled on but executor readiness stays false."""
+    output = run_research_script(
+        """
+        import asyncio
+        import json
+
+        from app.core.config import Settings
+        from app.research.composition import build_research_components
+
+        settings = Settings()
+        assert settings.RESEARCH_EXECUTION_ENABLED is True
+        checks = asyncio.run(build_research_components(settings).readiness())
+        executor = checks["executor_ready"]
+        print(json.dumps({"ready": executor.ready, "reason": executor.reason}))
+        """,
+        research_enabled=True,
+        execution_enabled=True,
+    )
+    payload = json.loads(output.strip())
+    assert payload["ready"] is False
+    assert payload["reason"] == "executor_not_installed"
+
+
+def test_enabled_research_missing_security_material_stays_live_and_closed() -> None:
+    """Missing explicit DB/identity/transport policy cannot enable requests."""
+    output = run_research_script(
+        """
+        from fastapi.testclient import TestClient
+        from app.main import app
+        expected = {
+            "/api/v1/research/runs",
+            "/api/v1/research/runs/{id}",
+            "/api/v1/research/runs/{id}/events",
+            "/api/v1/research/evidence/{id}",
+        }
+        registered = set(app.openapi()["paths"])
+        assert {path for path in registered if path.startswith("/api/v1/research/")} == expected
+        assert all(getattr(route, "path", None) != "/api/v1/mcp" for route in app.routes)
+
+        with TestClient(app, raise_server_exceptions=False) as client:
+            assert client.get("/").status_code == 200
+            health = client.get("/health").json()
+            assert health["research"]["enabled"] is True
+            ready = client.get("/readyz")
+            assert ready.status_code == 503
+            checks = ready.json()["checks"]
+            assert all(check["ready"] is False for check in checks.values())
+            assert checks["ledger_ready"]["reason"] != "ledger_ready"
+            assert checks["identity_ready"]["reason"] == "identity_not_installed"
+            assert checks["mcp_ready"]["reason"] == "mcp_not_installed"
+            assert checks["executor_ready"]["reason"] == "executor_not_installed"
+            assert client.get("/api/v1/research/runs/not-a-run").status_code == 401
         """,
         research_enabled=True,
     )

@@ -196,9 +196,7 @@ async def test_react_astream_calls_real_tool_then_emits_final_event() -> None:
         (event for event in events if isinstance(event, ToolResultEvent)), None
     )
     assert tool_result is not None, "Expected ToolResultEvent was not emitted"
-    final = next(
-        (event for event in events if isinstance(event, FinalEvent)), None
-    )
+    final = next((event for event in events if isinstance(event, FinalEvent)), None)
     assert final is not None, "Expected FinalEvent was not emitted"
     assert tool_call.tool_name == "read_snapshot"
     assert tool_call.arguments == {"snapshot_id": "fixture-id"}
@@ -269,9 +267,7 @@ async def test_react_rejects_unknown_or_invalid_calls_without_reading(
         (event for event in events if isinstance(event, ToolResultEvent)), None
     )
     assert tool_result is not None, "Expected ToolResultEvent was not emitted"
-    final = next(
-        (event for event in events if isinstance(event, FinalEvent)), None
-    )
+    final = next((event for event in events if isinstance(event, FinalEvent)), None)
     assert final is not None, "Expected FinalEvent was not emitted"
     assert tool_result.success is False
     assert tool_result.content.startswith("ERROR:")
@@ -297,9 +293,7 @@ async def test_react_stops_at_max_iterations() -> None:
 
     events = [event async for event in agent.astream("Stop after one iteration.")]
 
-    final = next(
-        (event for event in events if isinstance(event, FinalEvent)), None
-    )
+    final = next((event for event in events if isinstance(event, FinalEvent)), None)
     assert final is not None, "Expected FinalEvent was not emitted"
     assert final.success is False
     assert final.output == "max iterations reached"

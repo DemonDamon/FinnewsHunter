@@ -75,7 +75,11 @@ set -eu
 printf 'sleep|ARGS=%s\\n' "$*" >> {docker_log}
 """,
     )
-    return {"bin": bin_dir, "python": bin_dir / "python", "uvicorn": bin_dir / "uvicorn"}
+    return {
+        "bin": bin_dir,
+        "python": bin_dir / "python",
+        "uvicorn": bin_dir / "uvicorn",
+    }
 
 
 def _run_start(
@@ -133,7 +137,9 @@ def _copy_minimal_project(tmp_path: Path) -> Path:
 
 def test_bash_syntax_help_and_invalid_options_are_explicit(tmp_path: Path) -> None:
     """The CLI must reject unknown modes and flags instead of ignoring them."""
-    syntax = subprocess.run(["bash", "-n", str(START_SCRIPT)], text=True, capture_output=True, check=False)
+    syntax = subprocess.run(
+        ["bash", "-n", str(START_SCRIPT)], text=True, capture_output=True, check=False
+    )
     assert syntax.returncode == 0, syntax.stderr
     assert START_SCRIPT.stat().st_mode & stat.S_IXUSR
 
@@ -151,7 +157,9 @@ def test_bash_syntax_help_and_invalid_options_are_explicit(tmp_path: Path) -> No
     assert "Unknown option" in unknown_flag.stderr
 
 
-def test_research_check_only_runs_compose_config_without_side_effects(tmp_path: Path) -> None:
+def test_research_check_only_runs_compose_config_without_side_effects(
+    tmp_path: Path,
+) -> None:
     """Research --check must not start services, migrations, or Uvicorn."""
     result, calls = _run_start(tmp_path, ["--mode", "research", "--check"], direct=True)
 
@@ -178,8 +186,10 @@ def test_research_no_services_is_a_pure_app_diagnostic(tmp_path: Path) -> None:
     assert "app.main:app" in calls
 
 
-def test_research_enabled_no_services_is_rejected_before_application_start(tmp_path: Path) -> None:
-    """Enabled research must not bypass migration safety through a diagnostic command."""
+def test_research_enabled_no_services_is_rejected_before_application_start(
+    tmp_path: Path,
+) -> None:
+    """Enabled research must not bypass migration safety through a diagnos..."""
     result, calls = _run_start(
         tmp_path,
         ["--mode", "research", "--no-services"],
@@ -194,11 +204,15 @@ def test_research_enabled_no_services_is_rejected_before_application_start(tmp_p
     assert "init_db.py" not in calls
 
 
-def test_research_enabled_requires_real_alembic_files_before_services(tmp_path: Path) -> None:
+def test_research_enabled_requires_real_alembic_files_before_services(
+    tmp_path: Path,
+) -> None:
     """An enabled research migration cannot fall back to the legacy initializer."""
+    project = _copy_minimal_project(tmp_path)
     result, calls = _run_start(
         tmp_path,
         ["--mode", "research"],
+        project_root=project,
         extra_env={"RESEARCH_ENABLED": "true"},
     )
 
@@ -214,7 +228,9 @@ def test_failed_research_migration_prevents_uvicorn(tmp_path: Path) -> None:
     """A migration failure exits nonzero and never continues to Uvicorn."""
     project = _copy_minimal_project(tmp_path)
     (project / "backend" / "alembic").mkdir()
-    (project / "backend" / "alembic.ini").write_text("[alembic]\nscript_location = alembic\n", encoding="utf-8")
+    (project / "backend" / "alembic.ini").write_text(
+        "[alembic]\nscript_location = alembic\n", encoding="utf-8"
+    )
 
     result, calls = _run_start(
         tmp_path / "run",
@@ -243,7 +259,9 @@ def test_legacy_remains_the_default_and_uses_legacy_initializer(tmp_path: Path) 
     assert "uvicorn|APP_MODE=legacy" in calls
 
 
-def test_with_worker_fake_control_flow_rejects_unregistered_research_modules(tmp_path: Path) -> None:
+def test_with_worker_fake_control_flow_rejects_unregistered_research_modules(
+    tmp_path: Path,
+) -> None:
     """The fake interpreter covers only the no-worker control-flow branch."""
     result, calls = _run_start(tmp_path, ["--mode", "research", "--with-worker"])
 
@@ -257,15 +275,23 @@ def test_with_worker_fake_control_flow_rejects_unregistered_research_modules(tmp
     not (PROJECT_ROOT / "backend" / "app" / "research" / "composition.py").is_file(),
     reason="Requires the S01 application composition implementation from the application owner.",
 )
-def test_with_worker_real_interpreter_reports_empty_components_without_compose(tmp_path: Path) -> None:
+def test_with_worker_real_interpreter_reports_empty_components_without_compose(
+    tmp_path: Path,
+) -> None:
     """A real interpreter must distinguish an empty registry from an import failure."""
     tool_dir = tmp_path / "bin"
     tool_dir.mkdir()
     call_log = tmp_path / "calls.log"
     docker = tool_dir / "docker"
     uvicorn = tool_dir / "uvicorn"
-    _write_executable(docker, f"#!/usr/bin/env bash\nprintf 'docker|ARGS=%s\\n' \"$*\" >> {call_log}\n")
-    _write_executable(uvicorn, f"#!/usr/bin/env bash\nprintf 'uvicorn|ARGS=%s\\n' \"$*\" >> {call_log}\n")
+    _write_executable(
+        docker,
+        f"#!/usr/bin/env bash\nprintf 'docker|ARGS=%s\\n' \"$*\" >> {call_log}\n",
+    )
+    _write_executable(
+        uvicorn,
+        f"#!/usr/bin/env bash\nprintf 'uvicorn|ARGS=%s\\n' \"$*\" >> {call_log}\n",
+    )
 
     environment = os.environ.copy()
     environment.update(
