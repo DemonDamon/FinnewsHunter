@@ -7,12 +7,19 @@ from celery.schedules import crontab
 
 from app.core.config import settings
 
-if settings.APP_MODE == "research":
-    from app.research.composition import build_research_components
+_included_task_modules = (
+    ["app.research.worker"]
+    if settings.APP_MODE == "research"
+    else ["app.tasks.crawl_tasks"]
+)
 
-    _included_task_modules = build_research_components(settings).worker_modules
-else:
-    _included_task_modules = ["app.tasks.crawl_tasks"]
+_research_task_route: dict[str, dict[str, str]] = {}
+if settings.APP_MODE == "research":
+    from app.research.dispatch import RESEARCH_EXECUTE_TASK_NAME, RESEARCH_QUEUE_NAME
+
+    _research_task_route = {
+        RESEARCH_EXECUTE_TASK_NAME: {"queue": RESEARCH_QUEUE_NAME},
+    }
 
 # 创建 Celery 应用
 celery_app = Celery(
@@ -47,6 +54,7 @@ celery_app.conf.update(
     worker_max_tasks_per_child=1000,  # 每个 worker 处理1000个任务后重启
     
     # Beat 调度配置
+    task_routes=_research_task_route,
     beat_schedule=(
         {}
         if settings.APP_MODE == "research"

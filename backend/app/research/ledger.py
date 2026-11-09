@@ -376,7 +376,8 @@ class ResearchLedger:
         snapshot_service: Any,
         max_concurrent_runs: int = 3,
         daily_run_limit: int = 20,
-        run_timeout: timedelta = timedelta(minutes=15),
+        run_timeout: timedelta = timedelta(seconds=180),
+        queued_dispatch_timeout: timedelta = timedelta(seconds=120),
         lease_duration: timedelta = timedelta(seconds=60),
         worker_heartbeat_ttl: timedelta = timedelta(seconds=90),
     ) -> None:
@@ -385,6 +386,7 @@ class ResearchLedger:
             min(max_concurrent_runs, daily_run_limit) < 0
             or min(
                 run_timeout.total_seconds(),
+                queued_dispatch_timeout.total_seconds(),
                 lease_duration.total_seconds(),
                 worker_heartbeat_ttl.total_seconds(),
             )
@@ -397,8 +399,9 @@ class ResearchLedger:
             max_concurrent_runs,
             daily_run_limit,
         )
-        self._run_timeout, self._lease_duration = run_timeout, lease_duration
-        self._heartbeat_ttl = worker_heartbeat_ttl
+        self._run_timeout = run_timeout
+        self._queued_dispatch_timeout = queued_dispatch_timeout
+        self._lease_duration, self._heartbeat_ttl = lease_duration, worker_heartbeat_ttl
 
     async def materialize_snapshot(self, **kwargs: Any):
         """Delegate snapshot materialization to the injected service."""
@@ -813,7 +816,7 @@ class ResearchLedger:
                     )
                 ):
                     return None
-                if run.status != "queued" or out.delivery_status == "submitted":
+                if run.status != "queued" or out.delivery_status == "leased":
                     return None
                 token = ExecutionToken(secrets.token_bytes(32))
                 deadline = now + self._run_timeout
@@ -1028,7 +1031,10 @@ class ResearchLedger:
                     .where(
                         (
                             (ResearchRun.status == "queued")
-                            & (ResearchRun.created_at + self._run_timeout < now)
+                            & (
+                                ResearchRun.created_at + self._queued_dispatch_timeout
+                                < now
+                            )
                         )
                         | (
                             (ResearchRun.status == "running")
