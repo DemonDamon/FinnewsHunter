@@ -198,8 +198,23 @@ async def _setup(
     return database, ledger, now, pid, run_id, evidence_id, principal, worker, task
 
 
-async def _claim(ledger, now, worker, task):
-    """Test helper for _claim."""
+async def _submit_outbox_for_worker_claim(
+    database, run_id, now: datetime
+) -> None:
+    """Mark fixture outbox rows as broker-dispatched before a worker claim."""
+    async with database.session_factory() as session, session.begin():
+        outbox = await session.scalar(
+            select(ResearchOutbox).where(ResearchOutbox.run_id == run_id)
+        )
+        assert outbox is not None
+        if outbox.delivery_status == "pending":
+            outbox.delivery_status = "submitted"
+            outbox.submitted_at = now
+
+
+async def _claim(ledger, now, worker, task, database):
+    """Claim a fixture run after the outbox reflects broker dispatch."""
+    await _submit_outbox_for_worker_claim(database, task.run_id, now)
     lease = await ledger.claim_run(task=task, worker=worker, now=now)
     assert lease is not None
     return lease
@@ -212,7 +227,7 @@ async def test_dispatch_claim_lease_heartbeat_and_fence(postgres_context):
         postgres_context
     )
     try:
-        lease = await _claim(ledger, now, worker, task)
+        lease = await _claim(ledger, now, worker, task, database)
         assert lease.run_id == run_id
         assert (
             await ledger.claim_run(
@@ -282,7 +297,7 @@ async def test_event_sequence_and_full_transaction_rollback(postgres_context):
         postgres_context
     )
     try:
-        lease = await _claim(ledger, now, worker, task)
+        lease = await _claim(ledger, now, worker, task, database)
         from app.research.contracts import StepStartedEventPayloadV1
 
         payload = StepStartedEventPayloadV1(step_name="collect")
@@ -324,7 +339,9 @@ async def test_event_sequence_and_full_transaction_rollback(postgres_context):
             foreign_task,
         ) = await _setup(postgres_context, suffix="-cursor", principal_id=pid)
         try:
-            await _claim(foreign_ledger, foreign_now, foreign_worker, foreign_task)
+            await _claim(
+                foreign_ledger, foreign_now, foreign_worker, foreign_task, foreign_db
+            )
             foreign_page = await foreign_ledger.read_events(
                 principal=principal,
                 run_id=foreign_run,
@@ -392,7 +409,7 @@ async def test_terminal_publish_and_reap_race_is_atomic(postgres_context):
         postgres_context
     )
     try:
-        lease = await _claim(ledger, now, worker, task)
+        lease = await _claim(ledger, now, worker, task, database)
         # Race a valid worker terminal finish against a reaper observing the same
         # lease after expiry. Row locking must make one winner and charge quota once.
         expire_time = lease.lease_expires_at
@@ -453,7 +470,7 @@ async def test_terminal_publish_and_reap_race_is_atomic(postgres_context):
             task2,
         ) = await _setup(postgres_context, suffix="-publish")
         try:
-            lease2 = await _claim(ledger2, now2, worker2, task2)
+            lease2 = await _claim(ledger2, now2, worker2, task2, database2)
             async with database2.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
                 session.add(
                     ResearchSourcePolicy(
@@ -915,7 +932,7 @@ async def test_publish_rejects_expired_exact_policy_without_partial_writes(
         policy_lifetime=timedelta(seconds=5),
     )
     try:
-        lease = await _claim(ledger, now, worker, task)
+        lease = await _claim(ledger, now, worker, task, database)
         brief = ResearchBriefV1(
             run_id=run_id,
             as_of=now - timedelta(seconds=30),
@@ -1157,7 +1174,7 @@ async def test_publish_uses_exact_policy_version_for_snapshot_evidence(
         postgres_context, suffix="-exact-policy-version"
     )
     try:
-        lease = await _claim(ledger, now, worker, task)
+        lease = await _claim(ledger, now, worker, task, database)
         async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
             original = await session.get(ResearchEvidence, evidence_id)
             assert original is not None

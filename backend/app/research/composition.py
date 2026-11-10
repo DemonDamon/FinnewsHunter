@@ -47,6 +47,8 @@ class ResearchComponents:
     worker_modules: tuple[str, ...] = ()
     service: object | None = None
     identity_verifier: object | None = None
+    ledger: object | None = None
+    executor_registry: object | None = None
 
 
 async def _uninstalled_readiness() -> dict[str, ResearchReadinessCheck]:
@@ -85,7 +87,7 @@ def _research_clock() -> datetime:
 class _InstalledResearchReadiness:
     """Aggregate readiness probes for an installed research stack."""
 
-    __slots__ = ("_database", "_clock", "_identity_ready", "_mcp")
+    __slots__ = ("_clock", "_database", "_executor", "_identity_ready", "_mcp")
 
     def __init__(
         self,
@@ -94,11 +96,13 @@ class _InstalledResearchReadiness:
         *,
         identity_ready: bool,
         mcp_component: object | None,
+        executor_registry: object | None,
     ) -> None:
         self._database = database
         self._clock = clock
         self._identity_ready = identity_ready
         self._mcp = mcp_component
+        self._executor = executor_registry
 
     async def __call__(self) -> dict[str, ResearchReadinessCheck]:
         """Aggregate ledger, identity, MCP, and executor readiness probes."""
@@ -115,6 +119,14 @@ class _InstalledResearchReadiness:
             else "ledger_not_ready"
         )
         mcp_ready = bool(self._mcp and self._mcp.readiness.get("mcp"))
+        executor_ready = False
+        executor_reason = "executor_not_installed"
+        if self._executor is not None:
+            readiness = await self._executor.get_readiness(now=self._clock())
+            executor_ready = bool(readiness.ready)
+            executor_reason = readiness.reason
+            if not executor_ready and readiness.reason == "executor_not_approved":
+                executor_reason = "executor_not_installed"
         return {
             "ledger_ready": ResearchReadinessCheck(result.ready, db_reason),
             "identity_ready": ResearchReadinessCheck(
@@ -124,18 +136,24 @@ class _InstalledResearchReadiness:
             "mcp_ready": ResearchReadinessCheck(
                 mcp_ready, "mcp_ready" if mcp_ready else "mcp_not_installed"
             ),
-            "executor_ready": ResearchReadinessCheck(False, "executor_not_installed"),
+            "executor_ready": ResearchReadinessCheck(executor_ready, executor_reason),
         }
 
 
 class _InstalledResearchLifespan:
-    """Dispose database resources after optional MCP lifespan."""
+    """Run dispatcher supervision and dispose database resources on exit."""
 
-    __slots__ = ("_database", "_mcp")
+    __slots__ = ("_database", "_mcp", "_supervisor")
 
-    def __init__(self, database: object, mcp_component: object | None) -> None:
+    def __init__(
+        self,
+        database: object,
+        mcp_component: object | None,
+        supervisor: object | None,
+    ) -> None:
         self._database = database
         self._mcp = mcp_component
+        self._supervisor = supervisor
 
     @asynccontextmanager
     async def __call__(self, _application: FastAPI):
@@ -144,8 +162,13 @@ class _InstalledResearchLifespan:
             async with AsyncExitStack() as stack:
                 if self._mcp is not None:
                     await stack.enter_async_context(self._mcp.lifespan())
+                if self._supervisor is not None:
+                    await self._supervisor.startup_recovery()
+                    self._supervisor.start_background()
                 yield
         finally:
+            if self._supervisor is not None:
+                await self._supervisor.stop_background()
             await self._database.dispose()
 
 
@@ -195,21 +218,49 @@ def build_research_components(settings: Settings) -> ResearchComponents:
     if not _research_is_enabled(settings):
         return ResearchComponents(None, None, None, _uninstalled_readiness)
     from app.api.v1.research import router
+    from app.core.celery_app import celery_app
     from app.mcp.finnews_server import create_finnews_mcp_app
     from app.research.auth import LocalRS256IdentityVerifier, ResearchAuthorizer
     from app.research.db import create_research_database
+    from app.research.dispatch import (
+        CeleryDispatchTransport,
+        ResearchDispatcher,
+        ResearchDispatchSupervisor,
+    )
     from app.research.ledger import ResearchLedger
+    from app.research.outbox import ResearchOutboxPort
     from app.research.service import ResearchApplicationService
     from app.research.snapshot import ResearchSnapshotService
+    from app.research.worker import ResearchExecutorRegistry
 
     now: Callable[[], datetime] = _research_clock
     dsn = settings.RESEARCH_DATABASE_URL
     database = create_research_database(dsn)
+    executor_registry = ResearchExecutorRegistry(
+        database=database,
+        execution_enabled=settings.RESEARCH_EXECUTION_ENABLED,
+        redis_url=settings.REDIS_URL,
+        allow_fixture_executor=settings.RESEARCH_ALLOW_FIXTURE_EXECUTOR,
+    )
     ledger = ResearchLedger(
         database=database,
         authorizer=ResearchAuthorizer(),
-        executor_registry=_NoExecutor(),
+        executor_registry=executor_registry,
         snapshot_service=ResearchSnapshotService(database),
+    )
+    outbox = ResearchOutboxPort(database=database)
+    dispatcher = ResearchDispatcher(
+        outbox=outbox,
+        transport=CeleryDispatchTransport(celery_app=celery_app),
+        dispatcher_id=settings.APP_NAME,
+    )
+    dispatch_supervisor = ResearchDispatchSupervisor(
+        database=database,
+        ledger=ledger,
+        outbox=outbox,
+        dispatcher=dispatcher,
+        clock=now,
+        enabled=settings.RESEARCH_EXECUTION_ENABLED,
     )
     service = ResearchApplicationService(
         ledger=ledger,
@@ -240,15 +291,20 @@ def build_research_components(settings: Settings) -> ResearchComponents:
         now,
         identity_ready=identity_ready,
         mcp_component=mcp_component,
+        executor_registry=executor_registry,
     )
-    lifespan = _InstalledResearchLifespan(database, mcp_component)
+    lifespan = _InstalledResearchLifespan(
+        database, mcp_component, dispatch_supervisor
+    )
 
     return ResearchComponents(
         router=router,
         mcp_app=mcp_component.app if mcp_component else None,
         lifespan=lifespan,
         readiness=readiness,
-        worker_modules=(),
+        worker_modules=("app.research.worker",),
         service=service,
         identity_verifier=verifier,
+        ledger=ledger,
+        executor_registry=executor_registry,
     )

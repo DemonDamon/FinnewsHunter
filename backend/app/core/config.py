@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     RESEARCH_TRUSTED_JWKS_JSON: Optional[str] = None
     RESEARCH_MCP_ALLOWED_HOSTS: list[str] = Field(default_factory=list)
     RESEARCH_MCP_ALLOWED_ORIGINS: list[str] = Field(default_factory=list)
+    RESEARCH_ALLOW_FIXTURE_EXECUTOR: bool = False
 
     # 服务器配置
     # skipcq: BAN-B104 -- legacy dev bind; deployment overrides
