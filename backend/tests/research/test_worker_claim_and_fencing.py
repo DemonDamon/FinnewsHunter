@@ -38,7 +38,7 @@ async def test_duplicate_delivery_after_claim_is_no_op(postgres_context):
             dispatcher_id="test-dispatcher",
         )
         assert await dispatcher.drain_once(now=now) == 1
-        lease = await _claim(ledger, now, worker, task)
+        lease = await _claim(ledger, now, worker, task, database)
         duplicate = await ledger.claim_run(
             task=task, worker=worker, now=now + timedelta(seconds=1)
         )
@@ -70,7 +70,7 @@ async def test_late_finish_after_reap_is_fenced(postgres_context):
         postgres_context
     )
     try:
-        lease = await _claim(ledger, now, worker, task)
+        lease = await _claim(ledger, now, worker, task, database)
         reaped = await ledger.reap_stale(
             now=lease.lease_expires_at + timedelta(seconds=1), limit=10
         )

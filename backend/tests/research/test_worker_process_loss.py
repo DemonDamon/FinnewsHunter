@@ -24,7 +24,11 @@ from backend.tests.research.postgres_fixtures import (
     create_postgres_context,
     upgrade_head,
 )
-from backend.tests.research.test_run_transactions import _ReadyExecutor, _setup
+from backend.tests.research.test_run_transactions import (
+    _ReadyExecutor,
+    _setup,
+    _submit_outbox_for_worker_claim,
+)
 
 
 def _child_claim_and_block(
@@ -78,6 +82,7 @@ async def test_subprocess_kill_after_claim_is_reaped_as_worker_lost(postgres_con
     await asyncio.to_thread(upgrade_head, postgres_context)
     database, ledger, now, _, run_id, _, _, worker, task = await _setup(postgres_context)
     try:
+        await _submit_outbox_for_worker_claim(database, run_id, now)
         process = mp.Process(
             target=_child_claim_and_block,
             args=(

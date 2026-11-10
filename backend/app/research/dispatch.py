@@ -256,18 +256,19 @@ class ResearchDispatchSupervisor:
 class InMemoryDispatchTransport:
     """Capture broker publishes for isolated dispatch tests."""
 
-    __slots__ = ("messages",)
+    __slots__ = ("_fail_once", "messages")
 
     def __init__(self) -> None:
         self.messages: list[DispatchTask] = []
+        self._fail_once = False
 
     def send(self, task: DispatchTask) -> None:
+        """Publish one task or fail once when configured by fail_next()."""
+        if self._fail_once:
+            self._fail_once = False
+            raise RuntimeError("broker unavailable")
         self.messages.append(task)
 
     def fail_next(self) -> None:
-        """Replace send with a failing implementation for one call."""
-
-        def _raise(_task: DispatchTask) -> None:
-            raise RuntimeError("broker unavailable")
-
-        self.send = _raise  # type: ignore[method-assign]
+        """Cause the next send call to raise without mutating a slotted method."""
+        self._fail_once = True
