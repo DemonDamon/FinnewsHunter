@@ -1174,7 +1174,7 @@ async def test_publish_uses_exact_policy_version_for_snapshot_evidence(
         postgres_context, suffix="-exact-policy-version"
     )
     try:
-        lease = await _claim(ledger, now, worker, task)
+        lease = await _claim(ledger, now, worker, task, database)
         async with database.session_factory() as session, session.begin():  # skipcq: PYL-E1102 -- async session factory from research port
             original = await session.get(ResearchEvidence, evidence_id)
             assert original is not None
