@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import asyncio
 from datetime import timedelta
-from uuid import uuid4
 
 import pytest
-from app.research.db import create_research_database
 from app.research.dispatch import InMemoryDispatchTransport, ResearchDispatcher
 from app.research.models import ResearchOutbox, ResearchRun
 from app.research.outbox import ResearchOutboxPort
@@ -73,6 +71,46 @@ async def test_outbox_broker_failure_releases_without_deleting_row(postgres_cont
             assert row is not None
             assert row.delivery_status == "pending"
             assert row.available_at > now
+    finally:
+        await database.dispose()
+
+
+@pytest.mark.asyncio
+async def test_worker_claim_succeeds_while_outbox_still_leased_after_broker_send(
+    postgres_context,
+):
+    """Broker send without dispatcher ack must not block the first worker claim."""
+    await asyncio.to_thread(upgrade_head, postgres_context)
+    database, ledger, now, _, run_id, _, _, worker, task = await _setup(postgres_context)
+    try:
+        outbox = ResearchOutboxPort(database=database)
+        transport = InMemoryDispatchTransport()
+        leases = await outbox.claim_pending_dispatches(
+            dispatcher_id="test-dispatcher",
+            now=now,
+            lease_duration=timedelta(seconds=30),
+            limit=10,
+        )
+        assert len(leases) == 1
+        await asyncio.to_thread(transport.send, leases[0].task)
+        assert len(transport.messages) == 1
+        async with database.session_factory() as session:
+            row = await session.scalar(
+                select(ResearchOutbox).where(ResearchOutbox.run_id == run_id)
+            )
+            assert row is not None
+            assert row.delivery_status == "leased"
+        lease = await ledger.claim_run(task=task, worker=worker, now=now)
+        assert lease is not None
+        async with database.session_factory() as session:
+            row = await session.scalar(
+                select(ResearchOutbox).where(ResearchOutbox.run_id == run_id)
+            )
+            assert row is not None
+            assert row.delivery_status == "submitted"
+            run = await session.get(ResearchRun, run_id)
+            assert run is not None
+            assert run.status == "running"
     finally:
         await database.dispose()
 

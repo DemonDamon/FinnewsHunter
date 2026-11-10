@@ -816,8 +816,18 @@ class ResearchLedger:
                     )
                 ):
                     return None
-                if run.status != "queued" or out.delivery_status == "leased":
+                if run.status != "queued":
                     return None
+                if out.delivery_status == "pending":
+                    return None
+                if out.delivery_status not in ("leased", "submitted"):
+                    return None
+                if out.delivery_status == "leased":
+                    out.delivery_status = "submitted"
+                    out.submitted_at = now
+                    out.lease_id = None
+                    out.dispatcher_id = None
+                    out.lease_expires_at = None
                 token = ExecutionToken(secrets.token_bytes(32))
                 deadline = now + self._run_timeout
                 run.status = "running"

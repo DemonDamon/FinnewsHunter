@@ -42,6 +42,7 @@ HEARTBEAT_INTERVAL = timedelta(seconds=10)
 LEASE_HEARTBEAT = HEARTBEAT_INTERVAL
 WORKER_HEARTBEAT_TTL = timedelta(seconds=90)
 APPROVED_EXECUTOR_PREFIX = "research.worker."
+WORKER_RETRYABLE_DOMAIN_CODES = frozenset({"persistence_failed"})
 
 
 def _aware_now() -> datetime:
@@ -265,6 +266,13 @@ def _run_async(coro):
     return asyncio.run(coro)
 
 
+def should_re_raise_for_celery(exc: BaseException) -> bool:
+    """Return whether a worker failure must remain unacked for redelivery."""
+    return isinstance(exc, DomainError) and (
+        exc.retryable or exc.code in WORKER_RETRYABLE_DOMAIN_CODES
+    )
+
+
 async def _execute_task_async(
     *,
     run_id: str,
@@ -329,10 +337,15 @@ def make_celery_task(celery_app: Any):
                     worker_id=worker_id,
                 )
             )
-        except DomainError as error:
-            logger.warning("research worker domain failure code=%s", error.code)
-        except Exception:
-            logger.exception("research worker failed")
+        except BaseException as error:
+            if should_re_raise_for_celery(error):
+                raise
+            if isinstance(error, DomainError):
+                logger.warning(
+                    "research worker domain failure code=%s", error.code
+                )
+            else:
+                logger.exception("research worker failed")
 
     return execute_research_run_v1
 

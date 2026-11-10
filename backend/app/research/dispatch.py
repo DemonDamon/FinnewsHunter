@@ -8,7 +8,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import socket
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
@@ -16,6 +17,7 @@ from typing import Any, Protocol
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.research.outbox import ResearchOutboxPort
 from app.research.ports import (
@@ -37,6 +39,8 @@ REAP_BATCH_LIMIT = 32
 ADVISORY_LOCK_KEY = int.from_bytes(
     sha256(b"finnews.research.dispatch.supervisor").digest()[:8], "big", signed=True
 )
+_TRY_LOCK_SQL = text("SELECT pg_try_advisory_lock(:key)")
+_UNLOCK_SQL = text("SELECT pg_advisory_unlock(:key)")
 
 
 class DispatchTransport(Protocol):
@@ -176,13 +180,10 @@ class ResearchDispatchSupervisor:
 
     async def startup_recovery(self) -> DispatchCycleResult:
         """Scan stale runs and outbox leases immediately after process start."""
-        now = self._clock()
-        released = await self._outbox.release_expired_leases(now=now)
-        reaped = len(await self._ledger.reap_stale(now=now, limit=REAP_BATCH_LIMIT))
-        dispatched = await self._dispatcher.drain_once(now=now) if self._enabled else 0
-        return DispatchCycleResult(
-            dispatched=dispatched, released=released, reaped=reaped
-        )
+        async with self._advisory_lock() as lock_session:
+            if lock_session is None:
+                return DispatchCycleResult(dispatched=0, released=0, reaped=0)
+            return await self._recovery_body(now=self._clock())
 
     def start_background(self) -> None:
         """Launch the periodic supervisor loop."""
@@ -212,44 +213,44 @@ class ResearchDispatchSupervisor:
                 continue
 
     async def _cycle_once(self) -> DispatchCycleResult:
-        if not await self._try_advisory_lock():
-            return DispatchCycleResult(dispatched=0, released=0, reaped=0)
-        try:
-            now = self._clock()
-            released = await self._outbox.release_expired_leases(now=now)
-            reaped = len(
-                await self._ledger.reap_stale(now=now, limit=REAP_BATCH_LIMIT)
-            )
-            dispatched = (
-                await self._dispatcher.drain_once(now=now) if self._enabled else 0
-            )
-            return DispatchCycleResult(
-                dispatched=dispatched, released=released, reaped=reaped
-            )
-        finally:
-            await self._release_advisory_lock()
+        async with self._advisory_lock() as lock_session:
+            if lock_session is None:
+                return DispatchCycleResult(dispatched=0, released=0, reaped=0)
+            return await self._recovery_body(now=self._clock())
 
-    async def _try_advisory_lock(self) -> bool:
-        try:
-            async with self._database.session_factory() as session:
+    async def _recovery_body(self, *, now: datetime) -> DispatchCycleResult:
+        released = await self._outbox.release_expired_leases(now=now)
+        reaped = len(await self._ledger.reap_stale(now=now, limit=REAP_BATCH_LIMIT))
+        dispatched = await self._dispatcher.drain_once(now=now) if self._enabled else 0
+        return DispatchCycleResult(
+            dispatched=dispatched, released=released, reaped=reaped
+        )
+
+    @asynccontextmanager
+    async def _advisory_lock(self) -> AsyncIterator[AsyncSession | None]:
+        """Hold one session-scoped advisory lock for the entire critical section."""
+        async with self._database.session_factory() as session:
+            acquired = False
+            try:
                 result = await session.execute(
-                    text("SELECT pg_try_advisory_lock(:key)"),
-                    {"key": ADVISORY_LOCK_KEY},
+                    _TRY_LOCK_SQL, {"key": ADVISORY_LOCK_KEY}
                 )
-                return bool(result.scalar())
-        except SQLAlchemyError:
-            return False
-
-    async def _release_advisory_lock(self) -> None:
-        try:
-            async with self._database.session_factory() as session:
-                await session.execute(
-                    text("SELECT pg_advisory_unlock(:key)"),
-                    {"key": ADVISORY_LOCK_KEY},
-                )
-                await session.commit()
-        except SQLAlchemyError:
-            return
+                acquired = bool(result.scalar())
+                if not acquired:
+                    yield None
+                    return
+                yield session
+            except SQLAlchemyError:
+                yield None
+            finally:
+                if acquired:
+                    try:
+                        await session.execute(
+                            _UNLOCK_SQL, {"key": ADVISORY_LOCK_KEY}
+                        )
+                        await session.commit()
+                    except SQLAlchemyError:
+                        await session.rollback()
 
 
 class InMemoryDispatchTransport:

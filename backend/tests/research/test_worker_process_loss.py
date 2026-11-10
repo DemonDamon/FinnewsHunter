@@ -132,14 +132,14 @@ async def test_restart_supervisor_scan_closes_dispatch_timeout(postgres_context)
             ).ResearchOutboxPort(database=database),
             dispatcher=_NoopDispatcher(),
             enabled=False,
+            clock=lambda: now + timedelta(seconds=121),
         )
         result = await supervisor.startup_recovery()
-        assert result.reaped == 0
-        timeout_now = now + timedelta(seconds=121)
-        reaped = await ledger.reap_stale(now=timeout_now, limit=10)
-        assert any(item.run_id == run_id for item in reaped)
+        assert result.reaped >= 1
         async with database.session_factory() as session:
-            row = await session.scalar(select(ResearchRun).where(ResearchRun.run_id == run_id))
+            row = await session.scalar(
+                select(ResearchRun).where(ResearchRun.run_id == run_id)
+            )
             assert row is not None
             assert row.status == "failed"
             assert row.error_code == "dispatch_timeout"
